@@ -130,3 +130,42 @@ verificação independente e commits pelo orquestrador.
   atual não intercepta `Bash`, e a emenda do ADR-003 já assume esse escape.
 - Roster instalado ≠ roster invocável: a AC da S-301 fala em "Task tool consegue
   invocar cada um", o que só se comprova com o plugin instalado numa sessão real.
+
+## 2026-08-09 — Levantamento do ecossistema + Open Question #4 fechada
+
+Instalado **superpowers 6.2.0** (`@claude-plugins-official`, MIT, 14 skills, ~688 tok
+always-on). Coexistência com o Maestro **verificada**: o hook dele usa
+`matcher: startup|clear|compact`, o do Maestro roda em todo SessionStart; ambos só
+injetam, nenhum bloqueia; zero colisão de nome com gstack ou com o roster. Isso valida
+na prática o risco de ordem de execução que o ADR-007 registrou.
+
+### Open Question #4 — shrimp: **FECHADA, sai**
+
+Ver o racional completo no brief. Resumo: redundante com `workflows` da routing table +
+`engenheiro` + `writing-plans`/`executing-plans`; o diferencial (estado durável) é melhor
+servido por plano markdown versionado; estado real parado há ~2 meses com 0 tarefas em
+aberto. Não entra na routing table.
+
+Consequência para o E4: sobravam **três** sistemas de tarefa concorrentes (shrimp MCP,
+skills do superpowers, tasks nativas do Claude Code) — o mesmo anti-padrão de "três
+sistemas de memória em paralelo" que o brief já pegou uma vez. Com o shrimp fora, o
+método é do superpowers e o estado por sessão é nativo.
+
+### ADR-007 (memória): recomendação levantada, decisão ainda do Romulo
+
+Os dois candidatos foram examinados. **gbrain** (garrytan — mesmo autor do gstack já
+instalado; MIT; ⭐28k) integra por **MCP, sem hook nenhum**, guarda fato destilado e tem
+`setup-gbrain`/`sync-gbrain` já presentes no gstack. **claude-mem** (Apache-2.0; ⭐90k)
+ocupa **5 hooks**, incluindo SessionStart e UserPromptSubmit — os dois do Maestro —, e
+captura tudo comprimindo com IA, o que colide com a regra canônica "logs: só metadados;
+jamais prompt" e com o brief §7.
+Recomendação: **gbrain**. Objeção honesta e não resolvida: gbrain exige API key de
+embeddings, ou seja, a memória sai da máquina — contra "residência local" do brief §7 e
+"sem dependência de rede" do CLAUDE.md. Precisa ser escolha consciente.
+
+### Registrado para a v2, não adotado
+
+`rebelytics/one-skill-to-rule-them-all` (CC-BY-4.0) é o **task-observer** que o brief
+deferiu na §4 e que o ARCHITECTURE cita no AI Touchpoint de v2 ("sugestão de ajuste da
+routing table a partir dos logs, com aprovação humana"). Sem hooks; escreve observações
+em arquivo. Aquela vaga da v2 deixou de ser hipotética. Fora do escopo v1.

@@ -184,7 +184,18 @@ Sem personas secundárias na v1.
 1. Nome definitivo (Maestro é provisório)
 2. Sistema de memória único: claude-mem ou GBrain? (testar ambos, matar um — decisão antes da Fase 1 fechar)
 3. Formato de distribuição: pasta em `~/.claude/` versionada vs. plugin instalável via marketplace pessoal (afeta a fase 2 com QM)
-4. Shrimp task-manager entra na routing table ou fica como está?
+4. ~~Shrimp task-manager entra na routing table ou fica como está?~~ **FECHADA (2026-08-09): sai.**
+   Redundante depois do E2/E3: a decomposição de tarefa já é o catálogo de `workflows`
+   da routing table, o plano é produzido pelo `engenheiro` e o método vem do superpowers
+   (`writing-plans`/`executing-plans`). O único diferencial do shrimp era estado durável
+   entre sessões, e plano em markdown versionado no repo cobre isso melhor — sobrevive a
+   `/clear`, a troca de máquina e é revisável em PR, coisas que um `.shrimp/` local não faz.
+   Rastrear item de trabalho nunca foi fronteira do Maestro (ADR-003: decision record é
+   efêmero, TTL 4h, por sessão), então não há capacidade perdida.
+   Evidência de que não custa nada: estado parado desde 2026-06-12/20 em `vitali` —
+   14 tarefas, 0 em aberto — e `shrimp-rules.md` sem toque em TCX-SMART, vitali e AutoPatch.
+   Consequência: shrimp NÃO entra na routing table. Desinstalar o MCP e limpar os
+   `shrimp-rules.md` é higiene separada, não requisito.
 
 ---
 
