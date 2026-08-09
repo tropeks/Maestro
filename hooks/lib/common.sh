@@ -261,7 +261,11 @@ _maestro_log_event_impl() {
 
   # P2-1: fecha o fd para não vazar para processos filhos nem reter o lock
   # até o fim do processo.
-  exec 9>&- 2>/dev/null || :
+  # O grupo { } é OBRIGATÓRIO: `exec` sem comando aplica a redireção ao shell
+  # INTEIRO, então `exec 9>&- 2>/dev/null` mandaria o stderr do hook chamador
+  # para /dev/null permanentemente — silenciando a mensagem instrutiva do gate
+  # no exit 2 e toda degradação posterior. Achado pelo agente GATE na integração.
+  { exec 9>&-; } 2>/dev/null || :
   return 0
 }
 

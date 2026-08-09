@@ -1,0 +1,12 @@
+{
+  "session_id": "sess-abc123",
+  "transcript_path": "/dev/null",
+  "cwd": "/home/user/proj",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/home/user/proj/hooks/README.md",
+    "old_string": "a",
+    "new_string": "b"
+  }
+}

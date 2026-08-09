@@ -1,0 +1,9 @@
+{
+  "session_id": "sess-abc123",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": {
+      "a": 1
+    }
+  }
+}

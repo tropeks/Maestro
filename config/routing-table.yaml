@@ -1,17 +1,28 @@
 version: 1
 gate:
   mode: warn            # warn | block — promoção a block só com dados (roadmap Fase 1b)
-  allowlist:
-    extensions: [.md, .txt, .yaml, .yml, .json, .toml]
+  allowlist:            # não-código de verdade: passa sem decision record
+    extensions: [.md, .txt]
     paths: [.maestro/, docs/]
-  denylist:             # autoproteção (ADR-003 v1.1) — block SEMPRE, mesmo com decisão
-    paths: [agents/, config/routing-table.yaml, .github/workflows/, .claude-plugin/]
+  denylist:             # block SEMPRE, mesmo com decisão registrada (ADR-003 v1.1)
+    # UNIVERSAIS: perigosos em qualquer projeto. `.claude/` guarda o registro de
+    # hooks e o bloco `env` (por onde se desligaria o Maestro) — era o buraco do
+    # review P1-3; `.github/workflows/` executa em CI.
+    paths: [.claude/, .github/workflows/]
+    # AUTOPROTEÇÃO: só valem ancorados na raiz do plugin. Como prefixo relativo
+    # bloqueariam o `src/`, `bin/` e `hooks/` de QUALQUER projeto — trabalho
+    # legítimo travado, o pior caso do brief §8.
+    self_paths: [agents/, bin/, src/, hooks/, config/routing-table.yaml, .claude-plugin/]
 workflows:
   fix:      {steps: [investigate, implement, review], gate: none}
   feature:  {steps: [plan, implement, review, qa], gate: plan}
   refactor: {steps: [plan, implement, review], gate: plan}
   ship:     {steps: [gstack-ship], gate: ship}
   audit:    {steps: [gstack-cso], gate: none}
+  # escape hatch do API_SPEC §2: tarefa que não cai em nenhum fluxo catalogado.
+  # Existe para o roteador poder registrar a decisão honestamente em vez de
+  # forçar um rótulo errado — o que envenenaria a métrica de baseline.
+  custom:   {steps: [], gate: none}
 routes:
   - {intent: "correção de bug, erro, quebrou, não funciona", workflow: fix}
   - {intent: "nova funcionalidade, feature, adicionar, criar tela", workflow: feature}

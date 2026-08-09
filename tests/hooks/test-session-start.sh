@@ -98,7 +98,7 @@ if [[ -f "$POL" ]]; then
   head -1 "$POL" | grep -qF '# gerado por maestro session-start — nao editar' \
     && ok "cabeçalho no formato do contrato" || bad "cabeçalho no formato do contrato"
   n=$(grep -c '^MAESTRO_' "$POL")
-  [[ "$n" -eq 5 ]] && ok "exatamente 5 variáveis" || bad "exatamente 5 variáveis (achou $n)"
+  [[ "$n" -eq 6 ]] && ok "exatamente 6 variáveis" || bad "exatamente 6 variáveis (achou $n)"
   # sourceável pelo GATE, sem efeito colateral
   ( set -euo pipefail
     # shellcheck disable=SC1090
@@ -106,10 +106,13 @@ if [[ -f "$POL" ]]; then
     [[ "$MAESTRO_GATE_MODE" == "warn" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_EXT" == ".md .txt" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_PATHS" == ".maestro/ docs/" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS" >&2; exit 1; }
-    [[ "$MAESTRO_GATE_DENY_PATHS" == "agents/ bin/ hooks/ config/routing-table.yaml .claude/ .claude-plugin/ .github/workflows/" ]] \
+    # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)
+    [[ "$MAESTRO_GATE_DENY_PATHS" == ".claude/ .github/workflows/" ]] \
       || { echo "deny=$MAESTRO_GATE_DENY_PATHS" >&2; exit 1; }
+    [[ "$MAESTRO_GATE_DENY_SELF" == "agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/" ]] \
+      || { echo "self=$MAESTRO_GATE_DENY_SELF" >&2; exit 1; }
     [[ "$MAESTRO_PLUGIN_ROOT" == "$REPO" ]] || { echo "root=$MAESTRO_PLUGIN_ROOT" >&2; exit 1; }
-  ) && ok "5 valores batem com config/routing-table.yaml" || bad "5 valores batem com config/routing-table.yaml"
+  ) && ok "6 valores batem com config/routing-table.yaml" || bad "6 valores batem com config/routing-table.yaml"
 else
   bad "gate-policy.sh gerado"
 fi
@@ -299,7 +302,10 @@ degrade "YAML corrompido degrada com exit 0" "$H8" "$(new_proj)" "$IN" MAESTRO_R
   # shellcheck disable=SC1090
   source "$H8/gate-policy.sh"
   [[ "$MAESTRO_GATE_MODE" == "warn" ]] || exit 1
-  [[ "$MAESTRO_GATE_DENY_PATHS" == *"hooks/"* && "$MAESTRO_GATE_DENY_PATHS" == *"config/routing-table.yaml"* ]] || exit 1
+  # a autoproteção embutida precisa assumir: perder self_paths abriria o gate/CLI
+  [[ "$MAESTRO_GATE_DENY_SELF" == *"hooks/"* && "$MAESTRO_GATE_DENY_SELF" == *"config/routing-table.yaml"* ]] || exit 1
+  # e as universais também: .claude/ é por onde se desliga o Maestro
+  [[ "$MAESTRO_GATE_DENY_PATHS" == *".claude/"* ]] || exit 1
 ) && ok "YAML corrompido: denylist de autoproteção embutida assume" \
   || bad "YAML corrompido: denylist de autoproteção embutida assume"
 

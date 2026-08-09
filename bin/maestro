@@ -267,6 +267,15 @@ if (!isObj(d)) {
       errs.push("gate.mode deve ser warn|block (achado: " + JSON.stringify(d.gate.mode) + ")");
     if (!isObj(d.gate.allowlist)) errs.push("gate.allowlist ausente");
     if (!isObj(d.gate.denylist)) errs.push("gate.denylist ausente");
+    else {
+      // paths = universais; self_paths = autoproteção ancorada no plugin root.
+      // Perder self_paths abriria o gate, o CLI e o roster à reescrita por agente.
+      const nonEmpty = (v) => Array.isArray(v) && v.length > 0;
+      if (!nonEmpty(d.gate.denylist.paths))
+        errs.push("gate.denylist.paths ausente ou vazio");
+      if (!nonEmpty(d.gate.denylist.self_paths))
+        errs.push("gate.denylist.self_paths ausente ou vazio (autoproteção desarmada)");
+    }
   }
   if (!isObj(d.workflows) || Object.keys(d.workflows).length === 0)
     errs.push("workflows ausente ou vazio");
@@ -285,6 +294,8 @@ yaml_check_bash() { # checagem estrutural, sem Bun; imprime o motivo no stdout
     || errs+=("gate.mode deve ser warn|block")
   grep -qE '^[[:space:]]+allowlist:' "$f" || errs+=("gate.allowlist ausente")
   grep -qE '^[[:space:]]+denylist:'  "$f" || errs+=("gate.denylist ausente")
+  grep -qE '^[[:space:]]+self_paths:[[:space:]]*\[[^]]' "$f" \
+    || errs+=("gate.denylist.self_paths ausente ou vazio (autoproteção desarmada)")
   grep -qE '^workflows:'             "$f" || errs+=("workflows ausente")
   grep -qE '^routes:'                "$f" || errs+=("routes ausente")
   grep -qE "^$(printf '\t')"         "$f" && errs+=("indentação com TAB (YAML proíbe)")

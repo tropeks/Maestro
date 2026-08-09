@@ -46,7 +46,8 @@ MARK=$'… (truncado pelo orçamento de injeção)\n'
 # ilegível/corrompido: perder a denylist é pior do que uma política levemente
 # desatualizada, então ela tem default embutido — a allowlist não tem (allowlist
 # vazia só torna o gate mais rigoroso, denylist vazia abriria o próprio Maestro).
-DENY_FALLBACK="agents/ bin/ hooks/ config/routing-table.yaml .claude/ .claude-plugin/ .github/workflows/"
+DENY_FALLBACK=".claude/ .github/workflows/"
+SELF_FALLBACK="agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/"
 
 warn() { printf 'maestro: session-start: %s\n' "$1" >&2 || :; }
 
@@ -82,7 +83,7 @@ read_session_id() {
 # NADA que sai daqui é avaliado: cada token passa por regex antes de virar valor
 # no gate-policy.sh — que o GATE vai *sourcear*.
 # ---------------------------------------------------------------------------
-GATE_MODE=""; ALLOW_EXT=""; ALLOW_PATHS=""; DENY_PATHS=""
+GATE_MODE=""; ALLOW_EXT=""; ALLOW_PATHS=""; DENY_PATHS=""; DENY_SELF=""
 HEURISTICS=""; ROUTES=""; WORKFLOWS=""
 
 yaml_inline_list() { # yaml_inline_list "[a, b, c]" <regex-de-token>
@@ -109,6 +110,7 @@ parse_routing_table() {
       allow_EXT)   ALLOW_EXT=$(yaml_inline_list "$val" '^\.[A-Za-z0-9]{1,12}$') ;;
       allow_PATHS) ALLOW_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
       deny_PATHS)  DENY_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
+      deny_SELF)   DENY_SELF=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
       HEUR)        HEURISTICS+="- $val"$'\n' ;;
       ROUTE)       ROUTES+="- $val"$'\n' ;;
       WORKFLOW)    WORKFLOWS+="- $val"$'\n' ;;
@@ -130,6 +132,7 @@ parse_routing_table() {
       else if ($0 ~ /^  denylist:/)    { sub_ = "deny"  }
       else if ($0 ~ /^    extensions:/ && sub_ != "") { print sub_ "_EXT\t"   clean(substr($0, 16)) }
       else if ($0 ~ /^    paths:/      && sub_ != "") { print sub_ "_PATHS\t" clean(substr($0, 11)) }
+      else if ($0 ~ /^    self_paths:/ && sub_ != "") { print sub_ "_SELF\t"  clean(substr($0, 16)) }
       next
     }
     inheur == 1 && /^[ \t]+[^ \t#]/ {
@@ -239,14 +242,18 @@ parse_roster() {
 # ---------------------------------------------------------------------------
 GATE_MODE_EFFECTIVE="warn"
 write_gate_policy() {
-  local mode="$GATE_MODE" deny="$DENY_PATHS"
+  local mode="$GATE_MODE" deny="$DENY_PATHS" self="$DENY_SELF"
   if [[ ! "$mode" =~ ^(warn|block)$ ]]; then
     [[ -n "$mode" ]] && warn "gate.mode inválido no YAML; assumindo 'warn'"
     mode="warn"
   fi
   if [[ -z "$deny" ]]; then
-    warn "denylist ausente/ilegível no YAML; usando a denylist de autoproteção embutida"
+    warn "denylist.paths ausente/ilegível no YAML; usando a embutida"
     deny="$DENY_FALLBACK"
+  fi
+  if [[ -z "$self" ]]; then
+    warn "denylist.self_paths ausente/ilegível no YAML; usando a autoproteção embutida"
+    self="$SELF_FALLBACK"
   fi
   GATE_MODE_EFFECTIVE="$mode"
 
@@ -258,6 +265,7 @@ write_gate_policy() {
     printf 'MAESTRO_GATE_ALLOW_EXT="%s"\n'   "$ALLOW_EXT"
     printf 'MAESTRO_GATE_ALLOW_PATHS="%s"\n' "$ALLOW_PATHS"
     printf 'MAESTRO_GATE_DENY_PATHS="%s"\n'  "$deny"
+    printf 'MAESTRO_GATE_DENY_SELF="%s"\n'   "$self"
     printf 'MAESTRO_PLUGIN_ROOT="%s"\n'      "$REPO_DIR"
   } >"$tmp" 2>/dev/null || {
     rm -f "$tmp" 2>/dev/null || :

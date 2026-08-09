@@ -70,9 +70,18 @@ Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `
 ```json
 {"ts":"...","event":"decision","session_id":"abc123","workflow":"fix","mode":"subagent","agents":["golang-pro"],"project":"remedix"}
 {"ts":"...","event":"gate_block","session_id":"def456","tool":"Edit","file_ext":".go"}
-{"ts":"...","event":"override_manual","session_id":"def456","note":"usuario invocou comando direto"}
+{"ts":"...","event":"override_manual","session_id":"def456","cmd":"review"}
 ```
 `# classification: confidential` — só metadados; `file_ext` sim, caminho completo NÃO (pode conter nome de cliente).
+
+**Emenda v1.2 (E2):** o exemplo de `override_manual` trazia `note` com texto livre, o que
+contradiz o ADR-008 (*"apenas o nome do comando — vocabulário fechado, nunca o texto do
+prompt"*). Prevalece o ADR-008: a chave é `cmd` e carrega só o nome do comando. As chaves
+do log são um **conjunto fechado e tipado**, validado em `common.sh::log_event`
+(`session_id`, `workflow`, `mode`, `agents`, `tool`, `file_ext`, `cmd`, `project`,
+`gate_mode`, `n`); par que não casa com o tipo é rejeitado com aviso, nunca reescrito.
+Nenhuma chave aceita `/` — garantia estrutural contra vazamento de caminho. `reason` vive
+só no decision record (§3), nunca no log.
 Rotação: por tamanho (10MB) ou mensal, arquivo `routing-YYYY-MM.jsonl`.
 
 ### 5. Roster — `agents/*.md` (repo do plugin)

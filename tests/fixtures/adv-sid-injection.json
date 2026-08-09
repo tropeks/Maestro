@@ -1,0 +1,12 @@
+{
+  "session_id": "../../../etc/x",
+  "transcript_path": "/dev/null",
+  "cwd": "/home/user/proj",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/home/user/proj/src/main.go",
+    "old_string": "a",
+    "new_string": "b"
+  }
+}
