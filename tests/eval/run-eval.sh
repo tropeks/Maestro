@@ -67,6 +67,10 @@ judge_prompt() {
       ds=$(awk -F': *' '/^description:/{sub(/^description: */,""); print; exit}' "$f")
       printf -- '- **%s**: %s\n' "$nm" "$ds"
     done
+_wf_enum() { # nomes de workflow, na ordem do YAML
+  awk '/^workflows:/{f=1;next} f&&/^[a-z]/{exit} f&&/^  [a-z_]+:/{gsub(/^  /,"");sub(/:.*/,"");printf "%s%s", sep, $0; sep=", "}' "$REPO/config/routing-table.yaml"
+}
+
     printf '\n## Tarefa\n\n'
     printf 'Para CADA enunciado abaixo (pt-BR, escritos pelo usuário no telefone), decida o\n'
     printf 'roteamento como decidiria numa sessão real: workflow, mode e agente(s) do roster.\n'
@@ -74,7 +78,10 @@ judge_prompt() {
     printf 'que é o que você teria no primeiro turno de uma sessão real.\n\n'
     printf 'Responda SOMENTE com TSV, uma linha por caso, sem cabeçalho e sem comentário:\n\n'
     printf '```\n<id>\t<workflow>\t<mode>\t<agentes separados por vírgula, ou - se nenhum>\n```\n\n'
-    printf 'workflow ∈ {fix, feature, refactor, ship, audit, custom} · '
+    # Derivado da tabela, não hardcoded: na r3 os dois juízes flagraram que o enum
+    # contradizia as rotas (faltavam verify/codereview) e tiveram que decidir qual
+    # obedecer — o instrumento não pode contradizer o que ele mede.
+    printf 'workflow ∈ {%s} · ' "$(_wf_enum)"
     printf 'mode ∈ {direct, subagent, multi}\n\n'
     # Desambiguação da coluna `agentes` (rodada 2 — ver ROUTING_EVAL.md § R10).
     # Na rodada 1 os dois juízes leram "agente(s)" como "todo o elenco do workflow" e
@@ -236,7 +243,11 @@ EOF
   # arquivo alterado numa linha, cai exatamente 1.
   has "(B') arquivo × ele mesmo = concordância total" \
     "$(bun "$PRESCRIBE" --agree "$tmp/perfeito.tsv" "$tmp/perfeito.tsv" | tail -1)" "15/15 exatos"
-  sed '1s/\tdirect\t/\tmulti\t/' "$tmp/perfeito.tsv" >"$tmp/mexido.tsv"
+  # Troca o mode da 1a linha por um valor garantidamente diferente, seja ele qual for.
+  # Antes era `sed s/direct/multi/`, que virou no-op quando o gabarito do caso 1 deixou
+  # de ser `direct` — fixture frágil que passava por não mexer em nada.
+  awk -F'\t' 'BEGIN{OFS="\t"} NR==1{$3=($3=="multi"?"direct":"multi")} {print}' \
+    "$tmp/perfeito.tsv" >"$tmp/mexido.tsv"
   has "(B') uma divergência derruba exatamente 1" \
     "$(bun "$PRESCRIBE" --agree "$tmp/perfeito.tsv" "$tmp/mexido.tsv" | tail -1)" "14/15 exatos"
 

@@ -190,3 +190,61 @@ continua sendo do Romulo.
 deferiu na §4 e que o ARCHITECTURE cita no AI Touchpoint de v2 ("sugestão de ajuste da
 routing table a partir dos logs, com aprovação humana"). Sem hooks; escreve observações
 em arquivo. Aquela vaga da v2 deixou de ser hipotética. Fora do escopo v1.
+
+## 2026-08-09 — Sessão E4 + E5 + dívidas (fanout de 4 + 6 rodadas de avaliação)
+
+Fecha **E4 e E5**. Suíte: 698 → **894 asserções**. Doctor: 22 → **24 checagens**.
+
+### Decisões do orquestrador (antes de delegar)
+
+1. **gstack com `--prefix`.** Constraint do brief desde o início, virou obrigatória com o
+   superpowers instalado. Efeito colateral que resolveu dois problemas: liberou o
+   namespace `office-hours` (AC da S-403) e fez `gstack-ship`/`gstack-cso` — que a
+   routing table já referenciava — **existirem de fato**, consertando a AC da S-401.
+2. **Curadoria dos três packs:** *método do superpowers · execução do roster · ferramenta
+   pesada do gstack*. É a regra que desempata `investigate`/`systematic-debugging`,
+   `review`/`requesting-code-review` e `autoplan`/`writing-plans`.
+3. **Licença MIT**, a mesma do material vendorizado — elimina pergunta de
+   compatibilidade e preserva o disclaimer, que aqui não é boilerplate.
+4. **Gate do shellcheck em `error`, não `warning`:** 0 errors e 29 warnings, dos quais 25
+   são falso positivo verificado. Gate em warning nasceria vermelho, e CI que nasce
+   vermelha é CI que se aprende a ignorar.
+
+### O achado que mais importou
+
+A heurística H1 (`≤2 arquivos → direct`) **codificava o comportamento que o brief §1
+define como o problema** — *"o modelo tenta executar trabalho de código diretamente
+quando o padrão eficiente é delegar a subagentes"*. A tabela ensinava o vício que o
+projeto existe para curar. Invertida: delegar é o padrão, `direct` é exceção.
+
+Descoberto pelo instrumento de avaliação, não por leitura. Ver `docs/ROUTING_EVAL.md`
+para a trajetória (73% → 100%), as âncoras de cada mudança e as três ressalvas
+(sobreajuste, variância entre execuções, e o fato de o número observado ainda não existir).
+
+### Erros meus, pegos pela medição
+
+- Declarei a precedência **H5 > H3**, invertida em relação ao ADR-004 (tiering de custo
+  quer mecânico em haiku).
+- A linha que adicionei na instrução canônica empurrou o núcleo da injeção acima do teto
+  extremo do teste. O clamp duro cortava cego e mutilava a instrução canônica — que o
+  API_SPEC §1 diz que nunca trunca. Corrigida a semântica: com teto impossível, estoura
+  avisando em vez de entregar meia instrução.
+- Adicionei `src/` à denylist como prefixo relativo, o que bloquearia o `src/` de
+  **qualquer** projeto. Corrigido com a separação em `paths` × `self_paths`.
+
+### Correções em relatórios de subagentes
+
+- O agente do guarda alegou que o `doctor` não valida o `hooks.json`. **Não procede** —
+  testei quebrando o `command` e ele reprova com rc=2. Leu estado anterior ao P0-2.
+- O agente do harness reportou o gabarito como fonte de verdade; três casos dele eram
+  **inválidos por schema** (`mode: direct` com `agents`, que o CLI rejeita).
+
+### Limites honestos que ficam registrados
+
+- **S-501 é instrução, não trilho.** O gate humano é texto na injeção; um modelo pode
+  ignorá-lo. Enforcement determinístico exigiria hook novo.
+- **O guarda destrutivo tem furo conhecido:** se o Claude Code entregar ao hook de um
+  subagente um `session_id` diferente do da sessão principal, não há decision record e a
+  guarda **degrada para aviso** — falha para o lado permissivo. Só dogfood real fecha.
+- **`.maestro.yaml` deixou de ser opcional na prática:** sem ele a H5 não tem como
+  escolher especialista e o roteamento degrada para generalista.

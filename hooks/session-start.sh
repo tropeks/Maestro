@@ -442,7 +442,11 @@ build_and_emit() {
   fi
 
   sec_instr=$'\n'"INSTRUÇÃO CANÔNICA — antes de editar código nesta sessão, registre a decisão:"$'\n'
-  sec_instr+="  maestro decide --session $SESSION_ID --workflow <fix|feature|refactor|ship|audit|custom> --mode <direct|subagent|multi> [--agents a,b] [--reason \"por quê\"]"$'\n'
+  sec_instr+="  maestro decide --session $SESSION_ID --workflow <fix|feature|refactor|ship|audit|verify|codereview|custom> --mode <direct|subagent|multi> [--agents a,b] [--reason \"por quê\"]"$'\n'
+  # ROUTING_EVAL R10: sem esta linha, dois juízes independentes leram "agentes" como
+  # "todo o elenco do workflow" e incluíram revisor/qa por serem steps — o que polui
+  # a métrica de tiering (ADR-004) e o edits_per_decision (ADR-008).
+  sec_instr+="  --agents = quem executa o trabalho principal. Num workflow de vários steps, o revisor e o qa dos steps finais são implícitos e não entram; num workflow cujo único step é review ou qa, eles SÃO o executor e entram."$'\n'
   sec_instr+="Sem decision record válido, o gate registra aviso em toda edição (gate.mode: $GATE_MODE_EFFECTIVE)."$'\n'
 
   # S-501 — gate humano. Duas linhas no máximo: quem aprova está no telefone,
@@ -543,9 +547,19 @@ build_and_emit() {
 
   local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_tail"
   # Cinto e suspensório: o teto vale mesmo com env exótica ou seção inesperada.
+  # MAS o corte cego para no NÚCLEO (head + instrução canônica + fechamento): o
+  # API_SPEC §1 diz que a instrução canônica e o session_id nunca truncam, e
+  # entregar meia instrução é pior que estourar um teto — o modelo aprenderia um
+  # comando inválido. Se nem o núcleo cabe, emite o núcleo e avisa que estourou.
   if (( ${#out} > BUDGET )); then
-    out="${out:0:BUDGET}"
-    warn "injeção truncada no limite duro de $BUDGET bytes"
+    local core="$sec_head$sec_instr$sec_tail"
+    if (( ${#core} >= BUDGET )); then
+      out="$core"
+      warn "orçamento de $BUDGET bytes menor que o núcleo (${#core} B): núcleo preservado, teto estourado de propósito"
+    else
+      out="${out:0:BUDGET}"
+      warn "injeção truncada no limite duro de $BUDGET bytes"
+    fi
   fi
   printf '%s' "$out"
   return 0

@@ -407,3 +407,64 @@ abaixo de 100% é informação, não regressão, e não pode derrubar a suíte d
    sai em toda saída justamente para que nenhum score fique órfão da revisão que o gerou.
 5. Reabra este documento como o registro de calibração: cada item R1-R9 aplicado deve
    fazer (A) subir; se aplicar e não subir, a hipótese estava errada e isso é resultado.
+
+---
+
+# Calibração de 2026-08-09 — de 73% a 100%, e por que o número sozinho engana
+
+A primeira medição (r2) deu **11/15 (73%)**, abaixo da AC de ≥80%. Seguiram-se quatro
+rodadas de calibração, cada uma medida por dois juízes cegos independentes (Opus e Sonnet).
+
+| rodada | Opus | Sonnet | concordância | o que mudou antes dela |
+|---|---|---|---|---|
+| r2 (linha de base) | 11/15 · 73% | 10/15 · 67% | 6/15 · 40% | — |
+| r3 | *(descartada)* | *(descartada)* | — | gabarito ficou defasado ao criar `verify`/`codereview`; medida inválida |
+| r4 | 12/15 · 80% | 12/15 · 80% | 14/15 · 93% | H1 invertida, precedência H3>H5, rotas no imperativo, ship/audit/verify/codereview |
+| r5 | 14/15 · 93% | 10/15 · 67% | 10/15 · 67% | `--agents` desambiguado para workflow de step único |
+| r6 (final) | **15/15 · 100%** | **15/15 · 100%** | **15/15 · 100%** | H4 e H5 compõem (engenheiro planeja, especialista implementa) |
+
+## As mudanças, e a âncora de cada uma
+
+Nenhuma foi escolhida por subir score. Cada uma tem justificativa **fora** da matriz:
+
+1. **H1 invertida — delegar virou o padrão, `direct` virou exceção.** A heurística
+   original (`≤2 arquivos → direct`) codificava exatamente o comportamento que o
+   **brief §1** define como o problema: *"o modelo tenta executar trabalho de código
+   diretamente quando o padrão eficiente é delegar a subagentes"*. A tabela ensinava o
+   vício que o projeto existe para curar. Além disso, H1 pedia a contagem de arquivos,
+   que só existe **depois** de investigar — informação que o roteador não tem na hora de
+   decidir.
+2. **H3 vence H5 em tarefa mecânica.** Âncora: **ADR-004** (tiering de custo). Mecânico
+   em haiku é mais barato que mecânico em especialista sonnet. Eu havia declarado a
+   precedência invertida; a medição pegou.
+3. **Três casos do gabarito eram inválidos por schema:** pediam `mode: direct` **com**
+   `agents`, combinação que o **DATA_MODEL §3** proíbe e o CLI rejeita com exit 1.
+4. **`verify` e `codereview` criados:** "testa o fluxo" e "revisa o PR" são pedidos que
+   existem sozinhos e caíam no escape hatch.
+5. **H4 e H5 compõem:** a `description` do próprio `engenheiro` diz que ele *"entrega
+   plano e trade-offs, não o código final"* — rotear refactor só para ele deixava a
+   implementação sem dono. Incoerência com o roster, não com a matriz.
+
+## Três ressalvas que limitam o valor de "100%"
+
+**1. Sobreajuste.** Seis rodadas contra os mesmos 15 casos. As âncoras acima reduzem o
+risco, não o eliminam. Um conjunto de casos novo, escrito por outra pessoa, é o teste
+que falta.
+
+**2. Uma rodada por modelo não é medida estável.** O Sonnet fez 12/15 na r4, 10/15 na r5
+e 15/15 na r6 — com a tabela melhorando monotonicamente. A variância entre execuções do
+mesmo modelo é da ordem da diferença que estamos medindo. Para afirmar um número com
+intervalo seria preciso repetir cada rodada n≥5 vezes.
+
+**3. O número que vale ainda não existe.** A AC da S-402 diz *"medido no log"*. O
+instrumento (C) lê `~/.maestro/logs/routing.jsonl`, que está **vazio** — o plugin foi
+instalado no mesmo dia. Tudo acima é roteamento **prescrito**, não **observado**. A
+validação de campo é a primeira semana de dogfood.
+
+## Achado de produto que a avaliação produziu
+
+Na r5 o Sonnet recusou-se a inferir a linguagem sem `.maestro.yaml` e caiu em `dev-pleno`,
+enquanto o Opus inferiu pelo nome do projeto. Isso expõe que **a H5 depende do
+`.maestro.yaml`**: o perfil por projeto (S-303) não é conveniência, é o que torna a
+heurística de especialista utilizável. Sem ele, o roteamento degrada para generalista —
+e a matriz de avaliação, que não fornece profile, mede o pior caso.

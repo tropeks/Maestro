@@ -27,6 +27,11 @@ workflows:
   # Existe para o roteador poder registrar a decisão honestamente em vez de
   # forçar um rótulo errado — o que envenenaria a métrica de baseline.
   custom:   {steps: [], gate: none}
+  # verificação e review isolados: "testa o fluxo" e "revisa o PR" são pedidos que
+  # existem sozinhos, sem implementação antes. Sem estes dois caíam em custom e
+  # sumiam da métrica (ROUTING_EVAL R7). Reusam bindings já validados.
+  verify:     {steps: [qa], gate: none}
+  codereview: {steps: [review], gate: none}
 # ---------------------------------------------------------------------------
 # bindings (S-401) — step → o que EXECUTA o step. Sem isto, `investigate` é uma
 # palavra solta e o Claude adivinha; com isto, o step vira comando verificável
@@ -61,6 +66,10 @@ bindings:
   # cobre a stack" —, então a heurística "linguagem detectada → especialista"
   # o substitui sem conflito. Não existe skill de "implementar": implementar é
   # papel, não método.
+  # ATENÇÃO: H5 SOBREPÕE este binding. dev-pleno é o default RESIDUAL — vale quando
+  # nenhum especialista cobre a stack. Sem esta nota, dois juízes independentes
+  # leram o binding como ordem e escolheram dev-pleno onde o esperado era o
+  # especialista, em 9 de 15 casos (ROUTING_EVAL R9).
   implement:   agent:dev-pleno
   # método do superpowers (como pedir review a um subagente, o que exigir dele)
   # + o papel fixo do roster: revisor é read-only, o que impede o revisor de
@@ -80,13 +89,35 @@ bindings:
   # auditoria OWASP + STRIDE. Não há agente de segurança no roster (ADR-004) e
   # o superpowers não cobre segurança; é o caso puro de "ferramenta pesada".
   audit:       skill:gstack-cso
+# O casamento é SEMÂNTICO, não lexical — o leitor é um LLM, não uma regex. As
+# palavras abaixo são âncoras, não a lista fechada. Estão no imperativo porque é
+# assim que o pedido chega ("adiciona o campo", não "adicionar campo") — a versão
+# no infinitivo custava 3 acertos de workflow na avaliação (ROUTING_EVAL R1).
 routes:
-  - {intent: "correção de bug, erro, quebrou, não funciona", workflow: fix}
-  - {intent: "nova funcionalidade, feature, adicionar, criar tela", workflow: feature}
-  - {intent: "melhorar estrutura, dívida técnica, limpar", workflow: refactor}
+  - {intent: "quebrou, deu erro, não funciona, tá bugado, corrige, conserta", workflow: fix}
+  - {intent: "adiciona, cria, implementa, nova tela, novo endpoint, quero que tenha", workflow: feature}
+  - {intent: "limpa, reorganiza, melhora a estrutura, dívida técnica, tá uma bagunça", workflow: refactor}
+  # ship e audit eram workflows inalcançáveis: existiam no catálogo e nenhuma rota
+  # levava a eles, então "manda pra produção" caía em custom (ROUTING_EVAL R2).
+  - {intent: "sobe, deploya, manda pra produção, lança, publica", workflow: ship}
+  - {intent: "segurança, vulnerabilidade, auditoria, tá exposto, vaza", workflow: audit}
+  # verify e codereview: "testa o fluxo" e "revisa o PR" são pedidos frequentes que
+  # também caíam em custom por não haver fluxo de verificação isolado (R7).
+  - {intent: "testa, valida, confere se funciona, roda a suíte", workflow: verify}
+  - {intent: "revisa, dá uma olhada no PR, code review", workflow: codereview}
+
+# PRECEDÊNCIA (H1 > H2 > H6 > H5 > H3 > H4). Sem ela, H1×H2 e H3×H5 se contradiziam
+# em silêncio e o modelo desempatava por conta própria (ROUTING_EVAL R5, R6).
 execution_heuristics:
-  - "edição ≤2 arquivos sem plano → mode: direct"
-  - "feature nova ou >3 arquivos → mode: subagent(s) com plano"
-  - "tarefa mecânica/repetitiva → dev-junior (haiku)"
-  - "decisão de arquitetura ou review → engenheiro/revisor"
-  - "linguagem detectada → especialista correspondente"
+  - "H1 DELEGUE POR PADRÃO. mode: direct é EXCEÇÃO — só quando delegar não faz sentido: meta-trabalho na própria sessão, tarefa que depende do contexto já acumulado na conversa, ou pergunta/leitura sem edição. Tarefa PEQUENA não é motivo para direct: delegar um bugfix de uma linha a um especialista sonnet custa menos que fazê-lo no contexto principal (ADR-004). Em direct NÃO existe agente — o campo agents não vai no record"
+  - "H2 pedido que descreve comportamento novo, ou que cita duas ou mais áreas do sistema → mode: subagent com plano"
+  - "H6 mais de uma stack envolvida, ou frentes independentes que não se bloqueiam → mode: multi"
+  - "H3 tarefa mecânica, repetitiva e de critério objetivo → dev-junior (haiku). VENCE H5: o tiering de custo é a razão de existir do roster, e mecânico em haiku é mais barato que mecânico em especialista sonnet (ADR-004)"
+  - "H5 fora de tarefa mecânica, a linguagem do ALVO (do .maestro.yaml do projeto ou do arquivo citado, não da palavra usada no pedido) escolhe o especialista; H5 sobrepõe o binding de implement, e só se aplica quando mode ≠ direct"
+  # H4 e H5 COMPÕEM, não competem. A description do próprio engenheiro diz que ele
+  # "entrega plano e trade-offs, não o código final" — rotear um refactor só para ele
+  # deixaria a implementação sem dono. Foi a única divergência que os dois juízes
+  # cegos apontaram em todas as rodadas de avaliação.
+  - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 (ou dev-pleno) para implementar — engenheiro + especialista em mode: multi"
+  # Limite conhecido: não há agente de infra/homelab no roster (ADR-004), então
+  # tarefa de infra cai em dev-pleno ou custom. Registrado em ROUTING_EVAL R8.

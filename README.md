@@ -1,6 +1,6 @@
-# Maestro (v0.3 — E1 + E2 + E3)
+# Maestro (v1.0 — E1 a E5)
 
-Camada de roteamento MoE para Claude Code. Estado atual: **E3 completo** —
+Camada de roteamento MoE para Claude Code. Estado atual: **E1 a E5 completos** —
 injeção da routing table no SessionStart, gate estrutural no PreToolUse,
 CLI `decide|status|log`, logging do override manual e roster de 9 agentes
 tierizados. E4 (curadoria dos packs) é o próximo épico — ver

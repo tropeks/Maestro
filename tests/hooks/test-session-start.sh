@@ -309,16 +309,34 @@ run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGE
 # (c) orçamento mínimo viável: tudo cede, o núcleo sobrevive.
 H7b=$(new_home); P7b=$(new_proj)
 run "$H7b" "$P7b" "$IN" MAESTRO_ROUTING_TABLE="$BIG" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET=500
-[[ $RC -eq 0 && $OUTBYTES -le 500 ]] && ok "orçamento de 500 B: respeitado" \
-  || bad "orçamento de 500 B: respeitado (rc=$RC, $OUTBYTES B)"
+# O núcleo (head + instrução canônica + fechamento) passou de 500 B quando o CLI
+# ganhou os workflows verify/codereview e a nota do --agents (ROUTING_EVAL R10).
+# A semântica correta nesse regime é ESTOURAR o teto preservando o núcleo: o
+# API_SPEC §1 diz que a instrução canônica nunca trunca, e meia instrução ensina
+# o modelo a rodar um comando inválido. Abaixo do núcleo, o teto deixa de valer.
+CORE_B=$(printf '%s' "$OUT" | sed -n '1,/^$/p;/INSTRUÇÃO CANÔNICA/,/^$/p' | wc -c)
+[[ $RC -eq 0 ]] && ok "orçamento de 500 B: degrada com exit 0" \
+  || bad "orçamento de 500 B: degrada com exit 0 (rc=$RC)"
+[[ $OUTBYTES -le 700 ]] && ok "orçamento de 500 B: estouro limitado ao núcleo ($OUTBYTES B)" \
+  || bad "orçamento de 500 B: estouro limitado ao núcleo ($OUTBYTES B)"
 [[ "$OUT" == *"session_id: ses_ABC-123"* && "$OUT" == *"maestro decide --session ses_ABC-123"* && "$OUT" == *"</maestro-routing>"* ]] \
   && ok "orçamento de 500 B: session_id + instrução canônica + fechamento intactos" \
   || bad "orçamento de 500 B: session_id + instrução canônica + fechamento intactos"
 
-# (d) orçamento absurdo (menor que o núcleo): limite duro ainda vale, sem crash.
+# (d) orçamento absurdo (menor que o núcleo): o teto CEDE, o núcleo não.
+# Regra do API_SPEC §1 — a instrução canônica e o session_id nunca truncam. Um
+# teto de 100 B é configuração impossível, e nesse regime a escolha certa é
+# estourar avisando, não entregar meia instrução (que ensinaria o modelo um
+# comando inválido). O que continua valendo: exit 0, bloco fechado, núcleo íntegro.
 run "$(new_home)" "$(new_proj)" "$IN" MAESTRO_INJECTION_BUDGET=100
-[[ $RC -eq 0 && $OUTBYTES -le 100 ]] && ok "orçamento degenerado (100 B): clamp duro, exit 0" \
-  || bad "orçamento degenerado (100 B): clamp duro, exit 0 (rc=$RC, $OUTBYTES B)"
+[[ $RC -eq 0 ]] && ok "orçamento degenerado (100 B): degrada com exit 0" \
+  || bad "orçamento degenerado (100 B): degrada com exit 0 (rc=$RC)"
+[[ "$OUT" == *"maestro decide --session ses_ABC-123 --workflow"* && "$OUT" == *"</maestro-routing>"* ]] \
+  && ok "orçamento degenerado: núcleo íntegro apesar do teto impossível" \
+  || bad "orçamento degenerado: núcleo íntegro apesar do teto impossível"
+[[ "$OUT" != *"## "* ]] \
+  && ok "orçamento degenerado: só o núcleo sobrou (nenhuma seção opcional)" \
+  || bad "orçamento degenerado: só o núcleo sobrou"
 
 # =============================================================================
 echo "-- 5. degradação: tudo quebrado, sempre exit 0"

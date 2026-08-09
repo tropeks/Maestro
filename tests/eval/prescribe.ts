@@ -254,7 +254,13 @@ async function selftest(): Promise<number> {
   const wf = (p: string, s = false) => prescribeWorkflow(p, table.routes, s).workflow;
   t("R-W1 casa intent literal (quebrou→fix)", wf("o login quebrou") === "fix");
   t("R-W1 sem casamento → custom", wf("escreve um resumo pro meu irmao") === "custom");
-  t("R-W1 literal NÃO casa imperativo (adiciona≠adicionar)", wf("adiciona o campo cnpj") === "custom");
+  // Esta asserção provava o defeito R1 (routes no infinitivo não casavam o imperativo
+  // do Romulo). O R1 foi corrigido — as âncoras foram reescritas no imperativo —, então
+  // ela foi invertida: agora prova que a correção pegou, e volta a falhar se alguém
+  // devolver as rotas para o infinitivo.
+  t("R-W1 imperativo casa (R1 corrigido: adiciona→feature)", wf("adiciona o campo cnpj") === "feature");
+  t("R-W1 rota de ship existe (R2 corrigido)", wf("sobe isso pra produção") === "ship");
+  t("R-W1 rota de audit existe (R2 corrigido)", wf("dá uma olhada de segurança") === "audit");
   t("R-W1 --stem casa imperativo", wf("adiciona o campo cnpj", true) === "feature");
   t("R-M1 feature → subagent", prescribeMode("feature").mode === "subagent");
   t("R-M1 fix → direct (fallback)", prescribeMode("fix").mode === "direct");

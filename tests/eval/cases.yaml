@@ -26,7 +26,7 @@ cases:
     project: NetForge
     stack: go
     kind: bug-trivial-1-arquivo
-    expected: {workflow: fix, mode: direct, agents: [golang-pro]}
+    expected: {workflow: fix, mode: subagent, agents: [golang-pro]}   # corrigido: direct não admite agents (DATA_MODEL §3, CLI rejeita)
     ambiguous: false
     rationale: >
       Panic com local conhecido: investigate+implement+review cabem num arquivo.
@@ -37,7 +37,7 @@ cases:
     project: Agenda Studio
     stack: ts
     kind: bug-trivial-1-arquivo
-    expected: {workflow: fix, mode: direct, agents: [typescript-pro]}
+    expected: {workflow: fix, mode: subagent, agents: [typescript-pro]}   # idem
     ambiguous: false
     rationale: >
       É o exemplo literal do PROJECT_BRIEF §1. "quebrou" é intent de fix ao pé da letra.
@@ -116,7 +116,7 @@ cases:
     project: SmartQuotation
     stack: postgres
     kind: feature-pequena-schema
-    expected: {workflow: feature, mode: direct, agents: [postgres-pro]}
+    expected: {workflow: feature, mode: subagent, agents: [postgres-pro]}   # idem
     ambiguous: true
     competes: >
       H1 ("edição ≤2 arquivos sem plano → direct") × H2 ("feature nova → subagente com
@@ -179,7 +179,7 @@ cases:
     project: SmartQuotation
     stack: python+ts
     kind: verificacao-pura
-    expected: {workflow: custom, mode: subagent, agents: [qa]}
+    expected: {workflow: verify, mode: subagent, agents: [qa]}   # workflow verify passou a existir (R7)
     ambiguous: false
     rationale: >
       Não há workflow de verificação isolada: `qa` só existe como STEP de feature. O
@@ -190,7 +190,7 @@ cases:
     project: qualquer
     stack: nenhuma
     kind: review-isolado
-    expected: {workflow: custom, mode: subagent, agents: [revisor]}
+    expected: {workflow: codereview, mode: subagent, agents: [revisor]}   # workflow codereview passou a existir (R7)
     ambiguous: false
     rationale: >
       Mesma lacuna do caso anterior: `review` é step, nunca workflow. O revisor é
