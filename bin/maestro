@@ -38,6 +38,8 @@ maestro_realpath() {
 
 SELF="$(maestro_realpath "${BASH_SOURCE[0]}")"
 REPO_DIR="$(cd -P -- "$(dirname -- "$SELF")/.." && pwd)"
+# Mesma costura de teste do session-start: o default é o roster instalado.
+AGENTS_DIR="${MAESTRO_AGENTS_DIR:-$REPO_DIR/agents}"
 MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
 MAESTRO_HOME_DEFAULT="$HOME/.maestro"
 MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
@@ -333,6 +335,136 @@ check_routing_table() { # AC da S-103: "detecta YAML inválido"
   fi
 }
 
+# ------------------------------------------------------------------ roster (E3)
+#
+# O roster é o gate MoE: a `description` do frontmatter é o texto por onde o
+# Claude escolhe o agente, e o `name` é o identificador que o `maestro decide
+# --agents` valida. Frontmatter quebrado não derruba nada em runtime — o hook e
+# o CLI simplesmente ignoram o arquivo — e é exatamente por isso que o doctor
+# precisa gritar: um agente invisível é indistinguível de um agente ausente.
+# Tudo aqui é awk/bash puro: o doctor roda sem Bun e sem jq (modo degradado).
+
+ROSTER_NAMES=''   # nomes válidos lidos do frontmatter, separados por espaço
+
+# Campos separados por \037 (unit separator): tab colapsaria campos vazios no
+# `read`, e é justamente o campo vazio que precisamos detectar.
+roster_frontmatter() { # roster_frontmatter <arquivo> → name\037description\037model\037tools
+  awk '
+    function trim(s) { gsub(/\r/, "", s); gsub(/\t/, " ", s);
+                       gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); return s }
+    NR == 1 && $0 !~ /^---[ \t\r]*$/ { exit }
+    NR == 1                          { st = 1; next }
+    st == 1 && /^---[ \t\r]*$/       { st = 2; exit }
+    st == 1 && /^name:/              { nm = trim(substr($0, 6));  next }
+    st == 1 && /^description:/       { ds = trim(substr($0, 13)); next }
+    st == 1 && /^model:/             { md = trim(substr($0, 7));  next }
+    st == 1 && /^tools:/             { tl = trim(substr($0, 7));  next }
+    END { if (st == 2) printf "%s\037%s\037%s\037%s\n", nm, ds, md, tl }
+  ' "$1" 2>/dev/null
+}
+
+join_semi() { local s; s=$(printf '%s; ' "$@"); printf '%s' "${s%; }"; }
+
+check_roster() { # DATA_MODEL §5 (frontmatter obrigatório) + E3
+  if [[ ! -d "$AGENTS_DIR" ]]; then
+    report fail_env "roster: diretório agents/ presente" "$AGENTS_DIR não existe"
+    return
+  fi
+  shopt -s nullglob
+  local files=("$AGENTS_DIR"/*.md)
+  shopt -u nullglob
+  if [[ ${#files[@]} -eq 0 ]]; then
+    report warn "roster: agents/*.md instalados" \
+      "nenhum agente em $AGENTS_DIR — a injeção do SessionStart sai sem roster e --agents não é validado"
+    return
+  fi
+
+  local f base line nm ds md tl problems=() dups=() seen=' '
+  for f in "${files[@]}"; do
+    base=$(basename -- "$f"); base="${base%.md}"
+    if [[ ! -r "$f" ]]; then
+      problems+=("$base.md: ilegível (fix: cheque permissões)")
+      continue
+    fi
+    line=$(roster_frontmatter "$f")
+    if [[ -z "$line" ]]; then
+      problems+=("$base.md: frontmatter ausente ou não fechado por '---'")
+      continue
+    fi
+    IFS=$'\037' read -r nm ds md tl <<<"$line"
+
+    if [[ -z "$nm" ]]; then
+      problems+=("$base.md: sem 'name:'")
+    elif [[ ! "$nm" =~ ^[a-z0-9-]{1,40}$ ]]; then
+      # mesma regex do session-start e do CLI: fora dela o agente é silenciosamente
+      # ignorado pelos dois — instalado e invisível é o pior estado possível
+      problems+=("$base.md: name '$nm' fora de kebab-case [a-z0-9-] — hook e CLI o ignoram")
+    elif [[ "$nm" != "$base" ]]; then
+      problems+=("$base.md: name '$nm' não casa com o nome do arquivo")
+    fi
+    if [[ -z "$ds" ]]; then
+      problems+=("$base.md: 'description:' vazia — é o gate MoE, sem ela o agente nunca é escolhido")
+    elif [[ "$ds" == '|'* || "$ds" == '>'* ]]; then
+      problems+=("$base.md: 'description:' em bloco multi-linha (DATA_MODEL §5 exige 1 linha)")
+    fi
+    [[ "$md" =~ ^(haiku|sonnet|opus)$ ]] \
+      || problems+=("$base.md: model '${md:-ausente}' fora de haiku|sonnet|opus")
+    [[ -n "$tl" ]] || problems+=("$base.md: 'tools:' ausente ou vazio")
+
+    if [[ -n "$nm" ]]; then
+      [[ "$seen" == *" $nm "* ]] && dups+=("$nm")
+      seen+="$nm "
+      ROSTER_NAMES+="$nm "
+    fi
+  done
+
+  if [[ ${#problems[@]} -gt 0 ]]; then
+    report fail_val "roster: frontmatter dos agents/*.md (DATA_MODEL §5)" "$(join_semi "${problems[@]}")"
+  else
+    report ok "roster: ${#files[@]} agente(s) com frontmatter válido (name/description/model/tools)"
+  fi
+  if [[ ${#dups[@]} -gt 0 ]]; then
+    report fail_val "roster: nomes sem colisão" \
+      "duplicado(s): $(join_semi "${dups[@]}") (dois agentes com o mesmo name disputam o mesmo gate)"
+  else
+    report ok "roster: nomes sem colisão"
+  fi
+}
+
+profile_experts() { # nomes declarados em `experts:` do .maestro.yaml (1 por linha)
+  awk '/^experts:/ {
+         v = $0; sub(/^experts:[ \t]*/, "", v); sub(/[ \t]*#.*$/, "", v)
+         gsub(/[][",]/, " ", v); n = split(v, a, /[ \t]+/)
+         for (i = 1; i <= n; i++) if (a[i] != "") print a[i]
+         exit
+       }' "$1" 2>/dev/null
+}
+
+check_project_profiles() { # S-303: expert inexistente no .maestro.yaml é aviso, nunca falha
+  local dirs=("${CLAUDE_PROJECT_DIR:-$PWD}") d f e miss=() checked=0
+  [[ "$REPO_DIR" != "${dirs[0]}" ]] && dirs+=("$REPO_DIR")
+  for d in "${dirs[@]}"; do
+    f="$d/.maestro.yaml"
+    [[ -f "$f" && -r "$f" ]] || continue
+    checked=$((checked + 1))
+    while IFS= read -r e; do
+      [[ "$e" =~ ^[a-z0-9-]+$ ]] || continue
+      [[ " $ROSTER_NAMES " == *" $e "* ]] || miss+=("$(basename -- "$d")/.maestro.yaml → $e")
+    done < <(profile_experts "$f")
+  done
+
+  if [[ $checked -eq 0 ]]; then
+    report ok ".maestro.yaml de projeto: nenhum encontrado (valem os defaults globais)"
+  elif [[ -z "${ROSTER_NAMES// /}" ]]; then
+    report skip ".maestro.yaml: experts existem no roster" "roster vazio — nada com que comparar"
+  elif [[ ${#miss[@]} -gt 0 ]]; then
+    report warn ".maestro.yaml: experts existem no roster" \
+      "fora do roster, ignorado(s) na injeção: $(join_semi "${miss[@]}")"
+  else
+    report ok ".maestro.yaml: experts existem no roster ($checked arquivo(s) verificado(s))"
+  fi
+}
+
 # ------------------------------------------------------------------ decision records
 
 now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
@@ -474,6 +606,10 @@ doctor() {
 
   # --- config ----------------------------------------------------------------
   check_routing_table
+
+  # --- roster (E3) -------------------------------------------------------------
+  check_roster
+  check_project_profiles
 
   # --- estado ----------------------------------------------------------------
   if [[ "$MAESTRO_HOME" != "$MAESTRO_HOME_DEFAULT" ]]; then

@@ -84,10 +84,18 @@ run "$H" "$P" "$IN"
   && chk yes "heurísticas de execução injetadas" || chk no "heurísticas de execução injetadas"
 [[ "$OUT" == *"$ROSTER_HDR"* ]] \
   && chk yes "seção de roster presente" || chk no "seção de roster presente"
-[[ "$OUT" == *"o roster chega no E3"* ]] \
-  && chk yes "roster vazio degrada com aviso (agents/ vazio hoje)" || chk no "roster vazio degrada com aviso"
+# E3: agents/ deixou de ser vazio, então este caso passou a exercitar o roster
+# real. A degradação que a asserção provava (agents/ sem .md → aviso de uma
+# linha, nunca erro) virou o caso explícito logo abaixo, com diretório vazio.
+[[ "$OUT" =~ -\ [a-z0-9-]+\ \((haiku|sonnet|opus)\): ]] \
+  && chk yes "roster real do repo indexado" || chk no "roster real do repo indexado"
 [[ $OUTBYTES -le 8000 ]] \
   && chk yes "saída dentro do orçamento ($OUTBYTES B)" || chk no "saída dentro do orçamento" "$OUTBYTES B"
+
+EMPTY_AGENTS="$SANDBOX/agents-vazio"; mkdir -p "$EMPTY_AGENTS"
+run "$(new_home)" "$(new_proj)" "$IN" MAESTRO_AGENTS_DIR="$EMPTY_AGENTS"
+[[ $RC -eq 0 && "$OUT" == *"nenhum agents/*.md instalado"* ]] \
+  && chk yes "roster vazio degrada com aviso" || chk no "roster vazio degrada com aviso" "rc=$RC"
 
 # =============================================================================
 echo "-- 2. gate-policy.sh compilado a partir do YAML"

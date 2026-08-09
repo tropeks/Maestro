@@ -61,7 +61,17 @@ chk "log: session_id"         "$(jq -r .session_id "$LOG")" "sess-A"
 chk "log: agents como array"  "$(jq -r '.agents|type' "$LOG")" "array"
 chk "log NÃO contém reason (sem texto de prompt)" "$(jq -r 'has("reason")' "$LOG")" "false"
 if grep -q '"/' "$LOG"; then bad "log sem caminho de arquivo"; else ok "log sem caminho de arquivo"; fi
-chk_grep "aviso de roster vazio no stderr (E1 sem agents/*.md)" "$ERR" 'roster vazio'
+# E3: com agents/*.md instalado, o decide acima já validou 'golang-pro' contra o
+# roster real. O que esta asserção provava — instalação SEM roster avisa em vez
+# de falhar — vira um caso explícito, com plugin root vazio e MAESTRO_HOME
+# separado (para não mexer nas contagens de record/log deste bloco).
+sem_roster=$(mktemp -d)
+MAESTRO_HOME="$tmp/sem-roster" MAESTRO_PLUGIN_ROOT="$sem_roster" \
+  MAESTRO_ROUTING_TABLE="$REPO/config/routing-table.yaml" \
+  run decide --session sess-R --workflow fix --mode subagent --agents nome-qualquer
+chk "roster vazio: decide não falha, só avisa" "$rc" "0"
+chk_grep "aviso de roster vazio no stderr" "$ERR" 'roster vazio'
+rm -rf "$sem_roster"
 
 # ---------------------------------------------------------------------------
 echo "-- decide: idempotência por sessão"

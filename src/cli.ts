@@ -208,7 +208,17 @@ function loadRoutingTable(): RoutingTable {
 
 // -------------------------------------------------------------------- roster
 
-/** Nomes válidos do roster (`agents/*.md`). Vazio no E1 — o roster é o épico E3. */
+/**
+ * Nomes válidos do roster (`agents/*.md`, DATA_MODEL §5), em ordem estável.
+ *
+ * A identidade do agente é o `name:` do frontmatter; o nome do arquivo é só o
+ * fallback para um .md sem frontmatter legível. `maestro doctor` exige que os
+ * dois coincidam, então na prática são o mesmo valor — mas aqui não se inventa
+ * um segundo nome válido para o mesmo agente: a lista devolvida é exatamente a
+ * que aparece no erro de `--agents`, e um nome que a lista mostra tem de
+ * funcionar. Roster vazio (diretório ausente, sem .md) devolve [] — quem chama
+ * decide o que fazer com isso.
+ */
 function loadRoster(): string[] {
   const dir = join(pluginRoot(), "agents");
   let files: string[];
@@ -219,16 +229,17 @@ function loadRoster(): string[] {
   }
   const names = new Set<string>();
   for (const f of files) {
-    names.add(f.slice(0, -3));
+    let name = f.slice(0, -3);
     try {
       const head = readFileSync(join(dir, f), "utf8").slice(0, 2048);
-      const m = head.match(/^name:\s*([A-Za-z0-9._-]+)\s*$/m);
-      if (m) names.add(m[1]!);
+      const m = head.match(/^name:\s*"?([A-Za-z0-9._-]+)"?\s*$/m);
+      if (m) name = m[1]!;
     } catch {
       /* arquivo ilegível não invalida o roster inteiro */
     }
+    if (RE_AGENT.test(name)) names.add(name);
   }
-  return [...names];
+  return [...names].sort();
 }
 
 // ---------------------------------------------------------------- argumentos
@@ -494,19 +505,24 @@ function cmdDecide(args: Args): number {
       );
     }
 
+    // Validação contra o roster (API_SPEC §2: "agentes precisam existir no
+    // roster"). A transição acontece sozinha: instalação sem `agents/*.md`
+    // (ou com o diretório ausente) só avisa — falhar aí puniria o usuário por
+    // uma instalação incompleta, que é assunto do doctor. Com roster presente,
+    // nome desconhecido é erro de validação (exit 1) e a mensagem carrega a
+    // lista inteira de nomes válidos: é o que torna o erro acionável sem abrir
+    // o repo.
     const roster = loadRoster();
     if (roster.length === 0) {
-      // agents/ está vazio no E1 — o roster chega no E3. Não inventamos nomes
-      // nem falhamos: apenas avisamos que a validação de nome não rodou.
       warn(
-        "roster vazio (agents/ sem .md) — nomes de agente não validados nesta versão",
+        "roster vazio (agents/ sem .md) — nomes de agente não validados; rode `maestro doctor`",
       );
     } else {
       const unknown = agents.filter((a) => !roster.includes(a));
       if (unknown.length > 0) {
         throw invalid(
           `agente(s) fora do roster: ${unknown.join(", ")}`,
-          `agentes disponíveis: ${roster.sort().join(", ")}`,
+          `agentes disponíveis: ${roster.join(", ")}`,
         );
       }
     }

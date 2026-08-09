@@ -19,6 +19,20 @@
 #   MAESTRO_AGENTS_DIR         diretório do roster
 #   MAESTRO_INJECTION_BUDGET   teto em bytes da injeção
 #   CLAUDE_PROJECT_DIR         raiz do projeto (onde mora o .maestro.yaml)
+#
+# S-303 — filtro do roster por `experts:` do .maestro.yaml (DATA_MODEL §2).
+# Semântica decidida aqui (a spec só fixa o caso feliz; o resto é degradação):
+#   `experts` ausente/nulo ....... sem opinião do projeto → roster INTEIRO
+#   `experts: [golang-pro]` ...... só os nomes listados que existam no roster
+#   `experts: []` ................ intenção explícita de "nenhum" → roster VAZIO
+#                                  (a seção continua existindo, dizendo o porquê)
+#   nome que não existe no roster  avisa no stderr, ignora o nome e segue com o
+#                                  resto da lista — nunca quebra a sessão
+#   TODOS os nomes inexistentes .. é erro de config, não intenção: avisa e volta
+#                                  ao roster inteiro (perder o roster por causa
+#                                  de um typo é pior do que exibi-lo demais)
+# O filtro roda ANTES do orçamento de 8000 bytes: declarar `experts` é também a
+# forma de caber mais coisa útil na injeção, nunca de estourá-la.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,6 +173,10 @@ parse_routing_table() {
 # Opcional: ausência não é erro, só significa "defaults globais".
 # ---------------------------------------------------------------------------
 P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""
+# `experts: []` (lista explicitamente vazia) é diferente de `experts` ausente:
+# a primeira é uma decisão do projeto, a segunda é silêncio. Só o texto bruto
+# distingue as duas, então o flag é levantado aqui, antes da normalização.
+P_EXPERTS_EMPTY=0
 
 parse_profile() {
   [[ -f "$PROFILE_FILE" && -r "$PROFILE_FILE" ]] || return 0
@@ -168,7 +186,8 @@ parse_profile() {
       PROJECT)  [[ "$val" =~ ^[A-Za-z0-9._-]{1,48}$ ]] && P_PROJECT="$val" ;;
       PIPELINE) [[ "$val" =~ ^[A-Za-z0-9._-]{1,32}$ ]] && P_PIPELINE="$val" ;;
       LANGS)    P_LANGS=$(yaml_inline_list "$val" '^[A-Za-z0-9+._-]{1,24}$') ;;
-      EXPERTS)  P_EXPERTS=$(yaml_inline_list "$val" '^[a-z0-9-]{1,40}$') ;;
+      EXPERTS)  [[ "$val" =~ ^\[[[:space:]]*\]$ ]] && P_EXPERTS_EMPTY=1
+                P_EXPERTS=$(yaml_inline_list "$val" '^[a-z0-9-]{1,40}$') ;;
       NOTES)    P_NOTES="$val" ;;
     esac
   done < <(awk '
@@ -193,13 +212,18 @@ parse_profile() {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Índice do roster — agents/*.md (DATA_MODEL §5). Hoje vazio (o roster é o
-# E3): degrada para um aviso de uma linha, nunca para um erro.
+# 4. Índice do roster — agents/*.md (DATA_MODEL §5), filtrado pelo `experts:`
+# do projeto (S-303 — semântica documentada no cabeçalho deste arquivo).
+# Roster ausente/vazio degrada para um aviso de uma linha, nunca para um erro.
 # Um único awk sobre todos os arquivos — N forks quebrariam o NFR de 100ms.
 # ---------------------------------------------------------------------------
-ROSTER=""
-ROSTER_COUNT=0
-ROSTER_FILTERED=0
+ROSTER=""            # linhas já filtradas, prontas para a injeção
+ROSTER_COUNT=0       # agentes exibidos
+ROSTER_TOTAL=0       # agentes lidos de agents/*.md (antes do filtro)
+ROSTER_FILTERED=0    # omitidos pelo filtro `experts`
+EXPERTS_KEEP=""      # experts declarados QUE existem no roster
+EXPERTS_UNKNOWN=""   # experts declarados que não existem — avisados e ignorados
+EXPERTS_APPLIED=0    # 1 = o filtro do .maestro.yaml valeu de fato
 parse_roster() {
   [[ -d "$AGENTS_DIR" ]] || return 0
   local files=() nm md ds
@@ -208,16 +232,15 @@ parse_roster() {
   shopt -u nullglob
   (( ${#files[@]} > 0 )) || return 0
 
+  # Lê o roster inteiro primeiro: sem o conjunto completo de nomes não dá para
+  # dizer quais `experts` são inexistentes (e esse aviso é a metade acionável
+  # da S-303 — um typo silencioso esconderia o agente sem explicar por quê).
+  local names=() lines=()
   while IFS=$'\t' read -r nm md ds; do
     [[ "$nm" =~ ^[a-z0-9-]{1,40}$ ]] || continue
     [[ "$md" =~ ^(haiku|sonnet|opus)$ ]] || md="?"
-    # Filtro do profile (S-303): `experts` declarado = roster ativo do projeto.
-    if [[ -n "$P_EXPERTS" && " $P_EXPERTS " != *" $nm "* ]]; then
-      ROSTER_FILTERED=$(( ROSTER_FILTERED + 1 ))
-      continue
-    fi
-    ROSTER+="- $nm ($md): $ds"$'\n'
-    ROSTER_COUNT=$(( ROSTER_COUNT + 1 ))
+    names+=("$nm")
+    lines+=("- $nm ($md): $ds")
   done < <(awk '
     function clean(s) { gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); gsub(/[<>]/, "", s); return s }
     FNR == 1 { st = 0; nm = ""; md = ""; ds = "" }
@@ -233,6 +256,41 @@ parse_roster() {
     st == 1 && /^model:/       { md = clean(substr($0, 7));  next }
     st == 1 && /^description:/ { ds = clean(substr($0, 13)); next }
   ' "${files[@]}" 2>/dev/null)
+
+  ROSTER_TOTAL=${#names[@]}
+  (( ROSTER_TOTAL > 0 )) || return 0
+
+  # --- filtro do .maestro.yaml (S-303) --------------------------------------
+  local all=" ${names[*]} " e i
+  if [[ -n "$P_EXPERTS" ]]; then
+    for e in $P_EXPERTS; do
+      if [[ "$all" == *" $e "* ]]; then
+        [[ " $EXPERTS_KEEP " == *" $e "* ]] || EXPERTS_KEEP+="$e "
+      else
+        EXPERTS_UNKNOWN+="$e "
+      fi
+    done
+    EXPERTS_KEEP="${EXPERTS_KEEP% }"; EXPERTS_UNKNOWN="${EXPERTS_UNKNOWN% }"
+    [[ -n "$EXPERTS_UNKNOWN" ]] \
+      && warn "experts do .maestro.yaml que não existem no roster, ignorado(s): ${EXPERTS_UNKNOWN// /, }"
+    if [[ -n "$EXPERTS_KEEP" ]]; then
+      EXPERTS_APPLIED=1
+    else
+      warn "nenhum expert declarado existe no roster; injetando o roster inteiro"
+    fi
+  elif (( P_EXPERTS_EMPTY == 1 )); then
+    # `experts: []` é decisão explícita do projeto, não erro de digitação.
+    EXPERTS_APPLIED=1
+  fi
+
+  for i in "${!names[@]}"; do
+    if (( EXPERTS_APPLIED == 1 )) && [[ " $EXPERTS_KEEP " != *" ${names[i]} "* ]]; then
+      ROSTER_FILTERED=$(( ROSTER_FILTERED + 1 ))
+      continue
+    fi
+    ROSTER+="${lines[i]}"$'\n'
+    ROSTER_COUNT=$(( ROSTER_COUNT + 1 ))
+  done
   return 0
 }
 
@@ -317,12 +375,28 @@ build_and_emit() {
   sec_instr+="Sem decision record válido, o gate registra aviso em toda edição (gate.mode: $GATE_MODE_EFFECTIVE)."$'\n'
 
   sec_profile=""
-  if [[ -n "$P_PROJECT$P_LANGS$P_EXPERTS$P_PIPELINE$P_NOTES" ]]; then
+  if [[ -n "$P_PROJECT$P_LANGS$P_EXPERTS$P_PIPELINE$P_NOTES" ]] || (( P_EXPERTS_EMPTY == 1 )); then
     sec_profile=$'\n'"## Profile do projeto (.maestro.yaml)"$'\n'
     [[ -n "$P_PROJECT"  ]] && sec_profile+="projeto: $P_PROJECT"$'\n'
     [[ -n "$P_LANGS"    ]] && sec_profile+="linguagens: ${P_LANGS// /, }"$'\n'
     [[ -n "$P_PIPELINE" ]] && sec_profile+="pipeline: $P_PIPELINE"$'\n'
-    [[ -n "$P_EXPERTS"  ]] && sec_profile+="experts ativos: ${P_EXPERTS// /, }"$'\n'
+    # O que sai aqui é o filtro EFETIVO, não o texto cru do YAML: o Claude só
+    # deve ver como ativo o que realmente sobreviveu ao cruzamento com o roster.
+    if (( EXPERTS_APPLIED == 1 )); then
+      if [[ -n "$EXPERTS_KEEP" ]]; then
+        sec_profile+="experts ativos: ${EXPERTS_KEEP// /, }"$'\n'
+      else
+        sec_profile+="experts ativos: nenhum (experts: [] declarado no projeto)"$'\n'
+      fi
+      [[ -n "$EXPERTS_UNKNOWN" ]] \
+        && sec_profile+="experts ignorados (fora do roster): ${EXPERTS_UNKNOWN// /, }"$'\n'
+    elif [[ -n "$P_EXPERTS" ]]; then
+      if (( ROSTER_TOTAL > 0 )); then
+        sec_profile+="experts declarados: ${P_EXPERTS// /, } (nenhum existe no roster — filtro ignorado)"$'\n'
+      else
+        sec_profile+="experts ativos: ${P_EXPERTS// /, }"$'\n'
+      fi
+    fi
     [[ -n "$P_NOTES"    ]] && sec_profile+="nota: $P_NOTES"$'\n'
   fi
 
@@ -338,9 +412,13 @@ build_and_emit() {
 
   sec_roster=$'\n'"## Roster — nome (modelo): função"$'\n'
   if (( ROSTER_COUNT > 0 )); then
+    (( ROSTER_FILTERED > 0 )) \
+      && sec_roster+="(filtrado por experts do .maestro.yaml: $ROSTER_COUNT de $ROSTER_TOTAL)"$'\n'
     sec_roster+="$ROSTER"
+  elif (( ROSTER_TOTAL > 0 )); then
+    sec_roster+="(nenhum agente ativo: experts do .maestro.yaml omitiu os $ROSTER_TOTAL do roster)"$'\n'
   else
-    sec_roster+="(vazio — o roster chega no E3; use os agentes nativos disponíveis)"$'\n'
+    sec_roster+="(vazio — nenhum agents/*.md instalado; use os agentes nativos disponíveis)"$'\n'
   fi
 
   # Orçamento: head/instr/tail são intocáveis (session_id e instrução canônica).
