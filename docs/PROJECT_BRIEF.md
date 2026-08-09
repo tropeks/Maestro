@@ -1,5 +1,5 @@
 # PROJECT_BRIEF.md
-**Projeto:** Maestro (nome provisório — roteador MoE de ferramental Claude Code) | **Skill:** office-hours | **Versão:** 2.0 — 2026-08-08
+**Projeto:** Maestro (nome definitivo — roteador MoE de ferramental Claude Code) | **Skill:** office-hours | **Versão:** 2.0 — 2026-08-08
 **Consome:** conversa de discovery (office-hours) | **Consumido por:** system-architect, security-architect, architect-orchestrator
 
 > Status: **Validado** (aguardando aprovação G0 para Lock)
@@ -181,14 +181,17 @@ Sem personas secundárias na v1.
 
 ## Open Questions
 
-1. Nome definitivo (Maestro é provisório)
-2. ~~Sistema de memória único: claude-mem ou GBrain?~~ **FECHADA (2026-08-09): gbrain, modo local.**
-   Spike S-601 executado, os dois instalados e medidos. claude-mem registra 6 hooks — os três
-   do Maestro entre eles — e custa ~700ms por evento (mesmo com o worker parado: o custo é o
-   wrapper, `$SHELL -lc` + node por evento, não o serviço). Como PreToolUse e PostToolUse
-   disparam a cada tool call, uma sessão de 60 chamadas ganharia ~86s de latência serial na
-   frente de um gate que roda em 7ms. gbrain não registra hook nenhum (MCP stdio) e sobe sem
-   chave com `--no-embedding`. Detalhes e ressalvas no ADR-007.
+1. ~~Nome definitivo (Maestro é provisório)~~ **FECHADA (2026-08-09): fica Maestro.**
+   Decisão do Romulo. O nome já está no repo (github.com/tropeks/Maestro), no id do plugin
+   (`maestro@maestro`), no CLI, no `MAESTRO_OFF`, nas chaves de env e em `~/.maestro/` —
+   renomear custaria migração de estado sem ganho. E a metáfora se sustenta: o maestro não
+   toca instrumento, decide quem toca e quando.
+2. ~~Sistema de memória único: claude-mem ou GBrain?~~ **FECHADA (2026-08-09): supermemory.**
+   A pergunta estava mal posta — omitia o titular. O supermemory já era a memória de longo
+   prazo do Romulo, conectado e populado, com regras no CLAUDE.md global. claude-mem
+   reprovado por latência medida (~700ms/evento em 3 hooks do Maestro); gbrain reprovado
+   por recuperação medida (36% de recall@1 em 120 trechos reais). Racional completo no
+   ADR-007.
 3. Formato de distribuição: pasta em `~/.claude/` versionada vs. plugin instalável via marketplace pessoal (afeta a fase 2 com QM)
 4. ~~Shrimp task-manager entra na routing table ou fica como está?~~ **FECHADA (2026-08-09): sai.**
    Redundante depois do E2/E3: a decomposição de tarefa já é o catálogo de `workflows`

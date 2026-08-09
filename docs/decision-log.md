@@ -248,3 +248,34 @@ para a trajetória (73% → 100%), as âncoras de cada mudança e as três ressa
   guarda **degrada para aviso** — falha para o lado permissivo. Só dogfood real fecha.
 - **`.maestro.yaml` deixou de ser opcional na prática:** sem ele a H5 não tem como
   escolher especialista e o roteamento degrada para generalista.
+
+## 2026-08-09 — ADR-007 refeito: a memória é o supermemory
+
+O spike S-601 comparou claude-mem × gbrain e **nunca considerou o titular**. O
+supermemory já era a memória de longo prazo do Romulo — conectado, populado, com
+containers por projeto e regras no `~/.claude/CLAUDE.md` global. O brief não o
+mencionava uma vez; a Open Question #2 estava mal posta desde a origem.
+
+Os dois candidatos foram reprovados **por medição**, não por preferência:
+- **claude-mem**: 6 hooks (a doc diz 5 e omite o PreToolUse), ~700 ms por evento com o
+  worker de pé ou parado. Em PreToolUse/PostToolUse isso é ~86 s por sessão de 60 tool
+  calls, à frente de um gate de 7 ms.
+- **gbrain**: recuperação de 36% em recall@1 sobre 120 parágrafos reais deste repo, com
+  o melhor de cinco modelos locais. A diferença entre o pior e o melhor modelo é pequena
+  — o gargalo é a tarefa (pergunta coloquial × parágrafo técnico), não o provedor, então
+  embedding pago encareceria sem resolver.
+
+**Correção metodológica que vale registrar:** a primeira medição do gbrain deu 7/8 e eu a
+reportei como boa. Estava inflada — 8 trechos de corpus, onde acerto aleatório já é 12,5%.
+Com 120 distratores reais o número caiu para 5/14. Corpus de brinquedo produz número de
+brinquedo.
+
+**Conflito assumido:** o brief §7 pede residência local e o supermemory é cloud. O Romulo
+optou pela nuvem porque atravessar máquinas é o valor dele num homelab com VPS e Legatus.
+Prevalece a prática sobre o brief, registrado no ADR-007.
+
+**Consequência para o Maestro:** ele não tem componente de memória. Nenhum hook, nenhuma
+dependência. A memória é do ambiente do Romulo e o Maestro não a toca.
+
+Removidos: gbrain (CLI, 84 MB de brain, MCP), Ollama e seis modelos de embedding.
+Open Questions #1 (nome: fica Maestro) e #2 (memória) fechadas — restam zero das quatro.

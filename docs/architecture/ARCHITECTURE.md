@@ -64,14 +64,51 @@ O Maestro é uma camada de roteamento e política sobre o Claude Code: um **plug
 **Status:** Aceito. **Decisão:** single-user para sempre na v1 (explícito, contrato §7). Fase 2 (QM/multi-usuário) revisita.
 
 ### ADR-007 — Sistema de memória único
-**Status:** **Aceito** (v1.2 — spike S-601 executado em 2026-08-09).
-**Decisão:** **gbrain**, em modo local (`gbrain init --pglite` + `claude mcp add gbrain -- gbrain serve`).
-**Contexto:** a decisão provisória era testar claude-mem primeiro, por ele integrar via hooks — o mesmo mecanismo do Maestro. O spike inverteu isso: é justamente o mecanismo compartilhado que o desqualifica.
+**Status:** **Aceito** (v1.3 — 2026-08-09, após o spike S-601 e a descoberta do titular).
+**Decisão:** **supermemory** (MCP, conta `tropeks@gmail.com`). Único sistema de memória.
 
-**Medições do spike** (mesma máquina, 5 execuções por evento, mínimo):
+**O erro que este ADR cometeu até aqui:** a Open Question #2 do brief enquadrou a escolha
+como *"claude-mem ou GBrain?"* e **nunca mencionou o supermemory** — que já era o
+incumbente, conectado, populado, com containers por projeto e regras de uso escritas no
+`~/.claude/CLAUDE.md` global do Romulo (*"minha memória de longo prazo compartilhada entre
+todas as máquinas e projetos"*). Um spike inteiro comparou os dois candidatos errados.
 
-| evento | claude-mem 13.14.0 | Maestro | fator |
+**Por que supermemory vence os dois:**
+
+| | supermemory | gbrain | claude-mem |
 |---|---|---|---|
+| já em uso | **sim**, meses de conteúdo | não | não |
+| alcance | **todas as máquinas** (VPS, Legatus) | só uma | só uma |
+| integração | MCP | MCP | **6 hooks**, 3 deles do Maestro |
+| custo | grátis até 1M tok/mês · Pro US$ 19 | US$ 0 (self-host) | US$ 0 |
+| latência imposta ao Maestro | **nenhuma** | nenhuma | ~700 ms/evento |
+
+- **claude-mem foi reprovado por medição:** 6 hooks (não 5 como a doc diz), incluindo
+  PreToolUse; ~700 ms por evento com o worker de pé ou parado (o custo é o wrapper,
+  `$SHELL -lc` + node por evento). PreToolUse/PostToolUse disparam a cada tool call:
+  ~86 s de latência serial numa sessão de 60 chamadas, contra um gate de 7 ms.
+- **gbrain foi reprovado por utilidade medida.** Recuperação local com 120 parágrafos
+  reais dos docs deste repo: **melhor caso 5/14 (36%) em recall@1** entre cinco modelos
+  (`granite-embedding:278m`, `bge-m3`, `embeddinggemma`, `snowflake-arctic-embed2`,
+  `nomic-embed-text`). A diferença entre o pior e o melhor modelo é pequena, o que indica
+  que o gargalo é a tarefa — pergunta curta e coloquial contra parágrafo técnico denso —,
+  não o provedor. Trocar para embedding hospedado encareceria sem resolver. Some-se que
+  ele recusou os quatro caminhos documentados para persistir a config de embedding
+  (`reinit-pglite`, `migrate`, `init --force`, `config set`).
+- **supermemory resolve um problema mais fácil por construção:** guarda memória
+  *destilada e escrita para ser recuperada* (título padronizado, 1 memória por desfecho),
+  não prosa arbitrária. A disciplina anti-spam do CLAUDE.md global não é só higiene de
+  cota — é o que faz a recuperação funcionar.
+
+**Conflito assumido conscientemente:** o brief §7 exige residência local (*"tudo local na
+máquina do usuário"*) e o supermemory é cloud. O Romulo optou pela nuvem porque o valor
+dele é atravessar máquinas — que é o que um homelab com VPS e Legatus precisa. O brief
+está desatualizado em relação à prática; prevalece a prática, registrado aqui.
+
+**Consequência:** nenhum sistema de memória se integra ao Maestro por hook. O Maestro não
+tem componente de memória — a memória é do ambiente do Romulo, e o Maestro não a toca.
+
+---|---|---|---|
 | UserPromptSubmit | 734 ms | 24 ms | 30× |
 | PreToolUse | 679 ms | 7 ms | 97× |
 | PostToolUse | 721 ms | — | — |
