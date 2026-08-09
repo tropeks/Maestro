@@ -81,3 +81,52 @@ verificação independente e commits pelo orquestrador.
 - **Latência do gate**: 35ms de mínimo contra NFR de 50ms, mas a mediana sob carga
   passa de 50ms. Se apertar, o alvo é o fork de `jq` do `maestro_record_valid`.
 - **`.maestro.yaml`** já é lido e filtra o roster — metade da S-303 pronta.
+
+## 2026-08-09 — Sessão E3 (Roster v1, vibe-code via subagentes)
+
+- **Stories:** S-301, S-302, S-303. Três subagentes em paralelo (perfis,
+  especialistas, integração), adendo de contrato escrito antes, propriedade
+  estrita de arquivo. Suíte: 437 → **697 asserções**.
+
+### Decisões
+
+1. **Roster de 9, tierizado:** `dev-junior` haiku; os outros 8 sonnet. A escalada
+   do `engenheiro` para Opus é **pedida na saída**, não declarada no frontmatter —
+   frontmatter opus gastaria opus em toda invocação, anulando o ADR-004.
+2. **Especialistas rebaixados de opus para sonnet.** Os 4 vêm `model: opus`
+   (o `sql-pro`, `inherit` — pior ainda: herdaria o modelo da sessão, exatamente
+   o que o roster existe para evitar).
+3. **`postgres-pro` não existe upstream.** Vendorizado do `sql-pro` e
+   especializado de verdade em Postgres — Snowflake/BigQuery/Redshift saíram,
+   entrou o que o portfólio usa.
+4. **`typescript-pro` ficou 35% MAIOR que o original**, contra a letra do "enxugar"
+   da S-302. O upstream tinha 36 linhas rasas e genéricas, sem uma palavra de
+   React; cortá-lo faria dele o elo fraco do roster. A regra do teste foi
+   generalizada (adaptado ≤3500 B; original acima do budget encolhe ≥50%; corpus
+   ≤55%) em vez de virar exceção costurada. Corpus: 22489 B → 10870 B (48%).
+5. **Semântica de `experts:` que a spec não fixa:** `[]` é honrado como "nenhum";
+   lista 100% inexistente cai para o roster inteiro (typo não apaga roster);
+   nome inexistente no meio de válidos é avisado e ignorado. O filtro roda antes
+   do orçamento de 8000 B.
+6. **Identidade do agente é só o `name:` do frontmatter.** O CLI aceitava também
+   o nome do arquivo, o que podia listar dois nomes para um agente e prometer um
+   nome que o gate MoE não reconhece.
+7. **`vendor/` virou read-only de verdade** (`chmod 444`), não só por convenção.
+
+### Descartado
+
+- Instalar a coleção completa do upstream (~200 agentes) — ADR-004 já rejeitava:
+  poluir o gate é o problema que o Maestro resolve.
+- Declarar a tool `Skill` no `qa` para o browser: ampliaria a superfície além da
+  tabela normativa. O browser é pedido por prompt à sessão (`/browse`, `/qa`).
+
+### Flags para o próximo épico
+
+- **E4 (S-401) tem um bloqueio conhecido:** os steps da routing table
+  (`investigate`, `plan`, `review`, `qa`, `gstack-ship`, `gstack-cso`) precisam
+  apontar para comando existente no ambiente, e **superpowers não está instalado**
+  nesta máquina — só o gstack, e sem o `--prefix` que o brief exige.
+- **E5/S-502** (guarda destrutivo em fluxo autônomo) segue sem cobertura: o gate
+  atual não intercepta `Bash`, e a emenda do ADR-003 já assume esse escape.
+- Roster instalado ≠ roster invocável: a AC da S-301 fala em "Task tool consegue
+  invocar cada um", o que só se comprova com o plugin instalado numa sessão real.

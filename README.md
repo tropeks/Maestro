@@ -1,9 +1,10 @@
-# Maestro (v0.2 — E1 + E2)
+# Maestro (v0.3 — E1 + E2 + E3)
 
-Camada de roteamento MoE para Claude Code. Estado atual: **E2 completo** —
+Camada de roteamento MoE para Claude Code. Estado atual: **E3 completo** —
 injeção da routing table no SessionStart, gate estrutural no PreToolUse,
-CLI `decide|status|log`, e logging do override manual. E3 (roster de agentes)
-é o próximo épico — ver `docs/architecture/EPICS.md`.
+CLI `decide|status|log`, logging do override manual e roster de 9 agentes
+tierizados. E4 (curadoria dos packs) é o próximo épico — ver
+`docs/architecture/EPICS.md`.
 
 Filosofia: trilhos determinísticos (hooks garantem QUE a decisão acontece),
 IA nas bordas (o Claude da sessão decide O QUE fazer, guiado pela tabela).
@@ -40,6 +41,31 @@ Sem decision record válido (TTL 4h), o gate **avisa** em toda edição de códi
 ```
 maestro status         # decisão corrente, validade, últimos eventos
 maestro log --summary  # o dashboard do baseline: override manual, gate, agentes
+```
+
+## Roster
+
+Nove agentes, com o modelo proporcional à complexidade do papel:
+
+| agente | model | quando |
+|---|---|---|
+| `dev-junior` | haiku | tarefa mecânica de escopo fechado |
+| `dev-pleno` | sonnet | feature/bugfix que exige julgamento |
+| `engenheiro` | sonnet | arquitetura e plano (pede Opus na saída quando precisa) |
+| `revisor` | sonnet | review **read-only** — sem Write/Edit/Bash |
+| `qa` | sonnet | teste funcional e evidência |
+| `golang-pro` `python-pro` `typescript-pro` `postgres-pro` | sonnet | linguagem detectada vence o perfil de senioridade |
+
+Os quatro especialistas são adaptados de [wshobson/agents](https://github.com/wshobson/agents)
+(MIT), com os originais pinados por commit em `vendor/` e atribuição no frontmatter.
+
+Um `.maestro.yaml` na raiz do projeto restringe o roster ativo:
+
+```yaml
+version: 1
+project: remedix
+languages: [go]
+experts: [golang-pro]     # só ele aparece na injeção
 ```
 
 ## Autoproteção
