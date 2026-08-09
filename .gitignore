@@ -1,0 +1,9 @@
+# Estado local do Maestro — nunca versionado (logs e decision records são efêmeros
+# e podem conter metadados de projetos; DATA_MODEL §3/§4, residência local).
+.maestro/
+*.jsonl
+
+# Runtime / ferramentas
+node_modules/
+.DS_Store
+*.swp

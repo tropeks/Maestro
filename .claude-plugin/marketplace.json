@@ -1,0 +1,7 @@
+{
+  "name": "maestro",
+  "owner": { "name": "Romulo" },
+  "plugins": [
+    { "name": "maestro", "source": "./", "description": "Roteador MoE: hooks deterministicos + routing table + roster" }
+  ]
+}

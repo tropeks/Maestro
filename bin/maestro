@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# maestro — CLI (E1: doctor implementado; decide/status/log chegam no E2 via src/ em Bun)
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
+
+usage() {
+  cat <<'U'
+maestro <comando>
+  doctor    valida a instalação (hooks, dependências, schemas, permissões)
+  decide    [E2] registra decisão de roteamento
+  status    [E2] mostra decisão da sessão corrente
+  log       [E2] agrega o routing.jsonl
+U
+}
+
+doctor() {
+  local fail=0 ci="${1:-}"
+  check() { # check <descricao> <comando...>
+    local desc="$1"; shift
+    if "$@" >/dev/null 2>&1; then
+      printf 'ok   %s\n' "$desc"
+    else
+      printf 'FAIL %s\n' "$desc"; fail=1
+    fi
+  }
+
+  check "kill-switch: MAESTRO_OFF respeitado por common.sh" \
+    bash -c 'MAESTRO_OFF=1 bash -c "source \"$1\"; maestro_killswitch; exit 3"; [[ $? -eq 0 ]]' _ "$REPO_DIR/hooks/lib/common.sh"
+  check "hooks presentes e executáveis" \
+    bash -c '[[ -x "$1/hooks/session-start.sh" && -x "$1/hooks/pre-tool-gate.sh" && -x "$1/hooks/user-prompt-submit.sh" ]]' _ "$REPO_DIR"
+  check "hooks.json é JSON válido" \
+    bash -c 'command -v jq >/dev/null && jq -e . "$1/hooks/hooks.json" >/dev/null' _ "$REPO_DIR"
+  check "plugin.json é JSON válido" \
+    bash -c 'command -v jq >/dev/null && jq -e .name "$1/.claude-plugin/plugin.json" >/dev/null' _ "$REPO_DIR"
+  check "dependência: jq instalado (API_SPEC v1.1)" command -v jq
+  check "dependência: flock disponível" command -v flock
+  check "routing-table.yaml presente" test -f "$REPO_DIR/config/routing-table.yaml"
+  check "diretório de estado gravável ($MAESTRO_HOME)" \
+    bash -c 'mkdir -p "$1/logs" "$1/sessions" && touch "$1/logs/.w" && rm -f "$1/logs/.w"' _ "$MAESTRO_HOME"
+  if command -v bun >/dev/null 2>&1; then
+    printf 'ok   bun instalado\n'
+  else
+    printf 'warn bun ausente (necessário só a partir do E2)\n'
+  fi
+
+  if [[ $fail -eq 1 ]]; then
+    echo "maestro: env: doctor encontrou falhas (fix: ver linhas FAIL acima)" >&2
+    exit 2
+  fi
+  echo "doctor: instalação saudável"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  doctor) shift; doctor "$@" ;;
+  decide|status|log)
+    echo "maestro: config: comando '$cmd' chega no E2 (S-202/S-204). Por ora, siga o fluxo manual." >&2
+    exit 1 ;;
+  ""|-h|--help) usage ;;
+  *) echo "maestro: validation: comando desconhecido '$cmd' (fix: maestro --help)" >&2; exit 1 ;;
+esac

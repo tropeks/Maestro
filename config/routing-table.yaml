@@ -1,0 +1,24 @@
+version: 1
+gate:
+  mode: warn            # warn | block — promoção a block só com dados (roadmap Fase 1b)
+  allowlist:
+    extensions: [.md, .txt, .yaml, .yml, .json, .toml]
+    paths: [.maestro/, docs/]
+  denylist:             # autoproteção (ADR-003 v1.1) — block SEMPRE, mesmo com decisão
+    paths: [agents/, config/routing-table.yaml, .github/workflows/, .claude-plugin/]
+workflows:
+  fix:      {steps: [investigate, implement, review], gate: none}
+  feature:  {steps: [plan, implement, review, qa], gate: plan}
+  refactor: {steps: [plan, implement, review], gate: plan}
+  ship:     {steps: [gstack-ship], gate: ship}
+  audit:    {steps: [gstack-cso], gate: none}
+routes:
+  - {intent: "correção de bug, erro, quebrou, não funciona", workflow: fix}
+  - {intent: "nova funcionalidade, feature, adicionar, criar tela", workflow: feature}
+  - {intent: "melhorar estrutura, dívida técnica, limpar", workflow: refactor}
+execution_heuristics:
+  - "edição ≤2 arquivos sem plano → mode: direct"
+  - "feature nova ou >3 arquivos → mode: subagent(s) com plano"
+  - "tarefa mecânica/repetitiva → dev-junior (haiku)"
+  - "decisão de arquitetura ou review → engenheiro/revisor"
+  - "linguagem detectada → especialista correspondente"
