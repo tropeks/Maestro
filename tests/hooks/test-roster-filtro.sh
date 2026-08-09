@@ -27,7 +27,7 @@ ok()  { printf 'ok   %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 chk() { if [[ "$1" == "yes" ]]; then ok "$2"; else bad "$2${3:+ — $3}"; fi; }
 
-ROSTER_HDR='## Roster — nome (modelo): função'
+ROSTER_HDR='## Roster — nome (modelo). A descrição de cada agente já está no contexto.'
 
 new_home() { local d; d=$(mktemp -d "$SANDBOX/home.XXXXXX"); printf '%s' "$d"; }
 
@@ -193,13 +193,17 @@ run "$(proj 'experts: [../../etc/passwd, "a;id", golang-pro]')" "$ROSTER9"
 echo "-- 6. orçamento de 8000 bytes com roster grande"
 # =============================================================================
 BIG_ROSTER="$SANDBOX/agents-big"
+# 500 agentes: desde que a injeção parou de duplicar a description, cada linha do
+# índice caiu para ~22 B, então 121 agentes passaram a caber folgados em 8000 B e
+# não havia mais pressão nenhuma para demonstrar. O que este bloco precisa provar
+# é que o FILTRO roda antes do orçamento — e isso exige o orçamento apertando.
 names=()
-for i in $(seq -w 1 120); do names+=("agente-de-teste-numero-$i"); done
+for i in $(seq -w 1 500); do names+=("agente-de-teste-numero-$i"); done
 names+=(zz-alvo-do-filtro)   # último na ordem alfabética: é o primeiro a ser cortado
 mk_roster "$BIG_ROSTER" "${names[@]}"
 
 run "$(proj -)" "$BIG_ROSTER"
-[[ $RC -eq 0 ]] && chk yes "exit 0 com roster de 121 agentes" || chk no "exit 0 com roster de 121 agentes" "rc=$RC"
+[[ $RC -eq 0 ]] && chk yes "exit 0 com roster de 501 agentes" || chk no "exit 0 com roster de 501 agentes" "rc=$RC"
 [[ $OUTBYTES -le 8000 ]] \
   && chk yes "roster grande sem filtro respeita 8000 B (saiu $OUTBYTES B)" \
   || chk no "roster grande sem filtro respeita 8000 B" "saiu $OUTBYTES B"

@@ -18,7 +18,7 @@ bad()  { printf 'FAIL %s\n' "$1"; fail=1; }
 chk()  { if [[ "$1" == "yes" ]]; then ok "$2"; else bad "$2${3:+ — $3}"; fi; }
 
 HEUR_HDR='## Heurísticas de execução'
-ROSTER_HDR='## Roster — nome (modelo): função'
+ROSTER_HDR='## Roster — nome (modelo). A descrição de cada agente já está no contexto.'
 
 # Cada caso roda o hook num MAESTRO_HOME próprio.
 new_home() { local d; d=$(mktemp -d "$SANDBOX/home.XXXXXX"); printf '%s' "$d"; }
@@ -87,8 +87,8 @@ run "$H" "$P" "$IN"
 # E3: agents/ deixou de ser vazio, então este caso passou a exercitar o roster
 # real. A degradação que a asserção provava (agents/ sem .md → aviso de uma
 # linha, nunca erro) virou o caso explícito logo abaixo, com diretório vazio.
-[[ "$OUT" =~ -\ [a-z0-9-]+\ \((haiku|sonnet|opus)\): ]] \
-  && chk yes "roster real do repo indexado" || chk no "roster real do repo indexado"
+[[ "$OUT" =~ -\ [a-z0-9-]+\ \((haiku|sonnet|opus)\)$'\n' ]] \
+  && chk yes "roster real do repo indexado (nome + modelo)" || chk no "roster real do repo indexado (nome + modelo)"
 [[ $OUTBYTES -le 8000 ]] \
   && chk yes "saída dentro do orçamento ($OUTBYTES B)" || chk no "saída dentro do orçamento" "$OUTBYTES B"
 
@@ -174,8 +174,12 @@ run "$H3" "$P3" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR"
   && chk yes "profile injetado (projeto/linguagens/pipeline)" || chk no "profile injetado (projeto/linguagens/pipeline)"
 [[ "$OUT" == *"nota: agente Go é o coração"* ]] \
   && chk yes "nota do projeto injetada" || chk no "nota do projeto injetada"
-[[ "$OUT" == *"- golang-pro (sonnet):"* && "$OUT" == *"- python-pro (sonnet):"* ]] \
-  && chk yes "roster indexado com nome + modelo + 1 linha" || chk no "roster indexado com nome + modelo + 1 linha"
+[[ "$OUT" == *"- golang-pro (sonnet)"* && "$OUT" == *"- python-pro (sonnet)"* ]] \
+  && chk yes "roster indexado com nome + modelo" || chk no "roster indexado com nome + modelo"
+# A descrição NÃO pode voltar: o harness já carrega a description de cada
+# agents/*.md always-on, e duplicá-la aqui é o inchaço que o Maestro combate.
+[[ "$OUT" != *"especialista em Go"* && "$OUT" != *"- golang-pro (sonnet):"* ]] \
+  && chk yes "descrição do agente NÃO é duplicada na injeção" || chk no "descrição do agente NÃO é duplicada na injeção"
 [[ "$OUT" != *"- revisor ("* && "$OUT" != *"- qa ("* ]] \
   && chk yes "roster filtrado por experts do profile" || chk no "roster filtrado por experts do profile"
 
@@ -256,19 +260,23 @@ B_A=$(( S_FULL - 60 ))
 H6=$(new_home); P6=$(new_proj)
 run "$H6" "$P6" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_A"
 [[ $OUTBYTES -le $B_A ]] && ok "estouro pequeno: respeita o teto" || bad "estouro pequeno: respeita o teto ($OUTBYTES > $B_A)"
-[[ "$OUT" == *"- dev-extra (haiku):"* && "$OUT" == *"- golang-pro (sonnet):"* ]] \
+[[ "$OUT" == *"- dev-extra (haiku)"* && "$OUT" == *"- golang-pro (sonnet)"* ]] \
   && ok "estouro pequeno: roster preservado inteiro" || bad "estouro pequeno: roster preservado inteiro"
 [[ "$OUT" != *"heurística número 50"* ]] && ok "estouro pequeno: heurísticas cederam primeiro" \
   || bad "estouro pequeno: heurísticas cederam primeiro"
 
 # (b) estouro maior: heurísticas somem inteiras ANTES de o roster ser tocado.
-B_B=$(( S_FULL - S_HEUR - S_ROSTER / 2 ))
+# Corta as heurísticas por completo + ~3 linhas de roster. Não use uma fração do
+# roster: desde que a injeção parou de duplicar a description, a seção ficou tão
+# pequena que "metade dela" é menor que o próprio cabeçalho + marcador de corte,
+# e não sobraria entrada nenhuma para provar "início preservado".
+B_B=$(( S_FULL - S_HEUR - 60 ))
 H7=$(new_home); P7=$(new_proj)
 run "$H7" "$P7" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_B"
 [[ $OUTBYTES -le $B_B ]] && ok "estouro maior: respeita o teto" || bad "estouro maior: respeita o teto ($OUTBYTES > $B_B)"
 [[ "$OUT" != *"$HEUR_HDR"* ]] && ok "estouro maior: seção de heurísticas removida inteira" \
   || bad "estouro maior: seção de heurísticas removida inteira"
-[[ "$OUT" == *"$ROSTER_HDR"* && "$OUT" == *"- dev-junior (haiku):"* ]] \
+[[ "$OUT" == *"$ROSTER_HDR"* && "$OUT" == *"- dev-junior (haiku)"* ]] \
   && ok "estouro maior: roster só então é truncado (início preservado)" \
   || bad "estouro maior: roster só então é truncado (início preservado)"
 [[ "$OUT" == *"session_id: ses_ABC-123"* && "$OUT" == *"maestro decide --session ses_ABC-123"* ]] \

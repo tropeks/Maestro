@@ -240,7 +240,13 @@ parse_roster() {
     [[ "$nm" =~ ^[a-z0-9-]{1,40}$ ]] || continue
     [[ "$md" =~ ^(haiku|sonnet|opus)$ ]] || md="?"
     names+=("$nm")
-    lines+=("- $nm ($md): $ds")
+    # Só nome + modelo. A DESCRIÇÃO é deliberadamente omitida: o Claude Code já
+    # carrega a description de todo agents/*.md always-on (é ela o gate MoE), e
+    # repeti-la aqui punha o roster duas vezes no contexto — 1163 dos 2466 bytes
+    # da injeção eram redundância pura, medido com o plugin instalado. O modelo,
+    # sim, é nosso: o harness não o expõe e ele É a decisão de tiering (ADR-004).
+    # A NFR diz que o Maestro não pode causar o inchaço que combate.
+    lines+=("- $nm ($md)")
   done < <(awk '
     function clean(s) { gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); gsub(/[<>]/, "", s); return s }
     FNR == 1 { st = 0; nm = ""; md = ""; ds = "" }
@@ -410,7 +416,7 @@ build_and_emit() {
     sec_heur=$'\n'"## Heurísticas de execução"$'\n'"$HEURISTICS"
   fi
 
-  sec_roster=$'\n'"## Roster — nome (modelo): função"$'\n'
+  sec_roster=$'\n'"## Roster — nome (modelo). A descrição de cada agente já está no contexto."$'\n'
   if (( ROSTER_COUNT > 0 )); then
     (( ROSTER_FILTERED > 0 )) \
       && sec_roster+="(filtrado por experts do .maestro.yaml: $ROSTER_COUNT de $ROSTER_TOTAL)"$'\n'
