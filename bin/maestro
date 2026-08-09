@@ -1,63 +1,519 @@
 #!/usr/bin/env bash
-# maestro — CLI (E1: doctor implementado; decide/status/log chegam no E2 via src/ em Bun)
+# maestro — CLI do plugin (E1: doctor; E2: decide/status/log delegados ao src/cli.ts em Bun)
+#
+# Contratos normativos:
+#   docs/architecture/API_SPEC.md   §2 (maestro doctor) e §3 (envelope de erro / exit codes)
+#   docs/architecture/DATA_MODEL.md §1 (routing-table.yaml) e §3 (decision record)
+#   docs/architecture/EPICS.md      S-103 (AC: detecta hook não registrado e YAML inválido)
+#
+# Regras respeitadas aqui:
+#   - o doctor PRECISA funcionar sem Bun (é ele que diagnostica ambiente quebrado):
+#     validação de YAML/JSON usa Bun quando existe e cai para checagem estrutural em bash quando não
+#   - sem rede; sem dependência que não seja coreutils (jq/flock/bun são *diagnosticados*, não exigidos)
+#   - "dependência ausente" nunca é reportado como "arquivo inválido" (review P2-7)
+#
+# Exit codes (API_SPEC §3): 0 ok · 1 falha de validação (conteúdo inválido) · 2 ambiente quebrado
+# (arquivo/dependência/permissão faltando). Havendo falhas das duas classes, prevalece 2.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# ---------------------------------------------------------------- resolução de caminho
+# review P1-4: `ln -s .../bin/maestro ~/bin/maestro` é um dos dois métodos de instalação do
+# ADR-001; `dirname "${BASH_SOURCE[0]}"` sozinho resolve para o diretório do link e o CLI
+# perde o repo. Resolve a cadeia de symlinks com readlink -f e cai para um loop portátil.
+maestro_realpath() {
+  local src="$1" dir out
+  if out=$(readlink -f -- "$src" 2>/dev/null) && [[ -n "$out" ]]; then
+    printf '%s\n' "$out"; return 0
+  fi
+  local guard=0
+  while [[ -L "$src" ]]; do
+    guard=$((guard + 1)); [[ $guard -gt 40 ]] && break
+    dir=$(cd -P -- "$(dirname -- "$src")" && pwd)
+    src=$(readlink -- "$src")
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  dir=$(cd -P -- "$(dirname -- "$src")" && pwd)
+  printf '%s\n' "$dir/$(basename -- "$src")"
+}
+
+SELF="$(maestro_realpath "${BASH_SOURCE[0]}")"
+REPO_DIR="$(cd -P -- "$(dirname -- "$SELF")/.." && pwd)"
 MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
+MAESTRO_HOME_DEFAULT="$HOME/.maestro"
+MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
+
+EXPECTED_EVENTS=(SessionStart PreToolUse UserPromptSubmit)
+EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason'
 
 usage() {
   cat <<'U'
 maestro <comando>
-  doctor    valida a instalação (hooks, dependências, schemas, permissões)
-  decide    [E2] registra decisão de roteamento
-  status    [E2] mostra decisão da sessão corrente
-  log       [E2] agrega o routing.jsonl
+  doctor [--ci]   valida a instalação (hooks registrados, dependências, schemas, permissões,
+                  decision records) e remove records expirados
+                  --ci: saída enxuta, sem cor, só avisos/falhas + resumo (ENGINEERING_SPEC §CI/CD)
+  decide          registra decisão de roteamento (delegado a src/cli.ts — requer Bun)
+  status          mostra decisão da sessão corrente (idem)
+  log             agrega o routing.jsonl (idem)
+
+exit: 0 ok · 1 validação · 2 ambiente quebrado
 U
 }
 
-doctor() {
-  local fail=0 ci="${1:-}"
-  check() { # check <descricao> <comando...>
-    local desc="$1"; shift
-    if "$@" >/dev/null 2>&1; then
-      printf 'ok   %s\n' "$desc"
-    else
-      printf 'FAIL %s\n' "$desc"; fail=1
-    fi
-  }
+die() { # die <categoria> <mensagem> <fix> <exit>
+  printf 'maestro: %s: %s (fix: %s)\n' "$1" "$2" "$3" >&2
+  exit "$4"
+}
 
-  check "kill-switch: MAESTRO_OFF respeitado por common.sh" \
-    bash -c 'MAESTRO_OFF=1 bash -c "source \"$1\"; maestro_killswitch; exit 3"; [[ $? -eq 0 ]]' _ "$REPO_DIR/hooks/lib/common.sh"
-  check "hooks presentes e executáveis" \
-    bash -c '[[ -x "$1/hooks/session-start.sh" && -x "$1/hooks/pre-tool-gate.sh" && -x "$1/hooks/user-prompt-submit.sh" ]]' _ "$REPO_DIR"
-  check "hooks.json é JSON válido" \
-    bash -c 'command -v jq >/dev/null && jq -e . "$1/hooks/hooks.json" >/dev/null' _ "$REPO_DIR"
-  check "plugin.json é JSON válido" \
-    bash -c 'command -v jq >/dev/null && jq -e .name "$1/.claude-plugin/plugin.json" >/dev/null' _ "$REPO_DIR"
-  check "dependência: jq instalado (API_SPEC v1.1)" command -v jq
-  check "dependência: flock disponível" command -v flock
-  check "routing-table.yaml presente" test -f "$REPO_DIR/config/routing-table.yaml"
-  check "diretório de estado gravável ($MAESTRO_HOME)" \
-    bash -c 'mkdir -p "$1/logs" "$1/sessions" && touch "$1/logs/.w" && rm -f "$1/logs/.w"' _ "$MAESTRO_HOME"
-  if command -v bun >/dev/null 2>&1; then
-    printf 'ok   bun instalado\n'
+# ------------------------------------------------------------------ relatório do doctor
+
+CI=0
+C_OK=''; C_WARN=''; C_FAIL=''; C_OFF=''
+N_CHECKS=0; N_WARN=0; N_SKIP=0; FAIL_ENV=0; FAIL_VAL=0
+
+report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
+  local st="$1" desc="$2" det="${3:-}"
+  N_CHECKS=$((N_CHECKS + 1))
+  [[ -n "$det" ]] && desc="$desc — $det"
+  case "$st" in
+    ok)   [[ $CI -eq 1 ]] || printf '%sok  %s %s\n' "$C_OK" "$C_OFF" "$desc" ;;
+    warn) N_WARN=$((N_WARN + 1)); printf '%swarn%s %s\n' "$C_WARN" "$C_OFF" "$desc" ;;
+    skip) N_SKIP=$((N_SKIP + 1)); printf 'skip %s\n' "$desc" ;;
+    fail_env) FAIL_ENV=1; printf '%sFAIL%s %s\n' "$C_FAIL" "$C_OFF" "$desc" ;;
+    fail_val) FAIL_VAL=1; printf '%sFAIL%s %s\n' "$C_FAIL" "$C_OFF" "$desc" ;;
+  esac
+}
+
+check() { # check <env|val> <descrição> <comando...>
+  local cls="$1" desc="$2"; shift 2
+  if "$@" >/dev/null 2>&1; then report ok "$desc"; else report "fail_$cls" "$desc"; fi
+}
+
+# --------------------------------------------------------------- parsers disponíveis
+
+has() { command -v "$1" >/dev/null 2>&1; }
+
+json_parser() { # jq > bun > none — "none" vira skip, jamais FAIL de conteúdo (review P2-7)
+  if has jq; then printf 'jq\n'
+  elif has bun; then printf 'bun\n'
+  else printf 'none\n'; fi
+}
+
+json_valid() { # json_valid <arquivo>
+  case "$(json_parser)" in
+    jq)  jq -e . "$1" >/dev/null 2>&1 ;;
+    bun) MAESTRO_JSON="$1" bun -e \
+           'JSON.parse(require("fs").readFileSync(process.env.MAESTRO_JSON,"utf8"))' >/dev/null 2>&1 ;;
+    *)   return 2 ;;
+  esac
+}
+
+# --------------------------------------------------------------- leitura do hooks.json
+
+hooks_json_events() { # lista os eventos de topo declarados em .hooks
+  local f="$1"
+  if has jq; then
+    jq -r '.hooks // {} | keys[]' "$f" 2>/dev/null
   else
-    printf 'warn bun ausente (necessário só a partir do E2)\n'
+    # modo degradado (sem jq): procura os eventos conhecidos como chave
+    local ev
+    for ev in "${EXPECTED_EVENTS[@]}"; do
+      grep -qE "\"$ev\"[[:space:]]*:" "$f" && printf '%s\n' "$ev"
+    done
+    return 0
+  fi
+}
+
+hooks_json_commands() { # lista todo .command declarado, em qualquer profundidade
+  local f="$1"
+  if has jq; then
+    jq -r '[.. | objects | select(has("command")) | .command] | .[]' "$f" 2>/dev/null
+  else
+    grep -oE '"command"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" 2>/dev/null \
+      | sed -E 's/.*:[[:space:]]*"(.*)"$/\1/'
+  fi
+}
+
+hooks_json_pretooluse_matchers() {
+  local f="$1"
+  if has jq; then
+    jq -r '.hooks.PreToolUse // [] | .[] | (.matcher // "")' "$f" 2>/dev/null
+  else
+    grep -oE '"matcher"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" 2>/dev/null \
+      | sed -E 's/.*:[[:space:]]*"(.*)"$/\1/'
+  fi
+}
+
+expand_plugin_root() { # ${CLAUDE_PLUGIN_ROOT}/x → <repo>/x
+  local s="$1"
+  s="${s//\$\{CLAUDE_PLUGIN_ROOT\}/$REPO_DIR}"
+  s="${s//\$CLAUDE_PLUGIN_ROOT/$REPO_DIR}"
+  printf '%s\n' "$s"
+}
+
+check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
+  local f="$REPO_DIR/hooks/hooks.json"
+
+  if [[ ! -f "$f" ]]; then
+    report fail_env "hooks.json presente" "$f não existe — plugin sem registro de hooks"
+    return
+  fi
+  report ok "hooks.json presente"
+
+  local rc=0; json_valid "$f" || rc=$?
+  if [[ $rc -eq 2 ]]; then
+    report skip "hooks.json é JSON válido" "nem jq nem bun disponíveis para parsear"
+  elif [[ $rc -ne 0 ]]; then
+    report fail_val "hooks.json é JSON válido" "parse falhou"
+    return
+  else
+    report ok "hooks.json é JSON válido"
   fi
 
-  if [[ $fail -eq 1 ]]; then
-    echo "maestro: env: doctor encontrou falhas (fix: ver linhas FAIL acima)" >&2
-    exit 2
+  # 1) os 3 eventos esperados existem
+  local events missing=() ev
+  events=$(hooks_json_events "$f" || true)
+  for ev in "${EXPECTED_EVENTS[@]}"; do
+    printf '%s\n' "$events" | grep -qx "$ev" || missing+=("$ev")
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    report fail_val "hooks.json registra os 3 eventos esperados" \
+      "faltando: ${missing[*]} (plugin instalado com hook não registrado)"
+  else
+    report ok "hooks.json registra os 3 eventos esperados"
   fi
-  echo "doctor: instalação saudável"
+
+  # 2) matcher do PreToolUse cobre Edit|Write|MultiEdit
+  local matchers tool tok found uncovered=()
+  matchers=$(hooks_json_pretooluse_matchers "$f" || true)
+  if [[ -z "${matchers//[[:space:]]/}" ]]; then
+    # matcher vazio/ausente = casa com toda ferramenta; só é válido se o evento existe
+    if printf '%s\n' "$events" | grep -qx PreToolUse; then
+      report warn "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
+        "matcher ausente — o hook roda para TODA ferramenta"
+    fi
+  else
+    for tool in "${EXPECTED_MATCHER_TOOLS[@]}"; do
+      found=0
+      while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        [[ "$m" == '*' || "$m" == '.*' ]] && { found=1; break; }
+        while IFS= read -r tok; do
+          tok="${tok//[[:space:]]/}"
+          [[ "$tok" == "$tool" ]] && { found=1; break; }
+        done < <(printf '%s\n' "$m" | tr '|' '\n')
+        [[ $found -eq 1 ]] && break
+      done <<<"$matchers"
+      [[ $found -eq 0 ]] && uncovered+=("$tool")
+    done
+    if [[ ${#uncovered[@]} -gt 0 ]]; then
+      report fail_val "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
+        "não coberto(s): ${uncovered[*]}"
+    else
+      report ok "matcher do PreToolUse cobre Edit|Write|MultiEdit"
+    fi
+  fi
+
+  # 3) todo command resolve para arquivo existente e executável
+  local cmds n=0 bad=()
+  cmds=$(hooks_json_commands "$f" || true)
+  while IFS= read -r c; do
+    [[ -z "$c" ]] && continue
+    n=$((n + 1))
+    local path bin
+    path=$(expand_plugin_root "$c")
+    bin="${path%% *}"   # ignora argumentos eventuais
+    if [[ ! -e "$bin" ]]; then
+      bad+=("$(basename -- "$bin"): inexistente")
+    elif [[ ! -x "$bin" ]]; then
+      bad+=("$(basename -- "$bin"): sem bit de execução")
+    fi
+  done <<<"$cmds"
+
+  if [[ $n -eq 0 ]]; then
+    report fail_val "hooks.json: commands resolvem para script executável" \
+      "nenhum command declarado — plugin instalado com ZERO hooks ativos"
+  elif [[ ${#bad[@]} -gt 0 ]]; then
+    report fail_env "hooks.json: commands resolvem para script executável" "${bad[*]}"
+  else
+    report ok "hooks.json: $n commands resolvem para script executável"
+  fi
+}
+
+# ------------------------------------------------------- validação do routing-table.yaml
+
+yaml_check_bun() { # imprime o motivo no stdout; rc 0 = válido
+  MAESTRO_YAML="$1" bun -e '
+const fs = require("fs");
+const p = process.env.MAESTRO_YAML;
+let d;
+try {
+  d = Bun.YAML.parse(fs.readFileSync(p, "utf8"));
+} catch (e) {
+  console.log("YAML inválido: " + String((e && e.message) || e).split("\n")[0]);
+  process.exit(1);
+}
+if (Array.isArray(d) && d.length === 1) d = d[0];
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const errs = [];
+if (!isObj(d)) {
+  errs.push("raiz do YAML não é um mapa");
+} else {
+  if (d.version === undefined || d.version === null) errs.push("chave version ausente");
+  if (!isObj(d.gate)) {
+    errs.push("chave gate ausente ou não é mapa");
+  } else {
+    if (d.gate.mode !== "warn" && d.gate.mode !== "block")
+      errs.push("gate.mode deve ser warn|block (achado: " + JSON.stringify(d.gate.mode) + ")");
+    if (!isObj(d.gate.allowlist)) errs.push("gate.allowlist ausente");
+    if (!isObj(d.gate.denylist)) errs.push("gate.denylist ausente");
+  }
+  if (!isObj(d.workflows) || Object.keys(d.workflows).length === 0)
+    errs.push("workflows ausente ou vazio");
+  if (!Array.isArray(d.routes) || d.routes.length === 0) errs.push("routes ausente ou vazio");
+}
+if (errs.length) { console.log(errs.join("; ")); process.exit(1); }
+process.exit(0);
+' 2>&1
+}
+
+yaml_check_bash() { # checagem estrutural, sem Bun; imprime o motivo no stdout
+  local f="$1" errs=() bal
+  grep -qE '^version:[[:space:]]*[^[:space:]#]' "$f" || errs+=("chave version ausente")
+  grep -qE '^gate:[[:space:]]*(#.*)?$'          "$f" || errs+=("chave gate ausente")
+  grep -qE '^[[:space:]]+mode:[[:space:]]*(warn|block)[[:space:]]*(#.*)?$' "$f" \
+    || errs+=("gate.mode deve ser warn|block")
+  grep -qE '^[[:space:]]+allowlist:' "$f" || errs+=("gate.allowlist ausente")
+  grep -qE '^[[:space:]]+denylist:'  "$f" || errs+=("gate.denylist ausente")
+  grep -qE '^workflows:'             "$f" || errs+=("workflows ausente")
+  grep -qE '^routes:'                "$f" || errs+=("routes ausente")
+  grep -qE "^$(printf '\t')"         "$f" && errs+=("indentação com TAB (YAML proíbe)")
+  bal=$(awk '{ l=$0; sub(/^#.*/,"",l); sub(/[ \t]#.*/,"",l);
+               ob+=gsub(/\[/,"[",l); cb+=gsub(/\]/,"]",l);
+               oc+=gsub(/\{/,"{",l); cc+=gsub(/\}/,"}",l) }
+             END { print (ob-cb) "," (oc-cc) }' "$f")
+  [[ "$bal" != "0,0" ]] && errs+=("colchetes/chaves de fluxo desbalanceados ($bal)")
+  if [[ ${#errs[@]} -gt 0 ]]; then
+    local IFS='; '; printf '%s\n' "${errs[*]}"; return 1
+  fi
+  return 0
+}
+
+check_routing_table() { # AC da S-103: "detecta YAML inválido"
+  local f="$REPO_DIR/config/routing-table.yaml" out
+  if [[ ! -f "$f" ]]; then
+    report fail_env "routing-table.yaml presente" "$f não existe"
+    return
+  fi
+  report ok "routing-table.yaml presente"
+
+  if has bun; then
+    if out=$(yaml_check_bun "$f"); then
+      report ok "routing-table.yaml: schema válido (parse real via Bun.YAML)"
+    else
+      report fail_val "routing-table.yaml: schema válido" "${out:-parse falhou}"
+    fi
+  else
+    if out=$(yaml_check_bash "$f"); then
+      report ok "routing-table.yaml: schema válido (checagem estrutural — Bun ausente)"
+    else
+      report fail_val "routing-table.yaml: schema válido (sem Bun)" "$out"
+    fi
+  fi
+}
+
+# ------------------------------------------------------------------ decision records
+
+now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
+
+record_mtime() {
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || printf '0\n'
+}
+
+record_expired() { # 0 = expirado; fonte de verdade expires_at, fallback mtime (review P2-3)
+  local f="$1" exp='' epoch now
+  now=$(now_epoch)
+  if has jq; then exp=$(jq -r '.expires_at // empty' "$f" 2>/dev/null || true); fi
+  if [[ -n "$exp" ]] && epoch=$(date -d "$exp" +%s 2>/dev/null); then
+    [[ $now -ge $epoch ]]
+  else
+    [[ $((now - $(record_mtime "$f"))) -ge $MAESTRO_TTL_SECONDS ]]
+  fi
+}
+
+record_schema_ok() { # DATA_MODEL §3, sem campos extras
+  local f="$1"
+  jq -e --arg fields "$RECORD_FIELDS" '
+    (type == "object")
+    and (.session_id  | type == "string") and (.session_id | length > 0)
+    and (.ts          | type == "string")
+    and (.expires_at  | type == "string")
+    and (.workflow    | type == "string")
+    and (.mode as $m | ["direct","subagent","multi"] | index($m) != null)
+    and ((keys - ($fields | split(" "))) | length == 0)
+    and (((.reason // "") | length) <= 120)
+    and (if has("agents") then (.agents | type == "array") else true end)
+  ' "$f" >/dev/null 2>&1
+}
+
+check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e limpa TTL
+  local dir="$MAESTRO_HOME/sessions"
+  if [[ ! -d "$dir" ]]; then
+    report ok "decision records: nenhum diretório de sessões ainda"
+    return
+  fi
+  shopt -s nullglob
+  local files=("$dir"/*.json)
+  shopt -u nullglob
+  if [[ ${#files[@]} -eq 0 ]]; then
+    report ok "decision records: nenhum registrado"
+    return
+  fi
+  if ! has jq; then
+    report skip "decision records: schema DATA_MODEL §3" "requer jq (${#files[@]} record(s) não verificados)"
+    return
+  fi
+  local kept=0 removed=0 bad=() f
+  for f in "${files[@]}"; do
+    if record_expired "$f"; then
+      rm -f "$f" && removed=$((removed + 1))
+      continue
+    fi
+    if record_schema_ok "$f"; then
+      kept=$((kept + 1))
+    else
+      bad+=("$(basename -- "$f")")
+    fi
+  done
+  if [[ ${#bad[@]} -gt 0 ]]; then
+    report fail_val "decision records: schema DATA_MODEL §3" \
+      "inválido(s): ${bad[*]} (fix: remova o(s) arquivo(s) em \$MAESTRO_HOME/sessions)"
+  else
+    report ok "decision records: $kept válido(s), $removed expirado(s) removido(s)"
+  fi
+}
+
+# ----------------------------------------------------------------------- doctor
+
+doctor() {
+  local ci=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --ci) ci=1 ;;
+      -h|--help) usage; exit 0 ;;
+      *) die validation "opção desconhecida '$1' em doctor" "maestro doctor [--ci]" 1 ;;
+    esac
+    shift
+  done
+  CI=$ci
+  if [[ $CI -eq 0 && -t 1 && -z "${NO_COLOR:-}" ]]; then
+    C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_FAIL=$'\033[31m'; C_OFF=$'\033[0m'
+  fi
+
+  # --- ambiente / fronteiras -------------------------------------------------
+  if [[ -f "$REPO_DIR/hooks/lib/common.sh" ]]; then
+    report ok "lib/common.sh presente"
+    check env "kill-switch: MAESTRO_OFF respeitado por common.sh" \
+      bash -c 'MAESTRO_OFF=1 bash -c "source \"$1\"; maestro_killswitch; exit 3"; [[ $? -eq 0 ]]' \
+      _ "$REPO_DIR/hooks/lib/common.sh"
+  else
+    report fail_env "lib/common.sh presente" "$REPO_DIR/hooks/lib/common.sh não existe"
+    report fail_env "kill-switch: MAESTRO_OFF respeitado por common.sh" "lib ausente"
+  fi
+
+  local h
+  for h in session-start pre-tool-gate user-prompt-submit; do
+    if [[ ! -f "$REPO_DIR/hooks/$h.sh" ]]; then
+      report fail_env "hook $h.sh presente e executável" "arquivo não existe"
+    elif [[ ! -x "$REPO_DIR/hooks/$h.sh" ]]; then
+      report fail_env "hook $h.sh presente e executável" "sem bit de execução (fix: chmod +x)"
+    else
+      report ok "hook $h.sh presente e executável"
+    fi
+  done
+
+  # --- dependências (nunca confundidas com conteúdo inválido — review P2-7) --
+  check env "dependência: jq instalado (API_SPEC §1)" command -v jq
+  check env "dependência: flock disponível" command -v flock
+  if has bun; then
+    report ok "dependência: bun instalado ($(bun --version 2>/dev/null || echo '?'))"
+  else
+    report warn "dependência: bun ausente" "doctor roda em modo degradado; decide/status/log exigem Bun"
+  fi
+
+  # --- registro dos hooks e manifesto ---------------------------------------
+  check_hooks_registry
+
+  local pj="$REPO_DIR/.claude-plugin/plugin.json"
+  if [[ ! -f "$pj" ]]; then
+    report fail_env "plugin.json presente" "$pj não existe"
+  else
+    local rc=0; json_valid "$pj" || rc=$?
+    if [[ $rc -eq 2 ]]; then
+      report skip "plugin.json é JSON válido" "nem jq nem bun disponíveis para parsear"
+    elif [[ $rc -ne 0 ]]; then
+      report fail_val "plugin.json é JSON válido" "parse falhou"
+    elif has jq && ! jq -e '(.name | type == "string") and (.version | type == "string")' \
+                        "$pj" >/dev/null 2>&1; then
+      report fail_val "plugin.json tem name e version" "campos obrigatórios ausentes"
+    else
+      report ok "plugin.json é JSON válido (name, version)"
+    fi
+  fi
+
+  # --- config ----------------------------------------------------------------
+  check_routing_table
+
+  # --- estado ----------------------------------------------------------------
+  if [[ "$MAESTRO_HOME" != "$MAESTRO_HOME_DEFAULT" ]]; then
+    report warn "MAESTRO_HOME fora do default" \
+      "usando '$MAESTRO_HOME' (default: '$MAESTRO_HOME_DEFAULT') — logs e records vão para lá"
+  fi
+  if mkdir -p "$MAESTRO_HOME/logs" "$MAESTRO_HOME/sessions" >/dev/null 2>&1 \
+     && touch "$MAESTRO_HOME/logs/.w" >/dev/null 2>&1; then
+    rm -f "$MAESTRO_HOME/logs/.w" 2>/dev/null || true
+    report ok "diretório de estado gravável"
+  else
+    report fail_env "diretório de estado gravável" \
+      "não consigo escrever em $MAESTRO_HOME (fix: cheque permissões ou exporte MAESTRO_HOME)"
+  fi
+
+  check_records
+
+  # --- veredito ---------------------------------------------------------------
+  if [[ $FAIL_ENV -eq 1 ]]; then
+    [[ $CI -eq 1 ]] && printf 'doctor: FALHOU — %s checagens, %s aviso(s), %s ignorada(s)\n' \
+      "$N_CHECKS" "$N_WARN" "$N_SKIP"
+    die env "doctor encontrou falhas de ambiente" "ver as linhas FAIL acima" 2
+  fi
+  if [[ $FAIL_VAL -eq 1 ]]; then
+    [[ $CI -eq 1 ]] && printf 'doctor: FALHOU — %s checagens, %s aviso(s), %s ignorada(s)\n' \
+      "$N_CHECKS" "$N_WARN" "$N_SKIP"
+    die validation "doctor encontrou schema/registro inválido" "ver as linhas FAIL acima" 1
+  fi
+  if [[ $CI -eq 1 ]]; then
+    printf 'doctor: ok — %s checagens, %s aviso(s), %s ignorada(s)\n' "$N_CHECKS" "$N_WARN" "$N_SKIP"
+  else
+    printf 'doctor: instalação saudável (%s checagens, %s aviso(s))\n' "$N_CHECKS" "$N_WARN"
+  fi
+  exit 0
+}
+
+# ----------------------------------------------------------------------- dispatch
+
+delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
+  local sub="$1"; shift
+  has bun || die env "'$sub' exige Bun e o binário não está no PATH" \
+    "instale o Bun (https://bun.sh) — 'maestro doctor' segue funcionando sem ele" 2
+  [[ -f "$REPO_DIR/src/cli.ts" ]] || die env "src/cli.ts não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
+  exec bun "$REPO_DIR/src/cli.ts" "$sub" "$@"
 }
 
 cmd="${1:-}"
 case "$cmd" in
   doctor) shift; doctor "$@" ;;
-  decide|status|log)
-    echo "maestro: config: comando '$cmd' chega no E2 (S-202/S-204). Por ora, siga o fluxo manual." >&2
-    exit 1 ;;
+  decide|status|log) shift; delegate "$cmd" "$@" ;;
   ""|-h|--help) usage ;;
-  *) echo "maestro: validation: comando desconhecido '$cmd' (fix: maestro --help)" >&2; exit 1 ;;
+  *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac
