@@ -434,7 +434,14 @@ build_and_emit() {
   local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_tail
 
   sec_head="<maestro-routing>"$'\n'
-  sec_head+="Maestro v0.1 — roteamento MoE. Kill-switch: MAESTRO_OFF=1."$'\n'
+  # Versão derivada do manifesto, não literal: a string ficou em "v0.1" até o
+  # plugin chegar em 1.0.0 e só apareceu ao instalar de verdade. sed em vez de jq
+  # porque jq é opcional aqui e isto não pode falhar a sessão.
+  local _ver
+  _ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' \
+           "$REPO_DIR/.claude-plugin/plugin.json" 2>/dev/null | head -1)
+  [[ -n "$_ver" ]] && _ver=" v$_ver"
+  sec_head+="Maestro${_ver} — roteamento MoE. Kill-switch: MAESTRO_OFF=1."$'\n'
   if (( SESSION_ID_OK == 1 )); then
     sec_head+="session_id: $SESSION_ID"$'\n'
   else
