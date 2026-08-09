@@ -1,0 +1,133 @@
+# CI do Maestro — fecha a dívida P2-12 e a exigência do ENGINEERING_SPEC §CI/CD
+# ("shellcheck + bats + bun test + maestro doctor --ci + validação de schema").
+#
+# Duas divergências deliberadas em relação à letra do spec, ambas já registradas:
+#   - bats  -> bash puro. Decisão 8 do docs/decision-log.md ("bats não está instalado
+#     e a dependência não se paga"). A suíte é `tests/run-all.sh`, 700+ asserções.
+#   - bun test -> não existe `*.test.ts` nem `package.json`; a CLI (`src/cli.ts`) é
+#     exercitada de fora por `tests/cli/test-cli.sh`, que roda dentro do run-all.
+#   - validação de schema dos YAML -> coberta por `maestro doctor`, que faz parse real
+#     do routing-table.yaml via Bun.YAML e valida hooks.json/plugin.json.
+#
+# Nada aqui depende de rede em runtime do plugin; a rede é só do runner.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: a CI só lê o repo. Este repo é um roteador que protege
+# `.github/workflows/` justamente porque é por onde se executa código.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Instala explicitamente em vez de presumir a imagem do runner.
+      - name: Instalar shellcheck e jq
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends shellcheck jq
+          shellcheck --version
+          jq --version
+
+      # A lista é derivada do disco, não hardcoded: hook ou teste novo entra
+      # na CI sem ninguém lembrar de editar este arquivo.
+      - name: Montar a lista de alvos
+        id: targets
+        run: |
+          set -euo pipefail
+          {
+            find hooks -type f -name '*.sh'
+            find tests -type f -name '*.sh'
+            printf 'bin/maestro\n'
+          } | sort -u > /tmp/sh-targets.txt
+          echo "Alvos ($(wc -l < /tmp/sh-targets.txt)):"
+          cat /tmp/sh-targets.txt
+          test -s /tmp/sh-targets.txt
+
+      # GATE BLOQUEANTE: severidade `error`. Baseline em 2026-08-09 = 0 errors.
+      # Warnings/info existem (relatório completo no passo seguinte) e estão
+      # catalogados no relatório do Agente C; quando forem tratados, trocar
+      # --severity=error por --severity=warning aqui e o gate aperta sozinho.
+      - name: shellcheck (gate — severity=error)
+        run: |
+          set -euo pipefail
+          xargs -a /tmp/sh-targets.txt \
+            shellcheck -x -P SCRIPTDIR --severity=error --format=gcc
+
+      # NÃO BLOQUEANTE: inventário completo, com anotação no PR e contagem no
+      # summary. É o que impede a CI de virar decorativa enquanto o gate está em
+      # `error` — a dívida fica visível a cada run em vez de sumir.
+      - name: shellcheck (relatório completo — informativo)
+        if: always()
+        run: |
+          set -uo pipefail
+          xargs -a /tmp/sh-targets.txt \
+            shellcheck -x -P SCRIPTDIR --severity=style --format=json1 > /tmp/sc.json || true
+          for lvl in error warning info style; do
+            n=$(jq --arg l "$lvl" '[.comments[] | select(.level==$l)] | length' /tmp/sc.json)
+            printf '%s: %s\n' "$lvl" "$n"
+            printf '%s: %s\n' "$lvl" "$n" >> "$GITHUB_STEP_SUMMARY"
+          done
+          jq -r '.comments[] | select(.level=="warning" or .level=="error")
+                 | "::warning file=\(.file),line=\(.line),col=\(.column)::SC\(.code) \(.message)"' \
+            /tmp/sc.json
+
+  suite:
+    name: suíte + doctor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # jq é contrato duro dos hooks (API_SPEC §1); flock vem do util-linux e é o
+      # que impede perda de linha no log sob contenção (decision-log #7).
+      # Instalados explicitamente: a imagem do runner pode mudar, o contrato não.
+      - name: Instalar jq e flock
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq util-linux
+          command -v jq    >/dev/null || { echo "jq ausente";    exit 1; }
+          command -v flock >/dev/null || { echo "flock ausente"; exit 1; }
+          jq --version
+          flock --version
+
+      - name: Instalar Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Conferir o ambiente
+        run: |
+          set -euo pipefail
+          command -v bun >/dev/null || { echo "bun ausente"; exit 1; }
+          bun --version
+          bash --version | head -1
+          # A CI nunca roda com o kill-switch ligado — seria uma suíte verde vazia.
+          test -z "${MAESTRO_OFF:-}" || { echo "MAESTRO_OFF setado na CI"; exit 1; }
+
+      # run-all.sh isola MAESTRO_HOME num mktemp -d próprio (review P2-8),
+      # então não precisa de setup de estado nem de limpeza.
+      - name: Suíte completa
+        run: bash tests/run-all.sh
+
+      # doctor --ci: sem cor, resumo de uma linha, exit code fiel.
+      # Roda DEPOIS da suíte e sem MAESTRO_HOME custom, para exercitar o caminho
+      # default (o run-all já cobre o caminho isolado).
+      - name: maestro doctor --ci
+        run: ./bin/maestro doctor --ci

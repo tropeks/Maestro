@@ -19,9 +19,13 @@ claude  # dentro do Claude Code:
 
 ## Validar
 ```
-~/dev/maestro/bin/maestro doctor      # 19 checagens; --ci para pipeline
-bash ~/dev/maestro/tests/run-all.sh   # suíte completa
+~/dev/maestro/bin/maestro doctor      # 21 checagens; --ci para pipeline
+bash ~/dev/maestro/tests/run-all.sh   # suíte completa (698 asserções)
 ```
+
+A CI (`.github/workflows/ci.yml`) roda exatamente isso a cada push/PR, mais
+`shellcheck` em `hooks/`, `bin/maestro` e `tests/`. O gate do shellcheck bloqueia
+em `error`; `warning`/`info` saem como anotação no PR enquanto a dívida não fecha.
 
 ## Uso
 
@@ -91,3 +95,28 @@ Maestro bloqueia trabalho: qualquer falha degrada com exit 0.
 O log (`~/.maestro/logs/routing.jsonl`) carrega **só metadados**, com chaves
 tipadas e vocabulário fechado. Nunca o texto do prompt, nunca o caminho completo
 de um arquivo — só a extensão. Nenhuma chave aceita `/`.
+
+## Licença
+
+São **duas licenças diferentes** no mesmo repositório, e elas não se misturam:
+
+| O quê | Licença | Titular |
+|---|---|---|
+| O Maestro — `hooks/`, `bin/`, `src/`, `config/`, `docs/`, `tests/` e os 5 agentes próprios (`dev-junior`, `dev-pleno`, `engenheiro`, `revisor`, `qa`) | MIT (`LICENSE`) | © 2026 Romulo de Jesus Costa |
+| `vendor/wshobson-agents/` — cópias verbatim de [wshobson/agents](https://github.com/wshobson/agents), pinadas por commit em `PINNED.md` | MIT (`vendor/wshobson-agents/LICENSE`) | © 2024 Seth Hobson |
+| `agents/golang-pro.md`, `python-pro.md`, `typescript-pro.md`, `postgres-pro.md` — **adaptações** (obras derivadas) do material acima | MIT do upstream | © 2024 Seth Hobson, adaptado |
+
+Escolher MIT para o projeto **não relicencia** o material vendorizado: ele
+continua sob a MIT do Seth Hobson, com o aviso de copyright dele preservado em
+`vendor/wshobson-agents/LICENSE`. Os quatro especialistas adaptados carregam a
+procedência no frontmatter (`# upstream: wshobson/agents@<commit> (MIT, Seth
+Hobson)`), que é a atribuição exigida pelo ADR-004. `vendor/` é read-only: toda
+adaptação vive em `agents/`, nunca no original.
+
+Por que MIT e não outra: é a mesma licença do material que o repo já
+redistribui (zero atrito de compatibilidade), preserva o aviso de garantia — que
+importa numa ferramenta cujos hooks liberam ou barram edição de código — e não
+cria obstáculo para a fase 2, quando outras pessoas usarem o plugin. Apache-2.0
+traria concessão de patente e `NOTICE` sem superfície patenteável que justifique
+o overhead; copyleft seria hostil a um plugin carregado dentro de um host
+proprietário; domínio público abriria mão da atribuição e do disclaimer.
