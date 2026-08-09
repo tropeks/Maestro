@@ -64,9 +64,28 @@ O Maestro é uma camada de roteamento e política sobre o Claude Code: um **plug
 **Status:** Aceito. **Decisão:** single-user para sempre na v1 (explícito, contrato §7). Fase 2 (QM/multi-usuário) revisita.
 
 ### ADR-007 — Sistema de memória único
-**Status:** **Proposto** (Open Question do brief).
-**Decisão provisória:** testar **claude-mem** primeiro (instalação por projeto, não global), por integração via hooks — mesmo mecanismo do Maestro. GBrain fica como alternativa se claude-mem conflitar com os hooks do Maestro (ambos usam SessionStart/PostToolUse — ordem de execução a validar no spike da Fase 1).
-**Flag:** decisão final trava no fim da Fase 1.
+**Status:** **Aceito** (v1.2 — spike S-601 executado em 2026-08-09).
+**Decisão:** **gbrain**, em modo local (`gbrain init --pglite` + `claude mcp add gbrain -- gbrain serve`).
+**Contexto:** a decisão provisória era testar claude-mem primeiro, por ele integrar via hooks — o mesmo mecanismo do Maestro. O spike inverteu isso: é justamente o mecanismo compartilhado que o desqualifica.
+
+**Medições do spike** (mesma máquina, 5 execuções por evento, mínimo):
+
+| evento | claude-mem 13.14.0 | Maestro | fator |
+|---|---|---|---|
+| UserPromptSubmit | 734 ms | 24 ms | 30× |
+| PreToolUse | 679 ms | 7 ms | 97× |
+| PostToolUse | 721 ms | — | — |
+
+- claude-mem registra **6 hooks** (Setup, SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop) — **os três do Maestro entre eles**. A leitura inicial da documentação dizia 5 e não incluía PreToolUse.
+- A latência é **idêntica com o worker de pé ou parado**: não é o serviço, é o wrapper, que faz `$SHELL -lc 'echo $PATH'` + `node` a cada evento. É estrutural, não bug transitório.
+- PreToolUse e PostToolUse disparam a **cada tool call**: numa sessão de 60 chamadas são ~86 s de latência serial adicionada, à frente do gate de 7 ms do Maestro. Isso viola de frente a NFR "overhead dos hooks < 100 ms, percebido zero no fluxo".
+- Ponto a favor do claude-mem, medido: **falhou aberto** (exit 0) com o worker parado, e a injeção de SessionStart custa 56 bytes — custo de contexto zero.
+
+**gbrain, verificado no spike:** **zero hooks registrados** (`settings.json` intocado), MCP stdio responde ao `initialize`, e `init --pglite --no-embedding` sobe sem chave e sem rede.
+
+**Ressalva honesta:** `gbrain init --pglite` **exige** provedor de embedding e falha sem ele; só `--no-embedding` roda keyless, com recuperação degradada (grafo + keyword, sem busca semântica). Embeddings locais existem como receita (Ollama, llama.cpp llama-server) mas nenhum dos dois está instalado nesta máquina. Ou seja, a objeção de "memória sai da máquina" é **redutível, não eliminada**: escolher entre recuperação degradada, instalar Ollama local, ou aceitar chave hospedada. **Essa escolha continua do Romulo.**
+
+**Consequência:** claude-mem não é ruim — é incompatível com uma camada cujo valor é trilho determinístico imperceptível. Reverter é um edit aqui e `npx claude-mem install`.
 
 ---
 

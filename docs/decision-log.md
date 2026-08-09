@@ -163,6 +163,27 @@ Recomendação: **gbrain**. Objeção honesta e não resolvida: gbrain exige API
 embeddings, ou seja, a memória sai da máquina — contra "residência local" do brief §7 e
 "sem dependência de rede" do CLAUDE.md. Precisa ser escolha consciente.
 
+### Spike S-601 (E6) — executado, ADR-007 fechado em gbrain
+
+Instalei os dois e medi, em vez de decidir por leitura. O que mudou em relação à análise
+de documentação: claude-mem tem **6 hooks**, não 5, e **inclui PreToolUse** — os três hooks
+do Maestro. Latência medida (mínimo de 5): UserPromptSubmit 734ms, PreToolUse 679ms,
+PostToolUse 721ms, contra 24ms e 7ms do Maestro. Idêntica com worker de pé ou parado, o que
+prova que o custo é o wrapper (`$SHELL -lc` + node por evento), não o serviço.
+
+Crédito onde é devido, também medido: claude-mem **falhou aberto** com o worker parado
+(exit 0 nos três hooks) — o bug de bloqueio que as issues relatam não reproduziu na 13.14.0
+em invocação isolada — e sua injeção de SessionStart custa 56 bytes.
+
+gbrain: zero hooks (`settings.json` intocado), MCP stdio responde, `init --pglite
+--no-embedding` sobe sem chave e sem rede.
+
+**Correção de algo que afirmei antes:** eu disse que a objeção da API key "tinha caído".
+Forte demais. `gbrain init --pglite` **falha** sem provedor de embedding; só `--no-embedding`
+roda keyless, com recuperação degradada. Ollama/llama-server são receitas suportadas mas não
+estão instalados aqui. A objeção é redutível, não eliminada — e a escolha do provedor
+continua sendo do Romulo.
+
 ### Registrado para a v2, não adotado
 
 `rebelytics/one-skill-to-rule-them-all` (CC-BY-4.0) é o **task-observer** que o brief

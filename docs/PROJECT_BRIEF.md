@@ -182,7 +182,13 @@ Sem personas secundárias na v1.
 ## Open Questions
 
 1. Nome definitivo (Maestro é provisório)
-2. Sistema de memória único: claude-mem ou GBrain? (testar ambos, matar um — decisão antes da Fase 1 fechar)
+2. ~~Sistema de memória único: claude-mem ou GBrain?~~ **FECHADA (2026-08-09): gbrain, modo local.**
+   Spike S-601 executado, os dois instalados e medidos. claude-mem registra 6 hooks — os três
+   do Maestro entre eles — e custa ~700ms por evento (mesmo com o worker parado: o custo é o
+   wrapper, `$SHELL -lc` + node por evento, não o serviço). Como PreToolUse e PostToolUse
+   disparam a cada tool call, uma sessão de 60 chamadas ganharia ~86s de latência serial na
+   frente de um gate que roda em 7ms. gbrain não registra hook nenhum (MCP stdio) e sobe sem
+   chave com `--no-embedding`. Detalhes e ressalvas no ADR-007.
 3. Formato de distribuição: pasta em `~/.claude/` versionada vs. plugin instalável via marketplace pessoal (afeta a fase 2 com QM)
 4. ~~Shrimp task-manager entra na routing table ou fica como está?~~ **FECHADA (2026-08-09): sai.**
    Redundante depois do E2/E3: a decomposição de tarefa já é o catálogo de `workflows`
