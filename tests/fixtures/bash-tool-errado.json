@@ -1,0 +1,8 @@
+{
+  "session_id": "sess-guard01",
+  "cwd": "/home/user/proj",
+  "tool_name": "Read",
+  "tool_input": {
+    "command": "rm -rf /"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "session_id": "sess-guard01",
+  "transcript_path": "/dev/null",
+  "cwd": "/home/user/proj",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf /"
+  }
+}

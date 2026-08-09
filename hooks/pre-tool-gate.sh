@@ -211,7 +211,7 @@ if [[ "$_gate_head" != "M$_gate_rs"*"$_gate_rs"*"$_gate_rs"* ]]; then
   _gate_debug "json malformado ou campo fora do formato, degradando"
   exit 0
 fi
-_gate_head="${_gate_head#M$_gate_rs}"
+_gate_head="${_gate_head#M"$_gate_rs"}"
 TOOL="${_gate_head%%"$_gate_rs"*}"
 _gate_head="${_gate_head#*"$_gate_rs"}"
 SID="${_gate_head%%"$_gate_rs"*}"
