@@ -12,7 +12,20 @@
 #    abre por causa do Maestro é o pior desfecho possível — nada aqui bloqueia.
 #  - orçamento de saída: 8000 bytes (API_SPEC §1, proxy de ~2k tokens).
 #    Ordem de truncamento: heurísticas → índice do roster → (rede de segurança)
-#    rotas/workflows → profile. session_id e instrução canônica NUNCA truncam.
+#    rotas/workflows → profile → bindings → gates humanos. session_id e
+#    instrução canônica NUNCA truncam.
+#
+# S-401 — o bloco `bindings:` do YAML (step → skill:/agent:/native:) é injetado
+# como seção própria: é ele que transforma `investigate` de palavra solta em
+# comando verificável. Fica ACIMA das rotas na prioridade de orçamento porque é
+# instrução de execução; rotas e roster são material de referência.
+#
+# S-501 — gates humanos. O gate NÃO é hook novo: `workflows.*.gate` vira uma
+# instrução curta na injeção ("pare, pergunte, espere resposta"). `gate: plan`
+# casa com o plan mode nativo (aprovação de um toque, que é o que torna o gate
+# aprovável do telefone); `gate: ship` é confirmação explícita em texto. A lista
+# de workflows de cada gate é DERIVADA do YAML — o texto da pergunta é curado
+# aqui porque quem responde está no telefone e precisa de 1 palavra.
 #
 # Overrides de ambiente (usados pelos testes; os defaults valem em produção):
 #   MAESTRO_ROUTING_TABLE      caminho do routing-table.yaml
@@ -98,7 +111,8 @@ read_session_id() {
 # no gate-policy.sh — que o GATE vai *sourcear*.
 # ---------------------------------------------------------------------------
 GATE_MODE=""; ALLOW_EXT=""; ALLOW_PATHS=""; DENY_PATHS=""; DENY_SELF=""
-HEURISTICS=""; ROUTES=""; WORKFLOWS=""
+HEURISTICS=""; ROUTES=""; WORKFLOWS=""; BINDINGS=""
+GATE_PLAN_WFS=""; GATE_SHIP_WFS=""
 
 yaml_inline_list() { # yaml_inline_list "[a, b, c]" <regex-de-token>
   local s="${1:-}" re="${2:-}" out="" tok
@@ -115,6 +129,47 @@ yaml_inline_list() { # yaml_inline_list "[a, b, c]" <regex-de-token>
   printf '%s' "${out# }"
 }
 
+# bind_add "<step> <alvo> [<alvo>]" — S-401. Mesmo contrato do yaml_inline_list:
+# nada entra na injeção sem passar por regex. Alvo malformado é DESCARTADO com
+# aviso (nunca mutilado), e um step sem alvo válido simplesmente não aparece —
+# quem grita sobre binding faltando é o `maestro doctor`, não a sessão.
+bind_add() {
+  local raw="${1:-}" step rest tok out=""
+  step="${raw%% *}"; rest="${raw#* }"
+  [[ -n "$step" && "$rest" != "$raw" ]] || return 0
+  [[ "$step" =~ ^[a-z][a-z0-9-]{0,31}$ ]] \
+    || { warn "step com nome inválido no bloco bindings (descartado)"; return 0; }
+  for tok in $rest; do
+    [[ "$tok" =~ ^(skill|agent|native):[A-Za-z0-9][A-Za-z0-9._-]{0,47}$ ]] \
+      || { warn "binding de '$step' descartado (fora de skill:|agent:|native:)"; continue; }
+    out+="${out:+ + }$tok"
+  done
+  [[ -n "$out" ]] || return 0
+  BINDINGS+="- $step → $out"$'\n'
+  return 0
+}
+
+# Gates humanos (S-501): quais workflows declaram `gate: plan` / `gate: ship`.
+# Derivado das linhas de workflow já parseadas — o YAML continua sendo a fonte
+# única; aqui só se decide o texto da pergunta.
+collect_gates() {
+  local line name g
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    line="${line#- }"
+    name="${line%%:*}"
+    [[ "$name" =~ ^[a-z][a-z0-9_-]{0,31}$ ]] || continue
+    [[ "$line" =~ gate:[[:space:]]*([a-z-]{1,16}) ]] || continue
+    g="${BASH_REMATCH[1]}"
+    case "$g" in
+      plan) GATE_PLAN_WFS+="$name, " ;;
+      ship) GATE_SHIP_WFS+="$name, " ;;
+    esac
+  done <<<"$WORKFLOWS"
+  GATE_PLAN_WFS="${GATE_PLAN_WFS%, }"; GATE_SHIP_WFS="${GATE_SHIP_WFS%, }"
+  return 0
+}
+
 parse_routing_table() {
   [[ -f "$ROUTING_TABLE" && -r "$ROUTING_TABLE" ]] || { warn "routing table ilegível ou ausente"; return 1; }
   local key val
@@ -128,6 +183,7 @@ parse_routing_table() {
       HEUR)        HEURISTICS+="- $val"$'\n' ;;
       ROUTE)       ROUTES+="- $val"$'\n' ;;
       WORKFLOW)    WORKFLOWS+="- $val"$'\n' ;;
+      BIND)        bind_add "$val" ;;
     esac
   done < <(awk '
     function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
@@ -137,7 +193,16 @@ parse_routing_table() {
       inheur   = ($0 ~ /^execution_heuristics:[ \t]*(#.*)?$/) ? 1 : 0
       inroutes = ($0 ~ /^routes:[ \t]*(#.*)?$/)               ? 1 : 0
       inwf     = ($0 ~ /^workflows:[ \t]*(#.*)?$/)            ? 1 : 0
+      inbind   = ($0 ~ /^bindings:[ \t]*(#.*)?$/)             ? 1 : 0
       sub_ = ""
+      next
+    }
+    inbind == 1 && /^[ \t]+[a-z][A-Za-z0-9_-]*:/ {
+      v = $0; sub(/[ \t]*#.*$/, "", v)
+      i = index(v, ":"); k = substr(v, 1, i - 1); r = substr(v, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", k)
+      gsub(/[][,]/, " ", r); r = tidy(r)
+      if (k != "" && r != "") print "BIND\t" k " " r
       next
     }
     ingate == 1 {
@@ -366,7 +431,7 @@ cleanup_records() {
 # 7. Montagem do bloco + orçamento de 8000 bytes.
 # ---------------------------------------------------------------------------
 build_and_emit() {
-  local sec_head sec_instr sec_profile sec_routes sec_heur sec_roster sec_tail
+  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_tail
 
   sec_head="<maestro-routing>"$'\n'
   sec_head+="Maestro v0.1 — roteamento MoE. Kill-switch: MAESTRO_OFF=1."$'\n'
@@ -379,6 +444,21 @@ build_and_emit() {
   sec_instr=$'\n'"INSTRUÇÃO CANÔNICA — antes de editar código nesta sessão, registre a decisão:"$'\n'
   sec_instr+="  maestro decide --session $SESSION_ID --workflow <fix|feature|refactor|ship|audit|custom> --mode <direct|subagent|multi> [--agents a,b] [--reason \"por quê\"]"$'\n'
   sec_instr+="Sem decision record válido, o gate registra aviso em toda edição (gate.mode: $GATE_MODE_EFFECTIVE)."$'\n'
+
+  # S-501 — gate humano. Duas linhas no máximo: quem aprova está no telefone,
+  # então a instrução precisa caber num olhar e a pergunta ser de uma palavra.
+  sec_gate=""
+  if [[ -n "$GATE_PLAN_WFS$GATE_SHIP_WFS" ]]; then
+    sec_gate=$'\n'"## Gates humanos — PARE, pergunte e espere resposta explícita."$'\n'
+    [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo."$'\n'
+    [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
+  fi
+
+  # S-401 — o step deixa de ser palavra solta.
+  sec_bind=""
+  if [[ -n "$BINDINGS" ]]; then
+    sec_bind=$'\n'"## Bindings (step → o que roda; \"a + b\" = método + quem executa). Siga o binding."$'\n'"$BINDINGS"
+  fi
 
   sec_profile=""
   if [[ -n "$P_PROJECT$P_LANGS$P_EXPERTS$P_PIPELINE$P_NOTES" ]] || (( P_EXPERTS_EMPTY == 1 )); then
@@ -429,15 +509,17 @@ build_and_emit() {
 
   # Orçamento: head/instr/tail são intocáveis (session_id e instrução canônica).
   # O resto cede na ordem do API_SPEC (heurísticas → roster) e, como rede de
-  # segurança além da spec, rotas → profile: uma routing table gigante estoura
-  # 8000 bytes sozinha, e o teto vale SEMPRE.
+  # segurança além da spec, rotas → profile → bindings → gates: uma routing
+  # table gigante estoura 8000 bytes sozinha, e o teto vale SEMPRE.
+  # Gates e bindings são os últimos a ceder (= primeiros no laço) porque são
+  # instrução de ação; rotas e roster são material de referência.
   sec_tail="</maestro-routing>"$'\n'
   local fixed=$(( ${#sec_head} + ${#sec_instr} + ${#sec_tail} ))
   local remaining=$(( BUDGET - fixed ))
   (( remaining < 0 )) && remaining=0
 
   local name cur allowed cut
-  for name in sec_profile sec_routes sec_roster sec_heur; do
+  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur; do
     cur="${!name}"
     [[ -n "$cur" ]] || continue
     if (( ${#cur} <= remaining )); then
@@ -459,7 +541,7 @@ build_and_emit() {
     remaining=0
   done
 
-  local out="$sec_head$sec_instr$sec_profile$sec_routes$sec_heur$sec_roster$sec_tail"
+  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_tail"
   # Cinto e suspensório: o teto vale mesmo com env exótica ou seção inesperada.
   if (( ${#out} > BUDGET )); then
     out="${out:0:BUDGET}"
@@ -472,6 +554,7 @@ build_and_emit() {
 main() {
   read_session_id   || :
   parse_routing_table || :
+  collect_gates     || :
   parse_profile     || :
   parse_roster      || :
   write_gate_policy || :

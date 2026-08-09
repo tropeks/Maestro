@@ -1,4 +1,4 @@
-version: 1
+version: 2   # v2 = bloco `bindings` (S-401). Emenda v1.3 do DATA_MODEL §1.
 gate:
   mode: warn            # warn | block — promoção a block só com dados (roadmap Fase 1b)
   allowlist:            # não-código de verdade: passa sem decision record
@@ -14,15 +14,72 @@ gate:
     # legítimo travado, o pior caso do brief §8.
     self_paths: [agents/, bin/, src/, hooks/, config/routing-table.yaml, .claude-plugin/]
 workflows:
+  # `steps` são nomes de ETAPA, não nomes de comando: quem diz o que roda é o
+  # bloco `bindings` abaixo. Antes da v2 os steps de ship/audit se chamavam
+  # `gstack-ship`/`gstack-cso` — o nome da ferramenta vazava para dentro do
+  # fluxo e trocar de ferramenta obrigaria a reescrever o workflow.
   fix:      {steps: [investigate, implement, review], gate: none}
   feature:  {steps: [plan, implement, review, qa], gate: plan}
   refactor: {steps: [plan, implement, review], gate: plan}
-  ship:     {steps: [gstack-ship], gate: ship}
-  audit:    {steps: [gstack-cso], gate: none}
+  ship:     {steps: [ship], gate: ship}
+  audit:    {steps: [audit], gate: none}
   # escape hatch do API_SPEC §2: tarefa que não cai em nenhum fluxo catalogado.
   # Existe para o roteador poder registrar a decisão honestamente em vez de
   # forçar um rótulo errado — o que envenenaria a métrica de baseline.
   custom:   {steps: [], gate: none}
+# ---------------------------------------------------------------------------
+# bindings (S-401) — step → o que EXECUTA o step. Sem isto, `investigate` é uma
+# palavra solta e o Claude adivinha; com isto, o step vira comando verificável
+# (a AC da S-401 é "cada step referencia comando existente no ambiente", e o
+# `maestro doctor` reprova binding que não resolve no ambiente).
+#
+# Formas: `skill:<nome>` (superpowers ou /gstack-*) · `agent:<nome do roster>`
+#         `native:<recurso do Claude Code>` (vocabulário fechado: plan-mode).
+# Um step aceita 1 ou 2 alvos. Com 2, a ordem é fixa e significa
+#   <método/ferramenta> + <quem executa>:  o skill diz COMO, o agent diz QUEM.
+#
+# Curadoria (decisão do orquestrador): método vem do superpowers · execução vem
+# do roster · ferramenta pesada vem do gstack. O `agent:` só entra no binding
+# quando o papel é fixo independentemente de linguagem e tamanho da tarefa;
+# quando varia (investigate, plan), quem executa fica a cargo das
+# `execution_heuristics` — binding e heurística são eixos diferentes:
+# o binding fixa O QUE roda, a heurística escolhe QUEM/qual modelo.
+bindings:
+  # superpowers puro: é metodologia de depuração (hipótese antes de patch,
+  # rastreio até a causa raiz), não ferramenta. gstack-investigate cobre o mesmo
+  # terreno e perde pela regra de curadoria. Sem `agent:` de propósito: quem
+  # investiga um bug em Go é o golang-pro, e isso é decisão da heurística.
+  investigate: skill:systematic-debugging
+  # o gate humano `plan` (S-501) É o plan mode nativo: aprovação de um toque na
+  # UI, que é o que torna o gate aprovável do telefone (brief §3.4). Preterido
+  # skill:writing-plans — ele produz plano em arquivo para sobreviver a várias
+  # sessões; ótimo para épico, caro para "corrige o login". Use-o à mão quando
+  # o plano precisar durar mais que a sessão.
+  plan:        native:plan-mode
+  # execução vem do roster (ADR-004). dev-pleno é o executor por DEFINIÇÃO
+  # residual — a description dele é "quando nenhum especialista de linguagem
+  # cobre a stack" —, então a heurística "linguagem detectada → especialista"
+  # o substitui sem conflito. Não existe skill de "implementar": implementar é
+  # papel, não método.
+  implement:   agent:dev-pleno
+  # método do superpowers (como pedir review a um subagente, o que exigir dele)
+  # + o papel fixo do roster: revisor é read-only, o que impede o revisor de
+  # "consertar" o que revisa. gstack-review foi preterido por ser review de PR
+  # pré-landing — esse ponto do ciclo pertence ao step `ship`.
+  review:      [skill:requesting-code-review, agent:revisor]
+  # ferramenta pesada de verdade (browser headless via daemon do gstack) — o
+  # superpowers não tem QA e o roster não tem browser. O agente `qa` entra como
+  # executor porque o papel é fixo e ele tem Bash (o daemon é CLI); manter o QA
+  # fora do contexto principal também evita que quem implementou valide a si
+  # mesmo.
+  qa:          [skill:gstack-qa, agent:qa]
+  # ferramenta pesada: merge da base, suíte, VERSION, CHANGELOG, PR. Nada disso
+  # é método nem papel — é automação, e reimplementar seria absorver o pack
+  # (proibido pelo brief §4).
+  ship:        skill:gstack-ship
+  # auditoria OWASP + STRIDE. Não há agente de segurança no roster (ADR-004) e
+  # o superpowers não cobre segurança; é o caso puro de "ferramenta pesada".
+  audit:       skill:gstack-cso
 routes:
   - {intent: "correção de bug, erro, quebrou, não funciona", workflow: fix}
   - {intent: "nova funcionalidade, feature, adicionar, criar tela", workflow: feature}

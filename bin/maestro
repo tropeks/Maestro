@@ -281,6 +281,14 @@ if (!isObj(d)) {
   }
   if (!isObj(d.workflows) || Object.keys(d.workflows).length === 0)
     errs.push("workflows ausente ou vazio");
+  // v2 (S-401): o bloco `bindings` deixou de ser opcional — é ele que faz o
+  // step referenciar comando existente. A checagem de que CADA step tem
+  // binding, e de que cada alvo resolve no ambiente, é do check_bindings
+  // (bash puro, roda também sem Bun).
+  if (d.bindings !== undefined && !isObj(d.bindings))
+    errs.push("bindings existe mas não é mapa");
+  if (Number(d.version) >= 2 && !isObj(d.bindings))
+    errs.push("version >= 2 exige o bloco bindings (S-401)");
   if (!Array.isArray(d.routes) || d.routes.length === 0) errs.push("routes ausente ou vazio");
 }
 if (errs.length) { console.log(errs.join("; ")); process.exit(1); }
@@ -300,6 +308,10 @@ yaml_check_bash() { # checagem estrutural, sem Bun; imprime o motivo no stdout
     || errs+=("gate.denylist.self_paths ausente ou vazio (autoproteção desarmada)")
   grep -qE '^workflows:'             "$f" || errs+=("workflows ausente")
   grep -qE '^routes:'                "$f" || errs+=("routes ausente")
+  if grep -qE '^version:[[:space:]]*[2-9][0-9]*[[:space:]]*(#.*)?$' "$f" \
+     && ! grep -qE '^bindings:' "$f"; then
+    errs+=("version >= 2 exige o bloco bindings (S-401)")
+  fi
   grep -qE "^$(printf '\t')"         "$f" && errs+=("indentação com TAB (YAML proíbe)")
   bal=$(awk '{ l=$0; sub(/^#.*/,"",l); sub(/[ \t]#.*/,"",l);
                ob+=gsub(/\[/,"[",l); cb+=gsub(/\]/,"]",l);
@@ -333,6 +345,179 @@ check_routing_table() { # AC da S-103: "detecta YAML inválido"
       report fail_val "routing-table.yaml: schema válido (sem Bun)" "$out"
     fi
   fi
+}
+
+# ------------------------------------------------------------- bindings (E4/S-401)
+#
+# A AC da S-401 é literal: "cada step referencia comando existente no ambiente".
+# Um binding que aponta para skill desinstalada é PIOR que binding nenhum — a
+# injeção manda o Claude rodar algo que não existe, e ele improvisa em silêncio.
+# Por isso o doctor resolve cada alvo de verdade no disco.
+#
+# Classificação (API_SPEC §3) — a linha divisória é DE QUEM É O ARQUIVO:
+#   rc 1 (conteúdo) .. step sem binding, alvo malformado, `native:` fora do
+#                      vocabulário e `agent:` fora do roster. O roster é
+#                      versionado DENTRO do plugin: binding e agents/ em
+#                      desacordo é incoerência entre dois arquivos do repo.
+#   rc 2 (ambiente) .. `skill:` que não está instalada. Skill vive fora do
+#                      repo, em ~/.claude — é dependência, não conteúdo.
+#
+# Ambiente sem NENHUM diretório de skills (CI limpo, container) não é
+# instalação quebrada: vira `skip`, com o motivo dito. Fingir FAIL ali seria
+# ruído; fingir ok seria mentira.
+#
+# `native:` é vocabulário FECHADO — não dá para provar no disco que o plan mode
+# existe, então o que se valida é que ninguém inventou um native novo sem
+# emendar o DATA_MODEL §1.
+# Costura de teste: MAESTRO_SKILL_DIRS (lista separada por ':') substitui as
+# raízes de busca de skill — é como o teste prova o skip do CI e o FAIL de skill
+# ausente sem depender do ~/.claude real.
+NATIVE_VOCAB=' plan-mode '
+
+skill_roots() { # raízes onde uma skill pode estar instalada (uma por linha)
+  local roots=() r
+  if [[ -n "${MAESTRO_SKILL_DIRS:-}" ]]; then
+    local IFS=':'
+    for r in $MAESTRO_SKILL_DIRS; do [[ -n "$r" && -d "$r" ]] && roots+=("$r"); done
+  else
+    shopt -s nullglob
+    for r in "$HOME/.claude/skills" "${CLAUDE_PROJECT_DIR:-$PWD}/.claude/skills" \
+             "$REPO_DIR/skills" "$HOME"/.claude/plugins/cache/*/*/*/skills; do
+      [[ -d "$r" ]] && roots+=("$r")
+    done
+    shopt -u nullglob
+  fi
+  [[ ${#roots[@]} -gt 0 ]] && printf '%s\n' "${roots[@]}"
+  return 0
+}
+
+skill_exists() { # skill_exists <nome> — SKILL.md em diretório, ou <nome>.md solto
+  local n="$1" r
+  while IFS= read -r r; do
+    [[ -n "$r" ]] || continue
+    [[ -f "$r/$n/SKILL.md" || -f "$r/$n.md" ]] && return 0
+  done < <(skill_roots)
+  return 1
+}
+
+yaml_workflow_steps() { # → "<workflow>\t<step>" por linha
+  awk '
+    /^[^ \t#]/ { inwf = ($0 ~ /^workflows:[ \t]*(#.*)?$/) ? 1 : 0; next }
+    inwf && /^[ \t]+[a-z][A-Za-z0-9_-]*:/ {
+      v = $0; sub(/[ \t]*#.*$/, "", v)
+      i = index(v, ":"); name = substr(v, 1, i - 1); rest = substr(v, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", name)
+      if (match(rest, /steps:[ \t]*\[[^]]*\]/) == 0) next
+      s = substr(rest, RSTART, RLENGTH); sub(/steps:[ \t]*\[/, "", s); sub(/\]$/, "", s)
+      n = split(s, a, ",")
+      for (j = 1; j <= n; j++) {
+        gsub(/[ \t"]/, "", a[j])
+        if (a[j] != "") print name "\t" a[j]
+      }
+    }
+  ' "$1" 2>/dev/null
+}
+
+yaml_bindings() { # → "<step>\t<alvo> [<alvo>...]" por linha
+  awk '
+    /^[^ \t#]/ { inb = ($0 ~ /^bindings:[ \t]*(#.*)?$/) ? 1 : 0; next }
+    inb && /^[ \t]+[a-z][A-Za-z0-9_-]*:/ {
+      v = $0; sub(/[ \t]*#.*$/, "", v)
+      i = index(v, ":"); k = substr(v, 1, i - 1); r = substr(v, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", k)
+      gsub(/[][,"]/, " ", r); gsub(/[ \t]+/, " ", r)
+      gsub(/^ | $/, "", r)
+      if (k != "" && r != "") print k "\t" r
+    }
+  ' "$1" 2>/dev/null
+}
+
+check_bindings() {
+  local f="$REPO_DIR/config/routing-table.yaml"
+  # YAML ausente/ilegível já foi reportado por check_routing_table — não duplica.
+  [[ -f "$f" && -r "$f" ]] || return 0
+
+  local steps_lines bind_lines
+  steps_lines=$(yaml_workflow_steps "$f")
+  bind_lines=$(yaml_bindings "$f")
+
+  if [[ -z "${steps_lines//[[:space:]]/}" ]]; then
+    report ok "bindings: nenhum workflow com steps (nada a bindar)"
+    return
+  fi
+
+  local wf st tgt tok
+  # 1) todo step de workflow tem binding
+  local unbound=() seen_step=' '
+  while IFS=$'\t' read -r wf st; do
+    [[ -n "$st" ]] || continue
+    [[ "$seen_step" == *" $wf/$st "* ]] && continue
+    seen_step+="$wf/$st "
+    tgt=$(printf '%s\n' "$bind_lines" | awk -F'\t' -v k="$st" '$1 == k { print $2; exit }')
+    [[ -n "$tgt" ]] || unbound+=("$wf → $st")
+  done <<<"$steps_lines"
+
+  if [[ ${#unbound[@]} -gt 0 ]]; then
+    report fail_val "bindings: todo step de workflow tem binding (AC S-401)" \
+      "sem binding: $(join_semi "${unbound[@]}") (fix: declare o step em bindings: no routing-table.yaml)"
+  else
+    report ok "bindings: todo step de workflow tem binding"
+  fi
+
+  # 2) cada alvo é bem-formado e resolve no ambiente
+  local malformed=() missing=() badagent=() n_ok=0 has_skill=0
+  local roots_n; roots_n=$(skill_roots | grep -c . || true)
+  while IFS=$'\t' read -r st tgt; do
+    [[ -n "$st" && -n "$tgt" ]] || continue
+    for tok in $tgt; do
+      if [[ ! "$tok" =~ ^(skill|agent|native):[A-Za-z0-9][A-Za-z0-9._-]{0,47}$ ]]; then
+        malformed+=("$st → '$tok' (use skill:|agent:|native:)")
+        continue
+      fi
+      case "$tok" in
+        agent:*)
+          if [[ -f "$AGENTS_DIR/${tok#agent:}.md" ]]; then n_ok=$((n_ok + 1))
+          else badagent+=("$st → $tok (não há ${tok#agent:}.md no roster)"); fi ;;
+        native:*)
+          if [[ "$NATIVE_VOCAB" == *" ${tok#native:} "* ]]; then n_ok=$((n_ok + 1))
+          else malformed+=("$st → $tok fora do vocabulário native ($NATIVE_VOCAB)"); fi ;;
+        skill:*)
+          has_skill=1
+          if [[ $roots_n -eq 0 ]]; then :
+          elif skill_exists "${tok#skill:}"; then n_ok=$((n_ok + 1))
+          else missing+=("$st → $tok (skill não instalada)"); fi ;;
+      esac
+    done
+  done <<<"$bind_lines"
+
+  if [[ ${#malformed[@]} -gt 0 ]]; then
+    report fail_val "bindings: alvos no formato skill:|agent:|native:" "$(join_semi "${malformed[@]}")"
+  fi
+  if [[ ${#badagent[@]} -gt 0 ]]; then
+    report fail_val "bindings: alvos agent: existem no roster" \
+      "$(join_semi "${badagent[@]}") (fix: corrija o binding ou adicione o agente em agents/)"
+  fi
+  if [[ $has_skill -eq 1 && $roots_n -eq 0 ]]; then
+    report skip "bindings: alvos resolvem no ambiente" \
+      "nenhum diretório de skills neste ambiente (CI?) — alvos skill: não verificados"
+  elif [[ ${#missing[@]} -gt 0 ]]; then
+    report fail_env "bindings: alvos skill: instalados no ambiente" \
+      "$(join_semi "${missing[@]}") (fix: instale a skill ou corrija o binding)"
+  elif [[ ${#malformed[@]} -eq 0 && ${#badagent[@]} -eq 0 ]]; then
+    report ok "bindings: $n_ok alvo(s) resolvem no ambiente ($roots_n raiz(es) de skill)"
+  fi
+
+  # 3) binding declarado que nenhum workflow usa — aviso: é tabela apodrecendo
+  local orphan=()
+  while IFS=$'\t' read -r st tgt; do
+    [[ -n "$st" ]] || continue
+    printf '%s\n' "$steps_lines" | awk -F'\t' -v k="$st" '$2 == k { found = 1 } END { exit !found }' \
+      || orphan+=("$st")
+  done <<<"$bind_lines"
+  [[ ${#orphan[@]} -gt 0 ]] \
+    && report warn "bindings: todo binding é usado por algum workflow" \
+         "declarado(s) e nunca usado(s): $(join_semi "${orphan[@]}")"
+  return 0
 }
 
 # ------------------------------------------------------------------ roster (E3)
@@ -606,6 +791,7 @@ doctor() {
 
   # --- config ----------------------------------------------------------------
   check_routing_table
+  check_bindings
 
   # --- roster (E3) -------------------------------------------------------------
   check_roster

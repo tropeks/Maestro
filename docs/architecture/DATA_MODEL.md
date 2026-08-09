@@ -1,5 +1,5 @@
 # DATA_MODEL.md
-**Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
+**Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.3 — 2026-08-09 (emenda E4/S-401: `version: 2` + bloco `bindings`)
 **Consome:** PROJECT_BRIEF.md, ARCHITECTURE.md | **Consumido por:** security-architect, vibe-code
 
 > Sem banco de dados. O "modelo de dados" do Maestro são **arquivos locais com schema fixo**.
@@ -34,6 +34,72 @@ execution_heuristics:         # orientam a decisão modo/executor (julgamento do
   - "linguagem detectada → especialista correspondente"
 ```
 `# classification: confidential` (revela estrutura do workflow pessoal; sem PII)
+
+#### Emenda v1.3 (E4 / S-401) — `version: 2` e o bloco `bindings`
+
+O exemplo acima é o schema **v1**. Na v2 o arquivo ganha um bloco `bindings`
+obrigatório e os `steps` voltam a ser **nomes de etapa**: `gstack-ship` e
+`gstack-cso` deixaram de ser step (o nome da ferramenta vazava para dentro do
+fluxo) e viraram `ship` e `audit`, com a ferramenta declarada no binding.
+
+```yaml
+version: 2
+workflows:
+  fix:      {steps: [investigate, implement, review], gate: none}
+  ship:     {steps: [ship], gate: ship}
+bindings:                     # step → o que EXECUTA o step
+  investigate: skill:systematic-debugging
+  plan:        native:plan-mode
+  implement:   agent:dev-pleno
+  review:      [skill:requesting-code-review, agent:revisor]
+  ship:        skill:gstack-ship
+```
+
+**Gramática.** Um step mapeia para 1 ou 2 alvos (escalar ou lista inline):
+
+| forma | significa | resolvido em |
+|---|---|---|
+| `skill:<nome>` | skill do superpowers ou `/gstack-*` | `~/.claude/skills/<n>/SKILL.md`, `~/.claude/plugins/cache/*/*/*/skills/<n>/SKILL.md`, `<projeto>/.claude/skills/…` |
+| `agent:<nome>` | agente do roster (DATA_MODEL §5) | `agents/<nome>.md` no repo do plugin |
+| `native:<nome>` | recurso nativo do Claude Code | **vocabulário fechado: `plan-mode`** — native novo exige emenda aqui |
+
+Regex do nome: `[A-Za-z0-9][A-Za-z0-9._-]{0,47}`. Com **2 alvos a ordem é fixa
+e semântica**: `<método/ferramenta> + <quem executa>` — o `skill:` diz COMO, o
+`agent:` diz QUEM. Alvo que não casa com a gramática é descartado pelo hook
+(com aviso no stderr) e **reprovado** pelo doctor.
+
+**Eixos separados.** O binding fixa *o que roda*; `execution_heuristics` decide
+*quem/qual modelo roda*. Por isso `agent:` só aparece no binding quando o papel
+é fixo independentemente de linguagem e tamanho (review→revisor, qa→qa,
+implement→dev-pleno como default residual); em `investigate` e `plan` o
+executor fica com as heurísticas.
+
+**Curadoria** (decisão do orquestrador, E4): *método vem do superpowers ·
+execução vem do roster · ferramenta pesada vem do gstack*.
+
+**Validação (`maestro doctor`, AC da S-401 — "cada step referencia comando
+existente no ambiente"):**
+
+| falha | classe | exit |
+|---|---|---|
+| step de workflow sem binding | conteúdo | 1 |
+| alvo fora da gramática · `native:` fora do vocabulário | conteúdo | 1 |
+| `agent:` sem `agents/<nome>.md` (roster é versionado no repo) | conteúdo | 1 |
+| `skill:` não instalada (skill vive fora do repo) | ambiente | 2 |
+| `version: >=2` sem bloco `bindings` | conteúdo | 1 |
+| binding declarado que nenhum workflow usa | aviso | 0 |
+| ambiente sem **nenhuma** raiz de skill (CI limpo) | `skip` honesto | 0 |
+
+**Injeção (S-401 + S-501).** O SessionStart passa a emitir duas seções novas:
+`## Bindings` (é o binding que o Claude segue, não o nome solto do step) e
+`## Gates humanos`, esta **derivada** de `workflows.*.gate` — `gate: plan` vira
+"entre em plan mode, plano em ≤10 linhas, pergunte *Aprovo o plano?*" e
+`gate: ship` vira "liste o que vai sair e pergunte *Shipo agora?*". O gate
+humano **não é hook novo**: é instrução curta ao modelo, porque quem aprova
+está no telefone (brief §3.4). Custo medido da adição: injeção de 1608 → 2310
+bytes, teto de 8000 (API_SPEC §1). Na disputa por orçamento, gates e bindings
+são os últimos a ceder (são instrução de ação); heurísticas e roster cedem
+primeiro (são referência).
 
 ### 2. `.maestro.yaml` (raiz de cada repo de projeto — opcional)
 

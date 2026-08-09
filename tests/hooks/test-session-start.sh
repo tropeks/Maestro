@@ -283,6 +283,29 @@ run "$H7" "$P7" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET=
   && ok "estouro maior: session_id + instrução canônica intactos" \
   || bad "estouro maior: session_id + instrução canônica intactos"
 
+# (b2) S-401/S-501: gates e bindings são os ÚLTIMOS a ceder. São instrução de
+# ação ("pare e pergunte", "rode isto"); rotas, roster e heurísticas são
+# material de referência. Sob pressão, perder a referência é ruim; perder a
+# instrução é o Maestro deixando de existir naquela sessão.
+BIND_HDR='## Bindings (step → o que roda; "a + b" = método + quem executa). Siga o binding.'
+GATE_HDR='## Gates humanos — PARE, pergunte e espere resposta explícita.'
+[[ "$(cat "$FULL")" == *"$BIND_HDR"* && "$(cat "$FULL")" == *"$GATE_HDR"* ]] \
+  && ok "referência sem pressão traz bindings e gates humanos" \
+  || bad "referência sem pressão traz bindings e gates humanos"
+B_C=$(( S_FULL - S_HEUR - S_ROSTER + 10 ))
+H7c=$(new_home); P7c=$(new_proj)
+run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_C"
+[[ $OUTBYTES -le $B_C ]] && ok "heurísticas+roster cortados: respeita o teto" \
+  || bad "heurísticas+roster cortados: respeita o teto ($OUTBYTES > $B_C)"
+[[ "$OUT" != *"$HEUR_HDR"* && "$OUT" != *"$ROSTER_HDR"* ]] \
+  && ok "heurísticas e roster cederam" || bad "heurísticas e roster cederam"
+[[ "$OUT" == *"$GATE_HDR"* && "$OUT" == *"Aprovo o plano?"* && "$OUT" == *"Shipo agora?"* ]] \
+  && ok "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)" \
+  || bad "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)"
+[[ "$OUT" == *"$BIND_HDR"* && "$OUT" == *"- implement → agent:dev-pleno"* ]] \
+  && ok "bindings sobrevivem ao corte de heurísticas+roster (S-401)" \
+  || bad "bindings sobrevivem ao corte de heurísticas+roster (S-401)"
+
 # (c) orçamento mínimo viável: tudo cede, o núcleo sobrevive.
 H7b=$(new_home); P7b=$(new_proj)
 run "$H7b" "$P7b" "$IN" MAESTRO_ROUTING_TABLE="$BIG" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET=500
