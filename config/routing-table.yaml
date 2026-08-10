@@ -38,8 +38,15 @@ workflows:
 # (a AC da S-401 é "cada step referencia comando existente no ambiente", e o
 # `maestro doctor` reprova binding que não resolve no ambiente).
 #
-# Formas: `skill:<nome>` (superpowers ou /gstack-*) · `agent:<nome do roster>`
+# Formas: `skill:<nome>` (superpowers ou gstack) · `agent:<nome do roster>`
 #         `native:<recurso do Claude Code>` (vocabulário fechado: plan-mode).
+# `<nome>` é o nome INSTALADO da skill — o diretório em `~/.claude/skills/` ou
+# em `<plugin>/skills/` —, sem prefixo de pack. O gstack instala `qa`, `ship` e
+# `cso`; os bindings apontavam para `gstack-qa`/`gstack-ship`/`gstack-cso`, que
+# nunca existiram como skill, e `maestro doctor` reprovava os três (FAIL de
+# ambiente). Consequência real: verify, ship e audit eram os três workflows com
+# binding morto — o Claude caía no palpite exatamente onde o binding existe para
+# impedir palpite. Antes de escrever um alvo `skill:`, confira o nome no disco.
 # Um step aceita 1 ou 2 alvos. Com 2, a ordem é fixa e significa
 #   <método/ferramenta> + <quem executa>:  o skill diz COMO, o agent diz QUEM.
 #
@@ -81,14 +88,14 @@ bindings:
   # executor porque o papel é fixo e ele tem Bash (o daemon é CLI); manter o QA
   # fora do contexto principal também evita que quem implementou valide a si
   # mesmo.
-  qa:          [skill:gstack-qa, agent:qa]
+  qa:          [skill:qa, agent:qa]
   # ferramenta pesada: merge da base, suíte, VERSION, CHANGELOG, PR. Nada disso
   # é método nem papel — é automação, e reimplementar seria absorver o pack
   # (proibido pelo brief §4).
-  ship:        skill:gstack-ship
+  ship:        skill:ship
   # auditoria OWASP + STRIDE. Não há agente de segurança no roster (ADR-004) e
   # o superpowers não cobre segurança; é o caso puro de "ferramenta pesada".
-  audit:       skill:gstack-cso
+  audit:       skill:cso
 # O casamento é SEMÂNTICO, não lexical — o leitor é um LLM, não uma regex. As
 # palavras abaixo são âncoras, não a lista fechada. Estão no imperativo porque é
 # assim que o pedido chega ("adiciona o campo", não "adicionar campo") — a versão

@@ -96,7 +96,7 @@ _wf_enum() { # nomes de workflow, na ordem do YAML
     printf '`qa`) — eles são implícitos no workflow escolhido. Exemplo do DATA_MODEL: workflow\n'
     printf '`fix` (steps investigate/implement/review) com agents `["golang-pro"]`, só.\n'
     printf 'Use `-` quando o trabalho não for de nenhum agente do roster\n'
-    printf '(ex.: o passo é uma skill como gstack-ship/gstack-cso, ou fica no contexto principal).\n\n'
+    printf '(ex.: o passo é uma skill pesada como `ship`/`cso`, ou fica no contexto principal).\n\n'
     printf '## Enunciados\n\n```\n'
     bun "$PRESCRIBE" --cases
     printf '```\n'

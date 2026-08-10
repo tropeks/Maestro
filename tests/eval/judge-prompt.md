@@ -26,9 +26,9 @@ Sem decision record válido, o gate registra aviso em toda edição (gate.mode: 
 - plan → native:plan-mode
 - implement → agent:dev-pleno
 - review → skill:requesting-code-review + agent:revisor
-- qa → skill:gstack-qa + agent:qa
-- ship → skill:gstack-ship
-- audit → skill:gstack-cso
+- qa → skill:qa + agent:qa
+- ship → skill:ship
+- audit → skill:cso
 
 ## Rotas (intenção → workflow) e workflows
 - intent: "correção de bug, erro, quebrou, não funciona", workflow: fix
@@ -94,7 +94,7 @@ vêm de graça dos steps do workflow (o `revisor` do step `review`, o `qa` do st
 `qa`) — eles são implícitos no workflow escolhido. Exemplo do DATA_MODEL: workflow
 `fix` (steps investigate/implement/review) com agents `["golang-pro"]`, só.
 Use `-` quando o trabalho não for de nenhum agente do roster
-(ex.: o passo é uma skill como gstack-ship/gstack-cso, ou fica no contexto principal).
+(ex.: o passo é uma skill pesada como `ship`/`cso`, ou fica no contexto principal).
 
 ## Enunciados
 
