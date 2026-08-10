@@ -279,3 +279,34 @@ dependência. A memória é do ambiente do Romulo e o Maestro não a toca.
 
 Removidos: gbrain (CLI, 84 MB de brain, MCP), Ollama e seis modelos de embedding.
 Open Questions #1 (nome: fica Maestro) e #2 (memória) fechadas — restam zero das quatro.
+
+## 2026-08-10 — Correção: o `--prefix` do E4 estava só no papel
+
+A sessão E4 registrou "gstack com `--prefix`" e afirmou que isso fez
+`gstack-ship`/`gstack-cso` **existirem de fato**, consertando a AC da S-401.
+Hoje, medido: `gstack-config get skill_prefix` respondia `false`, e os 57
+diretórios de `~/.claude/skills/` eram todos bare, com data de 30/07 — anterior
+à decisão. O `--prefix` nunca chegou ao disco. A AC da S-401 estava vermelha
+desde então e ninguém viu, porque **em CI ela não pode ficar vermelha**: sem
+nenhuma raiz de skill, a checagem degrada para `skip` de propósito. O defeito
+só é visível na máquina que tem o pack instalado.
+
+A decisão do E4 continua valendo — foi aplicada, não revogada:
+`gstack-config set skill_prefix true` + `gstack-relink`, 52 skills renomeadas
+para `gstack-*`, doctor de volta ao verde com 9 alvos resolvendo.
+
+**Gotcha do Windows, que custou o susto do meio do caminho:** o `gstack-relink`
+só remove a entrada antiga quando o `SKILL.md` dela é symlink. A instalação de
+30/07 nesta máquina copiou os arquivos em vez de linkar (sem privilégio de
+symlink no Windows), então o relink criou as 52 novas e **deixou as 51 velhas
+de pé** — 106 skills ativas, com descrição duplicada competindo entre si, que é
+o oposto do que a S-403 queria. As 51 foram movidas para
+`~/.claude/skills-flat-backup-20260810/`, não apagadas. Diferença entre as duas
+cópias: uma linha, o `name:` do frontmatter. `browse`, `checkpoint` e
+`connect-chrome` não têm gêmeo prefixado e ficaram como estão.
+
+**O que isto ensina sobre o doctor:** ele mede o nome no disco, e o nome no
+disco é função de uma config do gstack que nada neste repo controla. Um
+`gstack-upgrade` que reinstale flat quebra os três bindings de novo, em
+silêncio, sem tocar em uma linha deste repositório. O doctor é a única defesa;
+rode-o depois de mexer no pack.

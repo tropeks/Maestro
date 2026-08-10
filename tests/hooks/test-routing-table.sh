@@ -161,7 +161,7 @@ expect_break "raiz de skill existe mas a skill não" "$d" 2 'skill não instalad
 
 # binding declarado que nenhum workflow usa: aviso, nunca falha
 d="$(fresh binding-orfao)"
-sed -i 's|^  audit:       skill:cso|  audit:       skill:cso\n  orfao:       skill:cso|' \
+sed -i 's|^  audit:       skill:gstack-cso|  audit:       skill:gstack-cso\n  orfao:       skill:gstack-cso|' \
   "$d/config/routing-table.yaml"
 doctor_run "$d"; rc=$?
 if [[ $rc -eq 0 ]] && printf '%s\n' "$OUT" | grep -q 'warn bindings: todo binding é usado'; then
@@ -219,7 +219,7 @@ run_hook -
   && ok "injeção: seção de bindings presente" || bad "injeção: seção de bindings presente"
 for pair in "investigate → skill:systematic-debugging" "plan → native:plan-mode" \
             "implement → agent:dev-pleno" "review → skill:requesting-code-review + agent:revisor" \
-            "qa → skill:qa + agent:qa" "ship → skill:ship" "audit → skill:cso"; do
+            "qa → skill:gstack-qa + agent:qa" "ship → skill:gstack-ship" "audit → skill:gstack-cso"; do
   [[ "$OUT" == *"- $pair"* ]] && ok "injeção: binding '$pair'" || bad "injeção: binding '$pair'"
 done
 [[ "$OUT" == *"## Gates humanos"* && "$OUT" == *"gate plan (feature, refactor)"* \
