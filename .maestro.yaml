@@ -1,0 +1,5 @@
+# Perfil Maestro deste projeto (S-303 — filtra o roster injetado na sessão).
+# Stack: bash (hooks/, tests/, bin/) + Bun/TS (src/cli.ts).
+# Sem especialista de bash no roster → generalistas cobrem; typescript-pro
+# entra pelo src/; go/postgres/python ficam fora da injeção.
+experts: [dev-junior, dev-pleno, engenheiro, typescript-pro, qa, revisor]
