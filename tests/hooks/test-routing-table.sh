@@ -62,9 +62,37 @@ expect_break() { # expect_break <caso> <dir> <rc esperado> <regex> [env...]
 # `sed -i` no bloco bindings da cópia
 bind_set() { sed -i "s|^  $2:.*|  $2:        $3|" "$1/config/routing-table.yaml"; }
 
+# raiz de skills FIXTURE — hermética: cada skill: citada em config/routing-table.yaml
+# ganha um diretório com SKILL.md dentro de $TMPROOT. Sem isto o teste depende de
+# quais skills estão instaladas na máquina de quem roda (ok no dev-box, skip/FAIL
+# no runner do CI, que não tem superpowers/gstack). MAESTRO_SKILL_DIRS substitui as
+# raízes reais (ver bin/maestro skill_roots()) então nem o $HOME real importa aqui.
+# Cópia do parser de yaml_bindings() (bin/maestro:423-424) — se o parser real mudar, sincronizar aqui.
+yaml_binding_pairs() { # → "<step>\t<alvo1> <alvo2>..." por linha
+  awk '/^[^ \t#]/ { inb = ($0 ~ /^bindings:[ \t]*(#.*)?$/) ? 1 : 0; next }
+       inb && /^[ \t]+[a-z][A-Za-z0-9_-]*:/ { v=$0; sub(/[ \t]*#.*$/,"",v); i=index(v,":");
+         k=substr(v,1,i-1); r=substr(v,i+1); gsub(/^[ \t]+|[ \t]+$/,"",k);
+         gsub(/[][,"]/," ",r); gsub(/[ \t]+/," ",r); gsub(/^ | $/,"",r);
+         if (k != "" && r != "") print k "\t" r }' "$1"
+}
+
+SKILL_FIXTURE="$TMPROOT/skills-fixture"
+mkdir -p "$SKILL_FIXTURE"
+while IFS=$'\t' read -r step targets; do
+  for t in $targets; do
+    case "$t" in
+      skill:*)
+        n="${t#skill:}"
+        mkdir -p "$SKILL_FIXTURE/$n"
+        : >"$SKILL_FIXTURE/$n/SKILL.md"
+        ;;
+    esac
+  done
+done < <(yaml_binding_pairs "$ROOT/config/routing-table.yaml")
+
 # =========================================================== 1. controle: repo íntegro
 BASE="$(fresh base)"
-doctor_run "$BASE"; rc=$?
+doctor_run "$BASE" MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"; rc=$?
 if [[ $rc -eq 0 ]] \
    && printf '%s\n' "$OUT" | grep -q 'ok   bindings: todo step de workflow tem binding' \
    && printf '%s\n' "$OUT" | grep -qE 'ok   bindings: [0-9]+ alvo\(s\) resolvem no ambiente'; then
@@ -76,13 +104,30 @@ else
   printf '%s\n' "$OUT" | sed 's/^/       | /'
 fi
 
-# AC da S-401, prova positiva: cada alvo do YAML existe MESMO no disco.
+# Caso de controle adicional (ambiente real): valida a coerência interna do parser vs. YAML
+if [[ -d "$HOME/.claude/skills" ]]; then
+  BASE_REAL="$(fresh base-env-real)"
+  doctor_run "$BASE_REAL"; rc=$?
+  if [[ $rc -eq 0 ]] \
+     && printf '%s\n' "$OUT" | grep -q 'ok   bindings: todo step de workflow tem binding' \
+     && printf '%s\n' "$OUT" | grep -qE 'ok   bindings: [0-9]+ alvo\(s\) resolvem no ambiente'; then
+    ok "repo íntegro contra ambiente real (dev-box): doctor aprova os bindings (rc=0)"
+    matrix_add "repo íntegro contra ambiente real" "0" "$rc" "APROVOU"
+  else
+    bad "repo íntegro contra ambiente real: bindings deveriam passar (rc=$rc)"
+    matrix_add "repo íntegro contra ambiente real" "0" "$rc" "REPROVOU <<<"
+    printf '%s\n' "$OUT" | sed 's/^/       | /'
+  fi
+else
+  matrix_add "repo íntegro contra ambiente real" "skip" "skip" "SKIP (sem skills reais)"
+fi
+
+# AC da S-401, prova positiva: cada alvo do YAML existe MESMO no disco. agent:/native:
+# são conferidos contra o repo real; skill: contra a raiz FIXTURE (montada acima a
+# partir do próprio YAML) — hermético, não depende do que está instalado na máquina
+# (este bloco abaixo é FIXTURE, validação interna do parser).
 echo "-- alvos do routing-table.yaml conferidos um a um no ambiente"
-awk '/^[^ \t#]/ { inb = ($0 ~ /^bindings:/) ? 1 : 0; next }
-     inb && /^[ \t]+[a-z]/ { v=$0; sub(/[ \t]*#.*$/,"",v); i=index(v,":");
-       k=substr(v,1,i-1); r=substr(v,i+1); gsub(/^[ \t]+|[ \t]+$/,"",k);
-       gsub(/[][,"]/," ",r); gsub(/[ \t]+/," ",r); gsub(/^ | $/,"",r);
-       if (k != "" && r != "") print k "\t" r }' "$ROOT/config/routing-table.yaml" \
+yaml_binding_pairs "$ROOT/config/routing-table.yaml" \
 | while IFS=$'\t' read -r step targets; do
     for t in $targets; do
       case "$t" in
@@ -93,12 +138,9 @@ awk '/^[^ \t#]/ { inb = ($0 ~ /^bindings:/) ? 1 : 0; next }
           if [[ "${t#native:}" == "plan-mode" ]]; then echo "ok   $step → $t (vocabulário fechado do DATA_MODEL §1)"
           else echo "FAIL $step → $t fora do vocabulário native"; fi ;;
         skill:*)
-          n="${t#skill:}"; found=''
-          for r in "$HOME/.claude/skills" "$HOME"/.claude/plugins/cache/*/*/*/skills; do
-            [[ -f "$r/$n/SKILL.md" ]] && found="$r/$n/SKILL.md"
-          done
-          if [[ -n "$found" ]]; then echo "ok   $step → $t ($found)"
-          else echo "FAIL $step → $t não instalada"; fi ;;
+          n="${t#skill:}"
+          if [[ -f "$SKILL_FIXTURE/$n/SKILL.md" ]]; then echo "ok   $step → $t ($SKILL_FIXTURE/$n/SKILL.md)"
+          else echo "FAIL $step → $t sem fixture (bug no gerador da raiz fake acima)"; fi ;;
         *) echo "FAIL $step → '$t' fora de skill:|agent:|native:" ;;
       esac
     done
@@ -109,41 +151,52 @@ grep -q '^FAIL' "$TMPROOT/alvos.txt" && { bad "algum alvo do YAML não existe no
 # --- conteúdo (rc 1) ---------------------------------------------------------
 d="$(fresh sem-binding)"
 sed -i '/^  investigate: /d' "$d/config/routing-table.yaml"
-expect_break "step de workflow sem binding" "$d" 1 'sem binding: fix → investigate'
+expect_break "step de workflow sem binding" "$d" 1 'sem binding: fix → investigate' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 d="$(fresh alvo-sem-prefixo)"
 bind_set "$d" qa 'gstack-qa'
-expect_break "alvo sem prefixo skill:|agent:|native:" "$d" 1 "alvos no formato skill:"
+expect_break "alvo sem prefixo skill:|agent:|native:" "$d" 1 "alvos no formato skill:" \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 d="$(fresh native-inventado)"
 bind_set "$d" plan 'native:telepatia'
-expect_break "native: fora do vocabulário fechado" "$d" 1 'fora do vocabulário native'
+expect_break "native: fora do vocabulário fechado" "$d" 1 'fora do vocabulário native' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 d="$(fresh v2-sem-bindings)"
 sed -i '/^bindings:/,/^routes:/{/^routes:/!d}' "$d/config/routing-table.yaml"
-expect_break "version 2 sem bloco bindings (com Bun)" "$d" 1 'version >= 2 exige o bloco bindings'
+expect_break "version 2 sem bloco bindings (com Bun)" "$d" 1 'version >= 2 exige o bloco bindings' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 # --- ambiente/dependência (rc 2) --------------------------------------------
 d="$(fresh skill-fantasma)"
 bind_set "$d" audit 'skill:gstack-nao-existe'
-expect_break "binding aponta p/ skill desinstalada" "$d" 2 'skill:gstack-nao-existe \(skill não instalada\)'
+# MAESTRO_SKILL_DIRS=SKILL_FIXTURE: sem isto, num ambiente sem NENHUMA raiz de skill
+# (CI limpo) o checker faz o skip honesto (rc=0) em vez de reprovar — comportamento
+# correto (coberto no bloco 3), mas indeterminístico para ESTE caso. Com uma raiz
+# fixture presente (que não tem "gstack-nao-existe"), o rc=2 fica garantido nos dois
+# ambientes.
+expect_break "binding aponta p/ skill desinstalada" "$d" 2 'skill:gstack-nao-existe \(skill não instalada\)' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 # agent: é conteúdo (rc 1), não ambiente: o roster é versionado dentro do plugin,
 # então binding e agents/ em desacordo é incoerência entre dois arquivos do repo.
 d="$(fresh agente-fantasma)"
 bind_set "$d" implement 'agent:dev-fantasma'
-expect_break "binding aponta p/ agente fora do roster" "$d" 1 'agent:dev-fantasma \(não há dev-fantasma.md'
+expect_break "binding aponta p/ agente fora do roster" "$d" 1 'agent:dev-fantasma \(não há dev-fantasma.md' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 # o agente existir no roster de OUTRA instalação não vale: é o roster desta cópia
 d="$(fresh agente-removido)"
 rm -f "$d/agents/revisor.md"
-expect_break "agente do binding removido do roster" "$d" 1 'agent:revisor'
+expect_break "agente do binding removido do roster" "$d" 1 'agent:revisor' \
+  MAESTRO_SKILL_DIRS="$SKILL_FIXTURE"
 
 # =========================================================== 3. degradação honesta
 # Ambiente sem NENHUMA raiz de skill (CI limpo) não é instalação quebrada.
 d="$(fresh sem-raiz-de-skill)"
-doctor_run "$d" HOME="$TMPROOT/home-vazio" CLAUDE_PROJECT_DIR="$TMPROOT/home-vazio" \
-  MAESTRO_SKILL_DIRS="$TMPROOT/nao-existe-nenhum-dir"; rc=$?
+doctor_run "$d" MAESTRO_SKILL_DIRS="$TMPROOT/nao-existe-nenhum-dir"; rc=$?
 if [[ $rc -eq 0 ]] && printf '%s\n' "$OUT" | grep -q 'skip bindings: alvos resolvem no ambiente'; then
   ok "ambiente sem diretório de skills: skip honesto, não FAIL (rc=0)"
   matrix_add "ambiente sem raiz de skill (CI)" "0" "$rc" "SKIP (ok)"
