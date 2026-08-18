@@ -1,5 +1,36 @@
 # Decision log
 
+## 2026-08-18 — Histórico reescrito: docs/research/ removido de TODOS os commits
+
+- **Autorização:** ordem direta do Capitão ("reescreve") após o alerta de que a remoção
+  em commit novo deixava os dois documentos de pesquisa alcançáveis no histórico. Force
+  push em `main` é gate humano por definição — este é o registro do aval.
+- **Execução:** `git filter-repo --invert-paths --path docs/research` (v2.47.0), com
+  bundle completo de TODOS os refs pré-reescrita guardado fora do repo
+  (`~/dev/Maestro-research/pre-rewrite-20260818.bundle`) — a reescrita é reversível.
+  36 commits antes, 36 depois; working tree byte-idêntico; `git log --all` de um clone
+  limpo do GitHub confirma zero ocorrências de `docs/research` e o SHA velho
+  inalcançável.
+- **SHAs renumerados** (a pesquisa entrou em 895c5a4; tudo anterior manteve o SHA —
+  bd4633d, f994973 e as tags v0.2.0–v1.0.2 estão intactos). Entradas antigas deste log
+  citam os SHAs da esquerda; valem os da direita:
+
+  | antes | depois | commit |
+  |---|---|---|
+  | 895c5a4 | 83a7b26 | S-701+S-702 |
+  | a2c1289 | d5d26e0 | S-705+S-706 |
+  | ef5e9dd | edbdcda | S-707 |
+  | 1c5be16 | e5959dc | S-708 |
+  | 95b3eab | 0a3dd5a | S-709 |
+  | 042b220 | 4e7b42d | S-703+S-704 |
+  | 04cb2e3 | 81d95d2 | S-710 |
+  | d9092ef | 62a902a | S-710 emenda + realinhamento |
+- **Limite conhecido:** um force push não coleta objetos órfãos no servidor do GitHub —
+  os commits velhos podem seguir acessíveis POR SHA na API por um tempo, até o GC deles.
+  Risco aceito: o repo era privado durante toda a existência desses SHAs, ninguém de
+  fora os conhece. Se sobrar paranoia, o caminho é suporte do GitHub ou recriar o repo.
+- Registro do plugin (`gitCommitSha`) atualizado para o HEAD novo.
+
 ## 2026-08-18 — Realinhamento da instalação + S-710 aprende quem EXECUTA
 
 Sequência do achado anterior (mesma data). O Romulo mandou realinhar; realinhar exigiu
