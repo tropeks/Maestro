@@ -1,5 +1,44 @@
 # Decision log
 
+## 2026-08-17 — Sessão E7 parte 2 (S-705 + S-706 — o par P0 do ECC_DELTA_AUDIT)
+
+- **Ordem do Romulo:** "Implementa" (o par capability envelope + drift que o audit do ECC
+  recomendou e ainda estava aberto) "E o arquivo, apaga" (briefing
+  ECC_DELTA_AUDIT_FOR_FABLE.md removido — cumpriu o papel, o audit é o registro).
+- **Stories:** S-705 (envelope `maestro.capabilities.v1`), S-706 (drift de resolução de
+  bindings + manifesto de integridade do vendor). Doctor: 24 → **27 checagens**.
+
+### Decisões
+
+1. **Envelope é fato, não veredito.** `capabilities.json` guarda o que o doctor VIU
+   (bun presente? versão? quantos bindings resolvem?), nunca pass/fail reinterpretado —
+   quem consome decide o que fazer, inclusive a staleness (≥24h). Lição do ECC audit:
+   o catálogo declarado-não-sondado do ECC apodrece; o envelope do Maestro é sempre
+   medido, com `generated_epoch` para o consumidor não confiar em envelope morto.
+2. **Consumo fica FORA dos hooks nesta fase.** Só `delegate()` (o erro sem Bun cita o
+   envelope) e `status` (idade). SessionStart não lê o envelope ainda — hooks continuam
+   sem caminho novo de leitura; se o dogfood pedir o digest na injeção, é emenda própria.
+3. **Drift avisa uma vez e o snapshot avança.** Warn nunca vira falha (atualização
+   legítima de pack também é drift); o snapshot sempre grava o estado atual, então cada
+   mudança aparece exatamente uma vez. Alvo que SOME não é drift — é assunto do
+   check_bindings, que já reprova binding não resolvido.
+4. **Vendor divergente é falha de validação, não aviso.** vendor/ é read-only por regra
+   canônica; conteúdo diferente do manifesto significa edição no lugar (proibida) ou
+   atualização sem regenerar `config/vendor.sha256` — os dois merecem CI vermelho, e a
+   regeneração no mesmo commit é a mesma disciplina do prescribed-baseline.tsv.
+5. **`jq` é pré-requisito do envelope, não do doctor.** Sem jq: skip honesto, sem
+   envelope, doctor segue — gravar JSON por printf/concatenação foi rejeitado (é a
+   classe de bug que o review do E1 achou no log).
+
+### Evidência
+
+- test-envelope.sh: **24 asserções** — schema/fatos do envelope, erro sem Bun citando
+  "último doctor" + idade, envelope de 25h marcado velho, sem envelope sem hint
+  inventado, snapshot inicial, drift zero, conteúdo mudado nomeando o alvo, aviso que
+  some na rodada seguinte, caminho migrando de raiz detectado, vendor íntegro ok e
+  manifesto divergente reprovando com exit 1.
+- Suíte completa verde (ver rodada final); shellcheck error-clean.
+
 ## 2026-08-17 — Sessão E7 (P0 RAD hardening — S-701 + S-702, vibe-code direto aprovado)
 
 - **Origem:** pesquisa docs/research/RAD_PATTERNS_FOR_MAESTRO.md + ECC_DELTA_AUDIT.md;

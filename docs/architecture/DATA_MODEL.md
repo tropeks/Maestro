@@ -171,6 +171,28 @@ tools: Read, Grep, Glob, Write, Edit, Bash   # mínimas por papel (padrão VoltA
 ```
 `# classification: public` (prompts adaptados de repositórios abertos)
 
+### 6. Estado do doctor — `~/.maestro/capabilities.json` + `bindings-snapshot.tsv` (E7/S-705-706)
+
+Escritos pelo `maestro doctor` a cada rodada; **estado local de diagnóstico, não log**
+(o vocabulário do routing.jsonl §4 não os conhece). Consumidores: `delegate()` do
+`bin/maestro` (erro sem Bun cita o envelope) e `maestro status` (idade).
+
+```json
+{"schema":"maestro.capabilities.v1","generated_at":"…","generated_epoch":1755482621,
+ "runtime":{"bun":{"present":true,"version":"1.3.14"},"jq":{"present":true},
+            "git":{"present":true,"version":"2.43.0"},"flock":{"present":true}},
+ "doctor":{"checks":27,"warns":1,"skips":0,"fail_env":0,"fail_val":0},
+ "bindings":{"resolved":9,"skill_roots":3},"roster":{"agents":9}}
+```
+
+Só fatos (bool/int/string), nunca pass/fail reinterpretado; consumidor decide staleness
+por `generated_epoch` (≥24h = velho). Sem jq o envelope não é escrito (skip honesto).
+`bindings-snapshot.tsv` é `alvo\tcaminho\tsha256` por linha — base do aviso
+`binding-resolution-drift`; contém caminhos locais e por isso vive em `$MAESTRO_HOME`
+(mesma classe do `gate-policy.sh`), jamais no log. `config/vendor.sha256` (repo,
+versionado) é o manifesto de integridade do vendor/ — divergência reprova o doctor.
+`# classification: confidential` (paths locais no snapshot)
+
 ---
 
 ## Regras de integridade

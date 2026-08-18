@@ -72,6 +72,7 @@ die() { # die <categoria> <mensagem> <fix> <exit>
 CI=0
 C_OK=''; C_WARN=''; C_FAIL=''; C_OFF=''
 N_CHECKS=0; N_WARN=0; N_SKIP=0; FAIL_ENV=0; FAIL_VAL=0
+CAP_BINDINGS_OK=0; CAP_SKILL_ROOTS=0   # E7/S-705: fatos capturados p/ capabilities.json
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -467,6 +468,7 @@ check_bindings() {
   # 2) cada alvo é bem-formado e resolve no ambiente
   local malformed=() missing=() badagent=() n_ok=0 has_skill=0
   local roots_n; roots_n=$(skill_roots | grep -c . || true)
+  CAP_SKILL_ROOTS=$roots_n
   while IFS=$'\t' read -r st tgt; do
     [[ -n "$st" && -n "$tgt" ]] || continue
     for tok in $tgt; do
@@ -489,6 +491,7 @@ check_bindings() {
       esac
     done
   done <<<"$bind_lines"
+  CAP_BINDINGS_OK=$n_ok
 
   if [[ ${#malformed[@]} -gt 0 ]]; then
     report fail_val "bindings: alvos no formato skill:|agent:|native:" "$(join_semi "${malformed[@]}")"
@@ -518,6 +521,135 @@ check_bindings() {
     && report warn "bindings: todo binding é usado por algum workflow" \
          "declarado(s) e nunca usado(s): $(join_semi "${orphan[@]}")"
   return 0
+}
+
+# --------------------------------------------- drift + envelope (E7/S-705, S-706)
+
+skill_path() { # skill_path <nome> — caminho resolvido (primeira raiz que tiver)
+  local n="$1" r
+  while IFS= read -r r; do
+    [[ -n "$r" ]] || continue
+    if [[ -f "$r/$n/SKILL.md" ]]; then printf '%s\n' "$r/$n/SKILL.md"; return 0; fi
+    if [[ -f "$r/$n.md" ]]; then printf '%s\n' "$r/$n.md"; return 0; fi
+  done < <(skill_roots)
+  return 1
+}
+
+check_binding_drift() { # S-706 (P0.2 do ECC audit): resolução estável entre doctors
+  # Snapshot alvo→caminho→sha256 em $MAESTRO_HOME (estado local; NÃO é o log).
+  # Drift = o MESMO alvo resolvendo para caminho ou conteúdo diferente do último
+  # doctor — a classe do incidente do --prefix (2026-08-10, decision-log), que
+  # quebrou 3 bindings em silêncio. Sempre AVISO, nunca falha: atualização
+  # legítima de pack também é drift — o valor é ficar VISÍVEL; o snapshot sempre
+  # avança, então cada mudança avisa exatamente uma vez.
+  local f="$REPO_DIR/config/routing-table.yaml"
+  [[ -f "$f" && -r "$f" ]] || return 0
+  has sha256sum || { report skip "bindings: drift de resolução" "requer sha256sum"; return 0; }
+  mkdir -p "$MAESTRO_HOME" 2>/dev/null || return 0
+  local snap="$MAESTRO_HOME/bindings-snapshot.tsv"
+  local bind_lines; bind_lines=$(yaml_bindings "$f")
+  local roots_n; roots_n=$(skill_roots | grep -c . || true)
+
+  local cur='' st tgt tok p h
+  while IFS=$'\t' read -r st tgt; do
+    [[ -n "$st" && -n "$tgt" ]] || continue
+    for tok in $tgt; do
+      case "$tok" in
+        agent:*) p="$AGENTS_DIR/${tok#agent:}.md"; [[ -f "$p" ]] || continue ;;
+        skill:*) [[ $roots_n -gt 0 ]] || continue
+                 p=$(skill_path "${tok#skill:}") || continue ;;
+        *) continue ;;  # native: não tem arquivo; malformado é assunto do check_bindings
+      esac
+      h=$(sha256sum -- "$p" 2>/dev/null | awk '{print $1}') || continue
+      [[ -n "$h" ]] && cur+="$tok	$p	$h"$'\n'
+    done
+  done <<<"$bind_lines"
+  cur=$(printf '%s' "$cur" | sort -u)
+  [[ -n "$cur" ]] || return 0
+
+  if [[ ! -f "$snap" ]]; then
+    if printf '%s\n' "$cur" > "$snap" 2>/dev/null; then
+      report ok "bindings: snapshot de resolução inicial gravado ($(printf '%s\n' "$cur" | grep -c .) alvo(s))"
+    else
+      report warn "bindings: drift de resolução" "não consegui gravar o snapshot em $MAESTRO_HOME"
+    fi
+    return 0
+  fi
+
+  local drift=() otok op oh line np nh
+  while IFS=$'\t' read -r otok op oh; do
+    [[ -n "$otok" && -n "$op" && -n "$oh" ]] || continue
+    line=$(printf '%s\n' "$cur" | awk -F'\t' -v k="$otok" '$1 == k { print; exit }')
+    [[ -n "$line" ]] || continue   # alvo saiu da tabela/ambiente → assunto do check_bindings
+    np=$(printf '%s' "$line" | cut -f2); nh=$(printf '%s' "$line" | cut -f3)
+    if [[ "$np" != "$op" ]]; then drift+=("binding-resolution-drift: $otok (caminho mudou)")
+    elif [[ "$nh" != "$oh" ]]; then drift+=("binding-resolution-drift: $otok (conteúdo mudou)")
+    fi
+  done < "$snap"
+
+  printf '%s\n' "$cur" > "$snap" 2>/dev/null || true
+  if [[ ${#drift[@]} -gt 0 ]]; then
+    report warn "bindings: resolução estável desde o último doctor" \
+      "$(join_semi "${drift[@]}") — atualização deliberada? o aviso some no próximo doctor"
+  else
+    report ok "bindings: resolução estável desde o último doctor (drift zero)"
+  fi
+}
+
+check_vendor_integrity() { # S-706: vendor/ verificado offline contra manifesto pinado
+  local man="${MAESTRO_VENDOR_MANIFEST:-$REPO_DIR/config/vendor.sha256}"
+  [[ -d "$REPO_DIR/vendor" ]] || { report ok "vendor/: ausente (nada a verificar)"; return 0; }
+  has sha256sum || { report skip "vendor/: integridade vs manifesto" "requer sha256sum"; return 0; }
+  if [[ ! -f "$man" ]]; then
+    report warn "vendor/: manifesto de integridade ausente" \
+      "gere: (cd <repo> && find vendor -type f | sort | xargs sha256sum > config/vendor.sha256)"
+    return 0
+  fi
+  if (cd "$REPO_DIR" && sha256sum --check --quiet "$man" >/dev/null 2>&1); then
+    report ok "vendor/: íntegro vs manifesto ($(grep -c . "$man") arquivo(s))"
+  else
+    report fail_val "vendor/: íntegro vs manifesto" \
+      "difere de config/vendor.sha256 — vendor/ é read-only; atualização deliberada? regenere o manifesto no mesmo commit"
+  fi
+}
+
+write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilities.v1
+  # FATOS (não pass/fail) para consumidores FORA do doctor: o delegate() cita o
+  # envelope quando decide/status quebram sem Bun; `maestro status` mostra a
+  # idade. Gravado por último e SEMPRE — mesmo com falhas: o valor é justamente
+  # diagnosticar depois. Só bool/int/string; sem jq → skip honesto, sem envelope.
+  local checks=$N_CHECKS warns=$N_WARN skips=$N_SKIP fenv=$FAIL_ENV fval=$FAIL_VAL
+  if ! has jq; then
+    report skip "capabilities.json: envelope maestro.capabilities.v1" "requer jq"
+    return 0
+  fi
+  mkdir -p "$MAESTRO_HOME" 2>/dev/null || {
+    report warn "capabilities.json: envelope maestro.capabilities.v1" "sem onde gravar"; return 0; }
+  local bunv='' gitv='' rn=0
+  has bun && bunv=$(bun --version 2>/dev/null || true)
+  if has git; then gitv=$(git --version 2>/dev/null | awk '{print $3}') || gitv=''; fi
+  shopt -s nullglob; local ags=("$AGENTS_DIR"/*.md); rn=${#ags[@]}; shopt -u nullglob
+  local tmp="$MAESTRO_HOME/capabilities.json.tmp.$$"
+  if jq -n --arg at "$(date -Iseconds)" --argjson epoch "$(date +%s)" \
+       --argjson bun "$(has bun && echo true || echo false)" --arg bunv "$bunv" \
+       --argjson git "$(has git && echo true || echo false)" --arg gitv "$gitv" \
+       --argjson flock "$(has flock && echo true || echo false)" \
+       --argjson checks "$checks" --argjson warns "$warns" --argjson skips "$skips" \
+       --argjson fail_env "$fenv" --argjson fail_val "$fval" \
+       --argjson b_ok "$CAP_BINDINGS_OK" --argjson b_roots "$CAP_SKILL_ROOTS" \
+       --argjson roster "$rn" \
+       '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
+         runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
+                  git:{present:$git,version:$gitv}, flock:{present:$flock}},
+         doctor:{checks:$checks,warns:$warns,skips:$skips,fail_env:$fail_env,fail_val:$fail_val},
+         bindings:{resolved:$b_ok, skill_roots:$b_roots},
+         roster:{agents:$roster}}' > "$tmp" 2>/dev/null \
+     && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
+    report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    report warn "capabilities.json: envelope maestro.capabilities.v1" "falha ao gravar (não bloqueia nada)"
+  fi
 }
 
 # ------------------------------------------------------------------ roster (E3)
@@ -793,6 +925,7 @@ doctor() {
   # --- config ----------------------------------------------------------------
   check_routing_table
   check_bindings
+  check_binding_drift
 
   # --- roster (E3) -------------------------------------------------------------
   check_roster
@@ -813,6 +946,8 @@ doctor() {
   fi
 
   check_records
+  check_vendor_integrity
+  write_capabilities
 
   # --- veredito ---------------------------------------------------------------
   if [[ $FAIL_ENV -eq 1 ]]; then
@@ -837,8 +972,22 @@ doctor() {
 
 delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
   local sub="$1"; shift
-  has bun || die env "'$sub' exige Bun e o binário não está no PATH" \
-    "instale o Bun (https://bun.sh) — 'maestro doctor' segue funcionando sem ele" 2
+  if ! has bun; then
+    # E7/S-705: em vez de erro seco, cita o último envelope de capacidades —
+    # o doctor sabia; o erro agora conta o que ele sabia e quando.
+    local hint='' cap="$MAESTRO_HOME/capabilities.json" at='' epoch=0 age=0
+    if [[ -f "$cap" ]] && has jq; then
+      at=$(jq -r '.generated_at // empty' "$cap" 2>/dev/null || true)
+      epoch=$(jq -r '.generated_epoch // 0' "$cap" 2>/dev/null || echo 0)
+      if [[ -n "$at" && "$epoch" =~ ^[0-9]+$ && "$epoch" -gt 0 ]]; then
+        age=$(( ($(date +%s) - epoch) / 3600 ))
+        hint=" — último doctor: $at (${age}h atrás)"
+        [[ $age -ge 24 ]] && hint="$hint; envelope velho"
+      fi
+    fi
+    die env "'$sub' exige Bun e o binário não está no PATH$hint" \
+      "instale o Bun (https://bun.sh) — 'maestro doctor' segue funcionando sem ele" 2
+  fi
   [[ -f "$REPO_DIR/src/cli.ts" ]] || die env "src/cli.ts não encontrado em $REPO_DIR" \
     "reinstale o plugin (maestro doctor)" 2
   exec bun "$REPO_DIR/src/cli.ts" "$sub" "$@"

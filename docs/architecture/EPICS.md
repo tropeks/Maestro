@@ -66,6 +66,23 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
 - **S-704:** doctor: check de `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` ativo (teams podem
   se formar sem pedido) + linha nomeando MCP servers conectados como fora-do-envelope.
   *Pendente.*
+- **S-705:** capability envelope (P0.1 do ECC_DELTA_AUDIT). Doctor grava
+  `$MAESTRO_HOME/capabilities.json` (`maestro.capabilities.v1`: fatos — runtime
+  bun/jq/git/flock com versão, contadores do doctor, bindings resolvidos, roster);
+  `delegate()` sem Bun cita o envelope no erro ("último doctor: <ts> (<N>h atrás)",
+  "envelope velho" com ≥24h); `maestro status` mostra a idade. *AC: sem Bun o erro cita o
+  envelope e a idade; sem envelope o erro é o seco original; envelope só com jq (skip
+  honesto sem ele); hooks continuam bash puro (ninguém no caminho de hook lê o envelope
+  ainda).* **Entregue 2026-08-17** (test-envelope.sh).
+- **S-706:** drift de resolução + integridade do vendor (P0.2 do ECC_DELTA_AUDIT).
+  Snapshot `$MAESTRO_HOME/bindings-snapshot.tsv` (alvo→caminho→sha256) comparado a cada
+  doctor: caminho ou conteúdo do MESMO alvo mudou → `warn binding-resolution-drift`
+  nomeando o alvo, snapshot sempre avança (avisa 1× por mudança) — a classe do incidente
+  do `--prefix` (2026-08-10) deixa de ser silenciosa. `config/vendor.sha256` (manifesto
+  pinado, versionado) verificado offline: divergência é `fail_val` — vendor/ é read-only,
+  atualização deliberada regenera o manifesto no mesmo commit. *AC: drift é aviso e nunca
+  falha; conteúdo e caminho detectados separadamente; vendor divergente reprova com exit
+  1.* **Entregue 2026-08-17** (test-envelope.sh; doctor 24 → 27 checagens).
 - **Dependências:** E2 (CLI/record), E4 (tabela + instrumento de eval).
 
 ---

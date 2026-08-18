@@ -57,6 +57,11 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
+- **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de
+  resolução de bindings em `$MAESTRO_HOME` (DATA_MODEL §6); detecta
+  `binding-resolution-drift` (aviso) e divergência do vendor/ contra
+  `config/vendor.sha256` (falha de validação). `decide|status|log` sem Bun degradam
+  citando o envelope ("último doctor: <ts>"; ≥24h = "envelope velho").
 
 ## 3. Envelope de erro (CLI)
 

@@ -699,6 +699,32 @@ function cmdStatus(args: Args): number {
   }
   out.push(`  gate.mode   : ${gateMode}`);
 
+  // E7/S-705: idade do envelope de capacidades (maestro.capabilities.v1).
+  // O envelope é escrito pelo doctor; aqui só se LÊ — e idade é reportada em
+  // segundos inteiros via humanDuration (sem float, regra do projeto).
+  try {
+    const cap = join(maestroHome(), "capabilities.json");
+    if (!existsSync(cap)) {
+      out.push("  doctor      : nunca rodou (sem capabilities.json — rode `maestro doctor`)");
+    } else {
+      const o = JSON.parse(readFileSync(cap, "utf8")) as {
+        generated_at?: string;
+        generated_epoch?: number;
+      };
+      const age =
+        typeof o.generated_epoch === "number" && o.generated_epoch > 0
+          ? Math.trunc(Date.now() / 1000) - o.generated_epoch
+          : -1;
+      out.push(
+        `  doctor      : ${o.generated_at ?? "?"}` +
+          (age >= 0 ? ` (há ${humanDuration(age)})` : "") +
+          (age >= 86400 ? " — envelope velho, rode `maestro doctor`" : ""),
+      );
+    }
+  } catch {
+    out.push("  doctor      : capabilities.json ilegível (rode `maestro doctor`)");
+  }
+
   const sess = resolveSession(args);
   out.push("");
   if (!sess) {
