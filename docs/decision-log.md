@@ -1,5 +1,23 @@
 # Decision log
 
+## 2026-08-18 — Segunda reescrita: histórico de commits traduzido para inglês
+
+- **Ordem do Capitão** ("no git tbm"), na sequência do English-first do README. As 38
+  mensagens de commit e as 5 tags anotadas (v0.2.0–v1.0.2) foram traduzidas
+  integralmente para inglês — conteúdo técnico, números e trailers preservados
+  verbatim; identificadores do roster (dev-pleno, engenheiro) intactos por serem
+  identificadores. docs/ interno segue em pt-BR.
+- **Execução:** git filter-repo com commit-callback (mapa SHA→mensagem, cobertura
+  38/38 verificada por diferença de conjuntos ANTES de rodar) + tag-callback; uma
+  passada final corrigiu o único ref interno citado em mensagem (edda233 → o SHA
+  novo). Bundle pré-reescrita: ~/dev/Maestro-research/pre-english-rewrite-20260818.bundle.
+- **Verificado:** 38 commits antes e depois; working tree intocado; zero diacríticos
+  de pt nas mensagens; `c4b82b0` (upstream wshobson/agents) mantido — é externo.
+- **Os SHAs renumeraram DE NOVO** (mensagem é parte do commit — desta vez o histórico
+  inteiro, tags incluídas). A tabela antes→depois da entrada anterior foi atualizada
+  no lugar para os SHAs finais; o "antes" segue sendo o SHA original pré-reescritas.
+- **Daqui em diante, commit em inglês neste repo.**
+
 ## 2026-08-18 — Histórico reescrito: docs/research/ removido de TODOS os commits
 
 - **Autorização:** ordem direta do Capitão ("reescreve") após o alerta de que a remoção
@@ -17,14 +35,14 @@
 
   | antes | depois | commit |
   |---|---|---|
-  | 895c5a4 | 83a7b26 | S-701+S-702 |
-  | a2c1289 | d5d26e0 | S-705+S-706 |
-  | ef5e9dd | edbdcda | S-707 |
-  | 1c5be16 | e5959dc | S-708 |
-  | 95b3eab | 0a3dd5a | S-709 |
-  | 042b220 | 4e7b42d | S-703+S-704 |
-  | 04cb2e3 | 81d95d2 | S-710 |
-  | d9092ef | 62a902a | S-710 emenda + realinhamento |
+  | 895c5a4 | 5b582c3 | S-701+S-702 |
+  | a2c1289 | dc03fa4 | S-705+S-706 |
+  | ef5e9dd | e0b1c8d | S-707 |
+  | 1c5be16 | 623659d | S-708 |
+  | 95b3eab | fdecc2d | S-709 |
+  | 042b220 | 813dfeb | S-703+S-704 |
+  | 04cb2e3 | effb6c1 | S-710 |
+  | d9092ef | da01e9b | S-710 emenda + realinhamento |
 - **Limite conhecido:** um force push não coleta objetos órfãos no servidor do GitHub —
   os commits velhos podem seguir acessíveis POR SHA na API por um tempo, até o GC deles.
   Risco aceito: o repo era privado durante toda a existência desses SHAs, ninguém de
