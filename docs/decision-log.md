@@ -1,5 +1,23 @@
 # Decision log
 
+## 2026-08-18 — Sessão E7 parte 3 (S-707 — estilo de comunicação na injeção)
+
+- **Pedido do Romulo:** o Google developer documentation style guide como regra de como a
+  LLM fala com ele — e o lar canônico é o **Maestro**, não o CLAUDE.md da máquina.
+- **Decisões:** (1) canônico em `config/communication-style.md`, injetado pelo SessionStart
+  como seção própria — versionado, viaja com o plugin; (2) no orçamento é a PRIMEIRA seção
+  a ceder (referência de comportamento; ação vem antes) e o arquivo tem teto próprio de
+  2.000B (config inchado não devora as seções de ação); (3) `~/.claude/CLAUDE.md` virou
+  ponteiro com a essência (sessão sem Maestro não fica nua), evitando o texto duplicado em
+  toda sessão; (4) agy e codex receberam a seção integral nos AGENTS.md (fora do bloco
+  SM-GLOBAL-RULES — o sync de memória não a toca), porque o Maestro não os alcança.
+- **Evidência:** test-style-injection.sh (10 asserções: presença, degradação sem arquivo,
+  teto de 2KB, cessão antes de heurísticas/roster, núcleo intocado); injeção real desta
+  máquina foi a 4.887B — folga de 3,1KB até o teto.
+- **Gotcha da sessão:** a primeira edição no CLAUDE.md global engoliu a linha do marcador
+  `SM-GLOBAL-RULES v4`; restaurada e verificada (2 marcadores). Ao editar arquivo com
+  blocos sincronizados, inserir FORA dos marcadores e conferi-los depois.
+
 ## 2026-08-17 — Sessão E7 parte 2 (S-705 + S-706 — o par P0 do ECC_DELTA_AUDIT)
 
 - **Ordem do Romulo:** "Implementa" (o par capability envelope + drift que o audit do ECC

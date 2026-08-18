@@ -19,6 +19,7 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 - **Também:** limpa decision records expirados (TTL 4h) e **recompila a política do gate** (`~/.maestro/gate-policy.sh`) a partir do YAML — fonte de verdade única.
 - **Erros:** qualquer falha → exit 0 com stderr logado (degrada, nunca bloqueia sessão).
 - **Orçamento:** saída ≤ **8.000 bytes** (proxy determinístico de ~2k tokens). Truncamento em ordem: heurísticas → índice do roster → nunca a instrução canônica nem o session_id.
+- **Emenda E7 (S-707):** emite também `## Estilo de comunicação com o usuário`, lido de `config/communication-style.md` (teto de 2.000 bytes por arquivo; ausente → seção omitida em silêncio). No orçamento, é a PRIMEIRA seção a ceder — referência de comportamento, não instrução de ação.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.

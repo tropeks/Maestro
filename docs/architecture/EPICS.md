@@ -66,6 +66,14 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
 - **S-704:** doctor: check de `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` ativo (teams podem
   se formar sem pedido) + linha nomeando MCP servers conectados como fora-do-envelope.
   *Pendente.*
+- **S-707:** estilo de comunicação com o usuário na injeção. `config/communication-style.md`
+  (canônico, versionado; base: Google developer documentation style guide adaptado para
+  conversa — pedido do Romulo em 2026-08-18) emitido pelo SessionStart como seção própria;
+  teto de 2.000B por arquivo; primeira seção a ceder no orçamento. Réplica manual nos
+  AGENTS.md do agy/codex (Maestro não os alcança); `~/.claude/CLAUDE.md` global vira
+  ponteiro. *AC: seção presente com o config do repo; arquivo ausente degrada sem seção e
+  sem erro; arquivo inchado não passa de ~2KB; sob orçamento apertado cede antes de
+  heurísticas/roster; núcleo intocado.* **Entregue 2026-08-18** (test-style-injection.sh).
 - **S-705:** capability envelope (P0.1 do ECC_DELTA_AUDIT). Doctor grava
   `$MAESTRO_HOME/capabilities.json` (`maestro.capabilities.v1`: fatos — runtime
   bun/jq/git/flock com versão, contadores do doctor, bindings resolvidos, roster);

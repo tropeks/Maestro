@@ -324,7 +324,7 @@ Y3="$SB/binding-lixo.yaml"
 sed 's|  investigate: skill:systematic-debugging|  investigate: [skill:systematic-debugging, rm -rf /]|' "$Y1" >"$Y3"
 run_hook "$Y3"
 [[ $RC -eq 0 && "$OUT" == *"investigate → skill:systematic-debugging"* \
-   && "$OUT" != *"rm"* && "$ERR" == *"descartado"* ]] \
+   && "$OUT" != *"rm -rf"* && "$ERR" == *"descartado"* ]] \
   && ok "alvo malformado é descartado com aviso, sem vazar para a injeção" \
   || bad "alvo malformado vazou ou derrubou o hook (rc=$RC)"
 

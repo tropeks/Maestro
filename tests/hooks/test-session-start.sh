@@ -19,6 +19,7 @@ chk()  { if [[ "$1" == "yes" ]]; then ok "$2"; else bad "$2${3:+ — $3}"; fi; }
 
 HEUR_HDR='## Heurísticas de execução'
 ROSTER_HDR='## Roster — nome (modelo). A descrição de cada agente já está no contexto.'
+STYLE_HDR='## Estilo de comunicação com o usuário'
 
 # Cada caso roda o hook num MAESTRO_HOME próprio.
 new_home() { local d; d=$(mktemp -d "$SANDBOX/home.XXXXXX"); printf '%s' "$d"; }
@@ -251,12 +252,16 @@ sec_bytes() { # sec_bytes <arquivo> <header> — inclui a linha em branco anteri
 }
 S_HEUR=$(sec_bytes "$FULL" "$HEUR_HDR")
 S_ROSTER=$(sec_bytes "$FULL" "$ROSTER_HDR")
+# S-707: o estilo é a PRIMEIRA seção a ceder — os tetos abaixo descontam S_STYLE
+# para continuarem medindo o comportamento de heurísticas/roster, não o do estilo.
+S_STYLE=$(sec_bytes "$FULL" "$STYLE_HDR")
 [[ "$S_HEUR" -gt 10 && "$S_ROSTER" -gt 10 ]] \
   && ok "referência sem pressão tem heurísticas ($S_HEUR B) e roster ($S_ROSTER B)" \
   || bad "referência sem pressão tem heurísticas e roster"
 
-# (a) estouro pequeno: só as heurísticas devem ceder; o roster fica INTEIRO.
-B_A=$(( S_FULL - 60 ))
+# (a) estouro pequeno: estilo some primeiro, depois só as heurísticas cedem;
+# o roster fica INTEIRO.
+B_A=$(( S_FULL - S_STYLE - 60 ))
 H6=$(new_home); P6=$(new_proj)
 run "$H6" "$P6" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_A"
 [[ $OUTBYTES -le $B_A ]] && ok "estouro pequeno: respeita o teto" || bad "estouro pequeno: respeita o teto ($OUTBYTES > $B_A)"
@@ -264,13 +269,15 @@ run "$H6" "$P6" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET=
   && ok "estouro pequeno: roster preservado inteiro" || bad "estouro pequeno: roster preservado inteiro"
 [[ "$OUT" != *"heurística número 50"* ]] && ok "estouro pequeno: heurísticas cederam primeiro" \
   || bad "estouro pequeno: heurísticas cederam primeiro"
+[[ "$OUT" != *"$STYLE_HDR"* ]] && ok "estouro pequeno: estilo cedeu antes de tudo (S-707)" \
+  || bad "estouro pequeno: estilo cedeu antes de tudo (S-707)"
 
 # (b) estouro maior: heurísticas somem inteiras ANTES de o roster ser tocado.
 # Corta as heurísticas por completo + ~3 linhas de roster. Não use uma fração do
 # roster: desde que a injeção parou de duplicar a description, a seção ficou tão
 # pequena que "metade dela" é menor que o próprio cabeçalho + marcador de corte,
 # e não sobraria entrada nenhuma para provar "início preservado".
-B_B=$(( S_FULL - S_HEUR - 60 ))
+B_B=$(( S_FULL - S_STYLE - S_HEUR - 60 ))
 H7=$(new_home); P7=$(new_proj)
 run "$H7" "$P7" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_B"
 [[ $OUTBYTES -le $B_B ]] && ok "estouro maior: respeita o teto" || bad "estouro maior: respeita o teto ($OUTBYTES > $B_B)"
@@ -292,7 +299,7 @@ GATE_HDR='## Gates humanos — PARE, pergunte e espere resposta explícita.'
 [[ "$(cat "$FULL")" == *"$BIND_HDR"* && "$(cat "$FULL")" == *"$GATE_HDR"* ]] \
   && ok "referência sem pressão traz bindings e gates humanos" \
   || bad "referência sem pressão traz bindings e gates humanos"
-B_C=$(( S_FULL - S_HEUR - S_ROSTER + 10 ))
+B_C=$(( S_FULL - S_STYLE - S_HEUR - S_ROSTER + 10 ))
 H7c=$(new_home); P7c=$(new_proj)
 run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_C"
 [[ $OUTBYTES -le $B_C ]] && ok "heurísticas+roster cortados: respeita o teto" \

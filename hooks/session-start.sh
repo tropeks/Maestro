@@ -431,7 +431,7 @@ cleanup_records() {
 # 7. Montagem do bloco + orçamento de 8000 bytes.
 # ---------------------------------------------------------------------------
 build_and_emit() {
-  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_tail
+  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_style sec_tail
 
   sec_head="<maestro-routing>"$'\n'
   # Versão derivada do manifesto, não literal: a string ficou em "v0.1" até o
@@ -518,6 +518,20 @@ build_and_emit() {
     sec_roster+="(vazio — nenhum agents/*.md instalado; use os agentes nativos disponíveis)"$'\n'
   fi
 
+  # S-707 — estilo de comunicação com o usuário (regra do Romulo, 2026-08-18;
+  # base: Google developer documentation style guide adaptado para conversa).
+  # Canônico em config/communication-style.md, versionado no plugin;
+  # MAESTRO_STYLE_FILE é costura de teste. Ausente/ilegível → seção vazia
+  # (degrada em silêncio, como as demais). head -c 2000 = teto de segurança:
+  # arquivo inchado não pode devorar o orçamento das seções de ação.
+  sec_style=""
+  local style_file="${MAESTRO_STYLE_FILE:-$REPO_DIR/config/communication-style.md}"
+  if [[ -f "$style_file" && -r "$style_file" ]]; then
+    local style_body
+    style_body=$(head -c 2000 -- "$style_file" 2>/dev/null || true)
+    [[ -n "$style_body" ]] && sec_style=$'\n'"## Estilo de comunicação com o usuário"$'\n'"$style_body"$'\n'
+  fi
+
   # Orçamento: head/instr/tail são intocáveis (session_id e instrução canônica).
   # O resto cede na ordem do API_SPEC (heurísticas → roster) e, como rede de
   # segurança além da spec, rotas → profile → bindings → gates: uma routing
@@ -530,7 +544,7 @@ build_and_emit() {
   (( remaining < 0 )) && remaining=0
 
   local name cur allowed cut
-  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur; do
+  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur sec_style; do
     cur="${!name}"
     [[ -n "$cur" ]] || continue
     if (( ${#cur} <= remaining )); then
@@ -552,7 +566,7 @@ build_and_emit() {
     remaining=0
   done
 
-  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_tail"
+  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_style$sec_tail"
   # Cinto e suspensório: o teto vale mesmo com env exótica ou seção inesperada.
   # MAS o corte cego para no NÚCLEO (head + instrução canônica + fechamento): o
   # API_SPEC §1 diz que a instrução canônica e o session_id nunca truncam, e
