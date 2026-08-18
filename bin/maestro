@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse UserPromptSubmit)
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree'
 
 usage() {
   cat <<'U'
@@ -681,6 +681,7 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
     and ((keys - ($fields | split(" "))) | length == 0)
     and (((.reason // "") | length) <= 120)
     and (if has("agents") then (.agents | type == "array") else true end)
+    and (if has("wtree") then (.wtree | type == "string" and test("^[0-9a-f]{40}$")) else true end)
   ' "$f" >/dev/null 2>&1
 }
 

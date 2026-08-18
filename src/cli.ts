@@ -388,6 +388,38 @@ function currentProject(): string | null {
   return RE_PROJECT.test(name) ? name : null;
 }
 
+// ------------------------------------------------------- wtree (E7 / S-701)
+
+/**
+ * Fingerprint de conteúdo do working tree do projeto corrente, via
+ * `bin/maestro-wtree` (bash puro; padrão adaptado do gstack-wtree — atribuição
+ * no próprio script). Amarra a decisão ao ESTADO do repo, não só ao relógio:
+ * o TTL diz "a decisão envelheceu"; o wtree diz "o conteúdo andou".
+ * Degradação silenciosa (null): sem git, fora de repo, script ausente ou saída
+ * inesperada — o record simplesmente não ganha o campo, nada falha.
+ * Precedente do spawn: appendLog já chama flock externo; git é dependência de
+ * AMBIENTE (validada pelo doctor), não de código — "zero deps além do stdlib
+ * do Bun" segue de pé. O hash vai só ao RECORD (DATA_MODEL §3), nunca ao log:
+ * o vocabulário do JSONL (§4) fica intocado.
+ */
+function computeWtree(): string | null {
+  try {
+    const script = join(pluginRoot(), "bin", "maestro-wtree");
+    if (!existsSync(script)) return null;
+    const dir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+    const r = Bun.spawnSync({
+      cmd: ["bash", script, dir],
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    if (r.exitCode !== 0) return null;
+    const out = new TextDecoder().decode(r.stdout).trim();
+    return /^[0-9a-f]{40}$/.test(out) ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 // --------------------------------------------------------- decision record
 
 interface DecisionRecord {
@@ -398,6 +430,7 @@ interface DecisionRecord {
   mode: Mode;
   agents?: string[];
   reason?: string;
+  wtree?: string;
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -553,6 +586,7 @@ function cmdDecide(args: Args): number {
   const now = new Date();
   const ts = isoLocal(now);
   const expires = isoLocal(new Date(now.getTime() + ttlSeconds() * 1000));
+  const wtree = computeWtree(); // E7/S-701: ~200ms; aqui no CLI, jamais no gate
 
   const record: DecisionRecord = {
     session_id: session,
@@ -562,6 +596,7 @@ function cmdDecide(args: Args): number {
     mode,
     ...(agents ? { agents } : {}),
     ...(reason ? { reason } : {}),
+    ...(wtree ? { wtree } : {}),
   };
 
   const target = recordPath(session);
@@ -697,6 +732,25 @@ function cmdStatus(args: Args): number {
         );
       }
       if (rec.reason) out.push(`  motivo    : ${rec.reason}`);
+      // E7/S-701: freshness de conteúdo — comparação feita AQUI (CLI, sem NFR
+      // de latência), nunca no pre-tool-gate (<50ms; o wtree custa ~200ms).
+      // Limitação honesta: compara contra o diretório corrente; `status` rodado
+      // de outro projeto reporta divergência sem significado — a mensagem
+      // aponta isso em vez de fingir certeza.
+      if (rec.wtree) {
+        const cur = computeWtree();
+        if (!cur) {
+          out.push(
+            "  conteúdo  : não verificável daqui (sem git neste diretório)",
+          );
+        } else if (cur === rec.wtree) {
+          out.push("  conteúdo  : inalterado desde a decisão (wtree confere)");
+        } else {
+          out.push(
+            "  conteúdo  : ALTERADO desde a decisão (wtree difere) — decisão possivelmente stale; re-registre se o plano mudou",
+          );
+        }
+      }
     }
   }
 

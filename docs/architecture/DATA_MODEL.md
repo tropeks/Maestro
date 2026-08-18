@@ -127,6 +127,15 @@ notes: "agente Go é o coração; nunca tocar sem testes"
 }
 ```
 Campos obrigatórios: `session_id`, `ts`, `expires_at` (TTL 4h — review Opus), `workflow`, `mode`. `mode ∈ {direct, subagent, multi}`. `reason` ≤120 chars (truncado pelo CLI). Records expirados são removidos pelo SessionStart e pelo doctor. O campo `gate_pending` foi **removido** (v1.1): gates humanos rodam como passos do workflow (plan mode nativo para `plan`; confirmação explícita em sessão para `ship`), não como estado do record.
+
+**Emenda v1.4 (E7/S-701, 2026-08-17) — campo opcional `wtree`.** Fingerprint de conteúdo
+do working tree do projeto no momento da decisão (40 hex, `git write-tree` sobre index
+temporário — `bin/maestro-wtree`, padrão adaptado do gstack-wtree/MIT). O TTL diz que a
+decisão *envelheceu*; o `wtree` diz que o *conteúdo andou* — `maestro status` compara e
+denuncia decisão possivelmente stale. Sempre opcional: sem git/fora de repo o campo é
+omitido em silêncio (nunca é erro de fluxo). Formato validado pelo doctor
+(`^[0-9a-f]{40}$`). **`wtree` vive SÓ no record — jamais no log (§4 intocado):** é hash
+de conteúdo, não caminho nem texto, mas o vocabulário do JSONL só muda por emenda própria.
 `# classification: confidential` — **PROIBIDO** campo com texto do prompt do usuário.
 
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)

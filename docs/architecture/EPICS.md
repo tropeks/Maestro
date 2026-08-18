@@ -43,6 +43,31 @@ Fundação instalável: sem ela nada existe; com ela já dá pra dogfood.
 ### E6 — Decisão de memória (P1, S) — fecha ADR-007
 - **S-601:** spike claude-mem em 1 projeto; validar coexistência de hooks (ordem SessionStart). *AC: relatório curto + decisão registrada (ADR-007 → Aceito ou trocado por GBrain).*
 
+### E7 — P0 RAD hardening (P1, S) — emenda 2026-08-17, aprovada pelo Romulo
+Origem: docs/research/RAD_PATTERNS_FOR_MAESTRO.md §7-P0 + ECC_DELTA_AUDIT.md §5-P0.
+Princípio: carimbos, não componentes — evidência amarrada a conteúdo e tabela blindada
+por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
+- **S-701:** fingerprint de conteúdo. `bin/maestro-wtree` (bash puro, padrão adaptado do
+  gstack-wtree/MIT com atribuição); `maestro decide` carimba `wtree` no decision record
+  (DATA_MODEL §3 emenda v1.4); `maestro status` reporta freshness; doctor valida o campo.
+  *AC: mesmo conteúdo → mesmo hash; commit do mesmo conteúdo não muda; arquivo novo muda;
+  index real intocado; fora de git degrada sem campo e sem erro; `wtree` NUNCA vai ao
+  routing.jsonl (§4 intocado).* **Entregue 2026-08-17** (test-wtree.sh, 22 asserções).
+  Guarda de design: comparação de wtree é do CLI — **jamais do pre-tool-gate** (NFR <50ms
+  × ~200ms do wtree); enforcement no gate só com medição, em épico próprio.
+- **S-702:** eval-on-diff Tier 1 da routing table. Baseline pinado por caso
+  (`tests/eval/prescribed-baseline.tsv`, gerado do instrumento (A)) + teste de CI que
+  falha NOMEANDO os casos cujo veredito prescrito mudou. *AC: mutação de rota reprova
+  citando caso e antes→depois; duas execuções do instrumento são idênticas; o SCORE
+  continua fora do CI (filosofia do run-eval.sh); baseline regenerável no mesmo PR.*
+  **Entregue 2026-08-17** (test-eval-diff.sh).
+- **S-703:** ratchet da injeção SessionStart (context-bill: medir bytes reais injetados
+  contra o teto de 8000B com protocolo de ratchet + linha no doctor). *Pendente.*
+- **S-704:** doctor: check de `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` ativo (teams podem
+  se formar sem pedido) + linha nomeando MCP servers conectados como fora-do-envelope.
+  *Pendente.*
+- **Dependências:** E2 (CLI/record), E4 (tabela + instrumento de eval).
+
 ---
 
 ## Grafo de dependências

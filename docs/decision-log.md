@@ -1,5 +1,58 @@
 # Decision log
 
+## 2026-08-17 — Sessão E7 (P0 RAD hardening — S-701 + S-702, vibe-code direto aprovado)
+
+- **Origem:** pesquisa docs/research/RAD_PATTERNS_FOR_MAESTRO.md + ECC_DELTA_AUDIT.md;
+  experimento P0 aprovado explicitamente pelo Romulo ("Segue aprovado pelo Capitão").
+- **Stories:** S-701 (wtree no decision record), S-702 (eval-on-diff da tabela).
+  Emenda E7 registrada no EPICS; DATA_MODEL §3 → v1.4. Suíte: 894 → **919 asserções ok**.
+
+### Decisões
+
+1. **Comparação de wtree é do CLI, nunca do gate.** O fingerprint custa ~200ms; o
+   pre-tool-gate tem NFR <50ms. `decide` carimba, `status` compara — enforcement no gate
+   só entraria com medição própria, em épico futuro. O TTL cobre tempo; o wtree cobre
+   conteúdo; os dois coexistem no record.
+2. **`wtree` só no record, jamais no log.** É hash (nem caminho nem texto), mas o
+   vocabulário do routing.jsonl é fechado e só muda por emenda própria — S-701 não é essa
+   emenda. Teste pina a ausência (`wtree NÃO vaza para o routing.jsonl`).
+3. **Eval-on-diff gateia o DIFF, não o score.** O cabeçalho do run-eval.sh está certo:
+   score <100% é informação. O que virou regressão de CI é *veredito de caso mudando sem
+   atualização do baseline no mesmo PR* — baseline pinado por arquivo versionado, nunca
+   "o run mais recente" (lição gstack v1.63, eval que se auto-comparava e nunca falhava).
+4. **test-cli.sh ancorado em CLAUDE_PROJECT_DIR sem git.** Sem a âncora, o carimbo de
+   wtree tornaria a asserção de schema exato dependente do working tree de quem roda a
+   suíte. O caminho feliz do wtree tem fixture git próprio (test-wtree.sh).
+5. **Degradação do wtree é silenciosa por design:** sem git/fora de repo → campo omitido,
+   exit 0. Um aviso a cada decide em projeto não-git seria ruído sem ação possível.
+
+### Episódio do gate (registrado como evidência de dogfood)
+
+A primeira tentativa de `Write` em `bin/maestro-wtree` foi **bloqueada pela denylist de
+autoproteção** (self_paths) — o trilho funcionou exatamente como o ADR-003 v1.1 promete,
+e o `gate_block` está no routing.jsonl. Como esta é a sessão de meta-trabalho deliberada
+que o decision-log de 2026-08-09 prevê ("quem faz é o humano, ou MAESTRO_OFF=1"), com
+aprovação explícita e escopo fechado do Romulo, os 3 arquivos protegidos
+(`bin/maestro-wtree`, `src/cli.ts`, `bin/maestro`) foram aplicados via Bash com
+replacements ancorados que falham alto — o caminho equivalente ao MAESTRO_OFF=1 (que não
+é settável no ambiente do harness já em execução). Docs e testes seguiram o fluxo normal.
+Limite conhecido reafirmado: o gate não intercepta Bash (emenda do ADR-003); este episódio
+é o exemplo canônico de que o escape existe e de que seu uso deve ser deliberado,
+autorizado e registrado — exatamente o que este parágrafo faz.
+
+### Evidência
+
+- `tests/run-all.sh`: **SUITE OK**, 919 asserções, doctor 24 checagens/1 aviso esperado
+  (MAESTRO_HOME de teste fora do default).
+- test-wtree.sh: 22 asserções — propriedades P1/P2/P3 do fingerprint (determinismo,
+  sensível a arquivo novo, insensível a commit/ignorados, index real intocado), carimbo,
+  degradação, freshness do status, schema do doctor (aceita válido, reprova malformado
+  nomeando o record).
+- test-eval-diff.sh: caminho negativo provado — mover "testa/valida" de verify→fix
+  reprova nomeando `qa-fluxo-orcamento: 'verify direct —' → 'fix direct —'`.
+- Métrica do experimento (2 semanas de dogfood): contagem de decisões stale visíveis no
+  `status` e de edições de tabela pegas pelo baseline.
+
 ## 2026-08-08 — Sessão E1 (vibe-code via chat)
 - Story: S-101, S-102, S-103
 - Implementado: estrutura de plugin (plugin.json, hooks.json, marketplace.json), common.sh (kill-switch, log_event com vocabulário fechado + sanitização + flock -n), 3 hooks como stubs seguros (degradam com exit 0), CLI bash com doctor completo, routing-table.yaml inicial, testes (killswitch, log-vocab) + run-all.

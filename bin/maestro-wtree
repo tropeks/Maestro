@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# bin/maestro-wtree — fingerprint de conteúdo do working tree (E7 / S-701).
+#
+# Padrão adaptado de `gstack-wtree` (gstack, MIT — ver docs/research/
+# RAD_PATTERNS_FOR_MAESTRO.md §5.1): copia o index real do repo (preserva o stat
+# cache — sem isso o git re-hasharia a árvore inteira), roda `git add -A` num
+# index TEMPORÁRIO e imprime `git write-tree`.
+#
+# Propriedades (as três que importam para o decision record):
+#   1. mesmo conteúdo → mesmo hash: commit/amend/rebase que preservam o working
+#      tree NÃO mudam o fingerprint;
+#   2. arquivo novo não-rastreado (fora do .gitignore) MUDA o fingerprint;
+#   3. o index real nunca é tocado — o staging do usuário fica intacto.
+#
+# Efeito colateral conhecido e aceito (igual ao upstream): `git add -A` grava
+# blobs soltos no object store do repo; são lixo coletável pelo gc, não estado.
+#
+# Saída: hash da árvore (40 hex) no stdout.
+# Exit:  0 ok · 3 sem git / fora de repositório (degradação silenciosa — quem
+#        chama OMITE o campo; nunca é erro de fluxo).
+# Isto NÃO é hook (não intercepta nada, não roda em evento): é utilitário do
+# CLI, chamado por `maestro decide`/`status`. MAESTRO_OFF não se aplica.
+set -u
+
+dir="${1:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+
+command -v git >/dev/null 2>&1 || exit 3
+top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || exit 3
+gitdir=$(git -C "$dir" rev-parse --git-dir 2>/dev/null) || exit 3
+case "$gitdir" in /*) ;; *) gitdir="$top/$gitdir" ;; esac
+
+tmpidx=$(mktemp "${TMPDIR:-/tmp}/maestro-wtree.XXXXXX") || exit 3
+trap 'rm -f "$tmpidx"' EXIT
+
+# Repo recém-init não tem index; mktemp cria arquivo VAZIO, que o git rejeitaria
+# como index corrompido — nesse caso removemos e deixamos o git criar do zero.
+if [[ -s "$gitdir/index" ]]; then
+  cp -- "$gitdir/index" "$tmpidx" 2>/dev/null || rm -f "$tmpidx"
+else
+  rm -f "$tmpidx"
+fi
+
+GIT_INDEX_FILE="$tmpidx" git -C "$top" add -A >/dev/null 2>&1 || exit 3
+GIT_INDEX_FILE="$tmpidx" git -C "$top" write-tree 2>/dev/null || exit 3

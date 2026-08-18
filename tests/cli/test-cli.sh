@@ -11,6 +11,12 @@ CLI="$REPO/src/cli.ts"
 
 tmp=$(mktemp -d)
 export MAESTRO_HOME="$tmp/state"
+# E7/S-701: ancora o "projeto corrente" num diretório SEM git — senão o decide
+# carimbaria `wtree` do repo Maestro e as asserções de schema exato abaixo
+# dependeriam do estado do working tree de quem roda a suíte. O caminho feliz
+# do wtree tem teste próprio (test-wtree.sh, com fixture git controlado).
+mkdir -p "$tmp/no-git-proj"
+export CLAUDE_PROJECT_DIR="$tmp/no-git-proj"
 trap 'rm -rf "$tmp"' EXIT
 
 fail=0

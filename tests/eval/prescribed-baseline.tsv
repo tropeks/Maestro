@@ -1,0 +1,22 @@
+# tests/eval/prescribed-baseline.tsv — baseline PINADO do instrumento (A) por caso.
+# E7 / S-702 (eval-on-diff): editar a routing table e mudar o veredito prescrito de
+# um caso gravado deve APARECER — este arquivo é o que torna a mudança visível e
+# revisável. Score continua fora do CI (filosofia do run-eval.sh); só o DIFF gateia.
+# Colunas: caso <TAB> wf.presc <TAB> mode.presc <TAB> agents.presc
+# Mudança intencional na tabela? Regenere no mesmo PR:
+#   bun tests/eval/prescribe.ts --tsv | awk -F'\t' 'NR>1 && NF>=12 {print $1"\t"$4"\t"$7"\t"$10}' > tests/eval/prescribed-baseline.tsv
+go-nil-worker	custom	direct	—
+ts-login-quebrado	fix	direct	—
+py-export-csv	custom	direct	typescript-pro
+go-endpoint-health	feature	subagent	—
+py-refactor-auth	refactor	direct	—
+audit-legatus	audit	direct	—
+ship-smartquotation	custom	direct	—
+pg-query-lenta	custom	direct	postgres-pro
+pg-campo-cnpj	feature	subagent	postgres-pro
+infra-pve-restart	custom	direct	postgres-pro
+resumo-semana	custom	direct	—
+ts-console-logger	custom	direct	dev-junior
+react-tela-config	feature	subagent	typescript-pro
+qa-fluxo-orcamento	verify	direct	—
+review-pr	codereview	direct	revisor
