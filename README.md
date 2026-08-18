@@ -1,173 +1,176 @@
 # Maestro
 
-**Camada de roteamento MoE para o Claude Code** — hooks determinísticos, uma routing
-table declarativa e um roster de agentes tierizados por custo.
+**A MoE routing layer for Claude Code** — deterministic hooks, a declarative routing
+table, and a roster of cost-tiered agents.
 
 [![CI](https://github.com/tropeks/Maestro/actions/workflows/ci.yml/badge.svg)](https://github.com/tropeks/Maestro/actions/workflows/ci.yml)
-![bash puro nos hooks](https://img.shields.io/badge/hooks-bash%20puro-4EAA25?logo=gnubash&logoColor=white)
-![CLI em Bun](https://img.shields.io/badge/CLI-Bun-black?logo=bun)
-![licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)
+![pure-bash hooks](https://img.shields.io/badge/hooks-pure%20bash-4EAA25?logo=gnubash&logoColor=white)
+![CLI in Bun](https://img.shields.io/badge/CLI-Bun-black?logo=bun)
+![MIT license](https://img.shields.io/badge/license-MIT-blue)
 
-> **Filosofia:** trilhos determinísticos, IA nas bordas. Os hooks garantem **QUE** a
-> decisão de roteamento acontece; o Claude da sessão decide **O QUE** fazer, guiado
-> pela tabela. Nenhum LLM no caminho crítico, nenhuma rede em runtime, nenhum
-> componente que bloqueie trabalho ao falhar.
+*Leia em [português](README.pt-BR.md). Internal docs (`docs/`) are in pt-BR.*
 
-## O problema
+> **Philosophy:** deterministic rails, AI at the edges. Hooks guarantee **THAT** a
+> routing decision happens; the session's Claude decides **WHAT** to do, guided by
+> the table. No LLM on the critical path, no network at runtime, no component that
+> blocks work when it fails.
 
-Numa sessão longa do Claude Code, o modelo principal tende a fazer tudo sozinho — no
-contexto mais caro da casa. Um bugfix mecânico de uma linha custa o mesmo raciocínio
-premium que uma decisão de arquitetura. O Maestro inverte o padrão: **delegar é a
-regra, executar direto é a exceção**, e a tarefa desce para o modelo mais barato que
-dá conta dela — medido em eval cego, essa inversão levou o acerto de roteamento de
-73% para 100% (15/15, dois juízes independentes).
+## The problem
 
-## Como funciona
+In a long Claude Code session, the main model tends to do everything itself — in the
+most expensive context in the house. A mechanical one-line bugfix costs the same
+premium reasoning as an architecture decision. Maestro inverts the default:
+**delegating is the rule, working directly is the exception**, and each task drops to
+the cheapest model that can handle it. Measured in a blind eval, this inversion took
+routing accuracy from 73% to 100% (15/15, two independent judges).
+
+## How it works
 
 ```mermaid
 flowchart LR
-    subgraph hooks["hooks (bash puro, &lt;50ms)"]
-        SS[SessionStart] -->|injeta| INJ["routing table + roster<br/>+ gates + heurísticas"]
+    subgraph hooks["hooks (pure bash, &lt;50ms)"]
+        SS[SessionStart] -->|injects| INJ["routing table + roster<br/>+ gates + heuristics"]
         PT[PreToolUse] -->|Edit/Write| GATE{decision<br/>record?}
-        PB[PreToolUse] -->|Bash| GUARD["guarda destrutiva<br/>(rm -rf, force push, DROP)"]
+        PB[PreToolUse] -->|Bash| GUARD["destructive-command guard<br/>(rm -rf, force push, DROP)"]
     end
     subgraph cli["CLI (Bun)"]
-        DEC["maestro decide"] --> REC[("decision record<br/>TTL 4h")]
-        DOC["maestro doctor"] --> ENV[("capabilities.json<br/>+ snapshots de drift")]
+        DEC["maestro decide"] --> REC[("decision record<br/>4h TTL")]
+        DOC["maestro doctor"] --> ENV[("capabilities.json<br/>+ drift snapshots")]
     end
-    GATE -.->|sem record: warn| REC
-    INJ -->|"o Claude da sessão<br/>escolhe workflow + agente"| DEC
+    GATE -.->|no record: warn| REC
+    INJ -->|"the session's Claude<br/>picks workflow + agent"| DEC
 ```
 
-1. **SessionStart** injeta um bloco `<maestro-routing>` (~6KB, orçamento com ratchet
-   testado): rotas de intenção → workflow, bindings step → executor, heurísticas de
-   delegação, gates humanos e o roster filtrado pelo `.maestro.yaml` do projeto.
-2. O Claude da sessão registra a decisão antes de editar código:
+1. **SessionStart** injects a `<maestro-routing>` block (~6KB, budget enforced by a
+   tested ratchet): intent → workflow routes, step → executor bindings, delegation
+   heuristics, human gates, and the roster filtered by the project's `.maestro.yaml`.
+2. The session's Claude records its decision before editing code:
 
    ```bash
    maestro decide --session <id> --workflow fix --mode subagent \
-                  --agents golang-pro --reason "bug em 1 módulo Go"
+                  --agents golang-pro --reason "bug in 1 Go module"
    ```
 
-3. **PreToolUse** confere: edição de código sem decision record válido gera aviso em
-   toda edição (`gate.mode: warn` é o default; a promoção a `block` é uma linha de
-   config, tomada com dados de dogfood — não por fé).
-4. `maestro log --summary` fecha o loop: taxa de override manual, distribuição de
-   modelo por tarefa — o instrumento que diz se o roteamento está funcionando.
+3. **PreToolUse** checks: editing code without a valid decision record raises a
+   warning on every edit (`gate.mode: warn` is the default; promotion to `block` is
+   one line of config, made with dogfood data — not on faith).
+4. `maestro log --summary` closes the loop: manual-override rate, model distribution
+   per task — the instrument that tells you whether routing is actually working.
 
-## Roster — o modelo proporcional ao papel
+## Roster — the model proportional to the role
 
-| agente | modelo | quando |
+| agent | model | when |
 |---|---|---|
-| `dev-junior` | haiku | tarefa mecânica de escopo fechado e critério objetivo |
-| `dev-pleno` | sonnet | feature/bugfix que exige julgamento |
-| `engenheiro` | sonnet | arquitetura e plano — entrega trade-offs, não código |
-| `revisor` | sonnet | review **read-only** — sem Write, Edit ou Bash |
-| `qa` | sonnet | teste funcional e evidência — não implementa correção |
-| `golang-pro` · `python-pro` · `typescript-pro` · `postgres-pro` | sonnet | a linguagem do alvo vence o perfil de senioridade |
+| `dev-junior` | haiku | mechanical task with closed scope and objective criteria |
+| `dev-pleno` | sonnet | feature/bugfix that requires judgment |
+| `engenheiro` | sonnet | architecture and planning — delivers trade-offs, not code |
+| `revisor` | sonnet | **read-only** review — no Write, Edit, or Bash |
+| `qa` | sonnet | functional testing and evidence — never implements the fix |
+| `golang-pro` · `python-pro` · `typescript-pro` · `postgres-pro` | sonnet | the target's language beats the seniority profile |
 
-Os quatro especialistas são adaptados de [wshobson/agents](https://github.com/wshobson/agents)
-(MIT), com os originais pinados por commit em `vendor/` — que é read-only e verificado
-por manifesto `sha256` a cada `doctor`.
+The four specialists are adapted from [wshobson/agents](https://github.com/wshobson/agents)
+(MIT), with the originals pinned by commit under `vendor/` — which is read-only and
+verified against a `sha256` manifest on every `doctor` run.
 
-Um `.maestro.yaml` na raiz do projeto restringe o roster ativo:
+A `.maestro.yaml` at the project root narrows the active roster:
 
 ```yaml
 version: 1
 project: remedix
 languages: [go]
-experts: [golang-pro]   # só ele aparece na injeção
+experts: [golang-pro]   # only this one shows up in the injection
 ```
 
-## Workflows e gates
+## Workflows and gates
 
-| intenção (exemplos) | workflow | steps | gate humano |
+| intent (examples) | workflow | steps | human gate |
 |---|---|---|---|
-| "quebrou, corrige" | `fix` | investigate → implement → review | — |
-| "adiciona, implementa" | `feature` | plan → implement → review → qa | plano |
-| "limpa, reorganiza" | `refactor` | plan → implement → review | plano |
-| "deploya, publica" | `ship` | ship | ship |
-| "segurança, auditoria" | `audit` | audit | — |
-| "testa, valida" | `verify` | qa | — |
-| "revisa o PR" | `codereview` | review | — |
+| "it broke, fix it" | `fix` | investigate → implement → review | — |
+| "add, implement" | `feature` | plan → implement → review → qa | plan |
+| "clean up, reorganize" | `refactor` | plan → implement → review | plan |
+| "deploy, publish" | `ship` | ship | ship |
+| "security, audit" | `audit` | audit | — |
+| "test, validate" | `verify` | qa | — |
+| "review the PR" | `codereview` | review | — |
 
-Cada step tem um **binding** declarado (`skill:` · `agent:` · `native:`) na
-`config/routing-table.yaml` — schema versionado, com **eval-on-diff**: mutação de
-rota reprova a CI nomeando o caso que mudou de veredito e o antes → depois.
+Every step has a declared **binding** (`skill:` · `agent:` · `native:`) in
+`config/routing-table.yaml` — a versioned schema with **eval-on-diff**: a route
+mutation fails CI naming the case whose verdict changed, before → after.
 
-Os gates humanos seguem risco, não burocracia: param **só** o quase-irreversível
-(produção real, billing, auth/secrets, migração destrutiva, force push). Em
-desenvolvimento privado com a mudança verificada por testes, commit, push em branch
-e PR fluem sem pergunta — com a decisão registrada.
+Human gates follow risk, not bureaucracy: they stop **only** the near-irreversible
+(real production, billing, auth/secrets, destructive migrations, force push). In
+private development with the change verified by tests, commit, branch push, and PR
+flow without asking — with the decision on record.
 
-## Instalar
+## Install
 
 ```bash
 git clone https://github.com/tropeks/Maestro ~/dev/Maestro
-claude   # dentro do Claude Code:
+claude   # inside Claude Code:
 # /plugin marketplace add ~/dev/Maestro
 # /plugin install maestro@maestro
 ```
 
-Dependências de runtime: `bash`, `jq`, `flock` (hooks) e [Bun](https://bun.sh) (CLI).
-Os hooks nunca invocam Bun — se o Bun sumir, o CLI degrada com mensagem citando o
-último `doctor`; os trilhos continuam de pé.
+Runtime dependencies: `bash`, `jq`, `flock` (hooks) and [Bun](https://bun.sh) (CLI).
+The hooks never invoke Bun — if Bun disappears, the CLI degrades with a message
+citing the last `doctor` run; the rails stay up.
 
-## Validar
+## Validate
 
 ```bash
-bin/maestro doctor        # 30 checagens; --ci para pipeline
-bash tests/run-all.sh     # suíte completa: 1020 asserções, hermética
+bin/maestro doctor        # 30 checks; --ci for pipelines
+bash tests/run-all.sh     # full suite: 1020 assertions, hermetic
 ```
 
-O `doctor` não confia — mede: roda o hook de injeção de verdade e conta os bytes;
-compara os bindings resolvidos contra o snapshot da última rodada
-(`binding-resolution-drift`); verifica o `vendor/` contra o manifesto pinado; compara
-a cópia instalada do plugin com o repo **por conteúdo, byte a byte** — porque versão
-igual já escondeu seis commits de diferença. Tudo que ele apura vira fatos inteiros
-num envelope (`capabilities.json`) que os consumidores leem depois.
+The `doctor` doesn't trust — it measures: it runs the injection hook for real and
+counts the bytes; compares resolved bindings against the previous run's snapshot
+(`binding-resolution-drift`); verifies `vendor/` against the pinned manifest; and
+compares the installed plugin copy with the repo **by content, byte for byte** —
+because an identical version number once hid six commits of difference. Everything
+it establishes becomes integer facts in an envelope (`capabilities.json`) that
+consumers read later.
 
-A CI roda exatamente isso a cada push/PR, mais `shellcheck` em `hooks/`, `bin/` e
-`tests/` (gate bloqueante em `error`; o inventário completo sai como anotação no PR
-enquanto a dívida não fecha).
+CI runs exactly this on every push/PR, plus `shellcheck` over `hooks/`, `bin/`, and
+`tests/` (blocking gate at `error`; the full inventory lands as PR annotations while
+the debt is being paid down).
 
-## Fronteiras invioláveis
+## Hard boundaries
 
-- **`hooks/` é bash puro** — nunca invoca Bun, nunca importa `src/`. NFR: <50ms.
-- **Kill-switch:** `MAESTRO_OFF=1` desativa tudo instantaneamente. Falha de qualquer
-  componente degrada para o fluxo manual com exit 0 — o Maestro **nunca** bloqueia
-  trabalho por estar quebrado.
-- **Privacidade do log:** `~/.maestro/logs/routing.jsonl` carrega só metadados com
-  vocabulário fechado — jamais o texto do prompt, jamais caminho completo de arquivo
-  (só a extensão). Nenhuma chave aceita `/`.
-- **Sem float em métrica de custo** (inteiros de tokens/centavos), **sem rede em
-  runtime**, **`vendor/` read-only**.
-- **Autoproteção:** o gate bloqueia sempre — mesmo com decisão registrada — edição de
-  `.claude/` e `.github/workflows/` em qualquer projeto, e de `hooks/`, `bin/`,
-  `src/`, `agents/`, `config/routing-table.yaml` e `.claude-plugin/` sob a raiz do
-  plugin. O roteador não reescreve as próprias regras; agentes editam `docs/`,
-  `tests/` e este README — o gate e o CLI são do humano.
+- **`hooks/` is pure bash** — never invokes Bun, never imports `src/`. NFR: <50ms.
+- **Kill switch:** `MAESTRO_OFF=1` disables everything instantly. Any component
+  failure degrades to the manual flow with exit 0 — Maestro **never** blocks work by
+  being broken.
+- **Log privacy:** `~/.maestro/logs/routing.jsonl` carries metadata only, with typed
+  keys and a closed vocabulary — never the prompt text, never a full file path (only
+  the extension). No key accepts `/`.
+- **No floats in cost metrics** (integer tokens/cents), **no network at runtime**,
+  **`vendor/` is read-only**.
+- **Self-protection:** the gate always blocks — even with a decision on record —
+  edits to `.claude/` and `.github/workflows/` in any project, and to `hooks/`,
+  `bin/`, `src/`, `agents/`, `config/routing-table.yaml`, and `.claude-plugin/`
+  under the plugin root. The router doesn't rewrite its own rules; agents edit
+  `docs/`, `tests/`, and this README — the gate and the CLI belong to the human.
 
-## Documentação
+## Documentation
 
-| doc | o quê |
+| doc | what |
 |---|---|
-| [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | ADRs — as decisões e os porquês |
+| [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | ADRs — the decisions and their whys |
 | [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MODEL.md) | schemas: decision record, log, envelope |
-| [`docs/architecture/API_SPEC.md`](docs/architecture/API_SPEC.md) | contratos dos hooks e do CLI |
-| [`docs/architecture/EPICS.md`](docs/architecture/EPICS.md) | escopo — nada entra sem emenda aqui |
-| [`docs/decision-log.md`](docs/decision-log.md) | diário de decisões, incidentes e correções |
+| [`docs/architecture/API_SPEC.md`](docs/architecture/API_SPEC.md) | hook and CLI contracts |
+| [`docs/architecture/EPICS.md`](docs/architecture/EPICS.md) | scope — nothing gets in without an amendment here |
+| [`docs/decision-log.md`](docs/decision-log.md) | diary of decisions, incidents, and corrections |
 
-## Licença
+## License
 
-São **duas licenças diferentes** no mesmo repositório, e elas não se misturam:
+There are **two different licenses** in this repository, and they don't mix:
 
-| o quê | licença | titular |
+| what | license | holder |
 |---|---|---|
-| O Maestro — `hooks/`, `bin/`, `src/`, `config/`, `docs/`, `tests/` e os 5 agentes próprios | MIT ([`LICENSE`](LICENSE)) | © 2026 Romulo de Jesus Costa |
-| `vendor/wshobson-agents/` — cópias verbatim, pinadas por commit em `PINNED.md` | MIT do upstream | © 2024 Seth Hobson |
-| `agents/{golang,python,typescript,postgres}-pro.md` — adaptações (obras derivadas) | MIT do upstream | © 2024 Seth Hobson, adaptado |
+| Maestro itself — `hooks/`, `bin/`, `src/`, `config/`, `docs/`, `tests/`, and the 5 first-party agents | MIT ([`LICENSE`](LICENSE)) | © 2026 Romulo de Jesus Costa |
+| `vendor/wshobson-agents/` — verbatim copies, pinned by commit in `PINNED.md` | upstream MIT | © 2024 Seth Hobson |
+| `agents/{golang,python,typescript,postgres}-pro.md` — adaptations (derivative works) | upstream MIT | © 2024 Seth Hobson, adapted |
 
-Escolher MIT para o projeto **não relicencia** o material vendorizado: ele continua
-sob a MIT do Seth Hobson, com o aviso de copyright preservado em
-`vendor/wshobson-agents/LICENSE` e a procedência no frontmatter de cada adaptação.
+Choosing MIT for the project **does not relicense** the vendored material: it remains
+under Seth Hobson's MIT, with his copyright notice preserved in
+`vendor/wshobson-agents/LICENSE` and the provenance in each adaptation's frontmatter.
