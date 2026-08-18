@@ -50,6 +50,12 @@ reg() { # reg <dir-de-plugins> <installPath> [chave] → escreve installed_plugi
 
 line() { grep -E '^(ok|warn|skip|FAIL).*instalação do plugin' "$tmp/out" | head -1; }
 
+mkt() { # mkt <dir-de-plugins> <installLocation> [source] → known_marketplaces.json
+  jq -n --arg l "$2" --arg s "${3:-directory}" \
+    '{maestro:{source:{source:$s, path:$l}, installLocation:$l}}' \
+    > "$1/known_marketplaces.json"
+}
+
 # ---------------------------------------------------------------------------
 echo "-- sem registro: o doctor não inventa problema"
 # ---------------------------------------------------------------------------
@@ -129,6 +135,43 @@ chk "plugin.json idêntico não impede a detecção" \
   "$(cmp -s "$REPO/.claude-plugin/plugin.json" "$COPY2/.claude-plugin/plugin.json" && echo igual)" "igual"
 
 # ---------------------------------------------------------------------------
+echo "-- quem EXECUTA decide a severidade (marketplace de diretório)"
+# ---------------------------------------------------------------------------
+# Medido em 2026-08-18: marketplace `source: directory` apontando para o repo faz
+# do REPO o CLAUDE_PLUGIN_ROOT vivo (o plugin declara `"source": "./"`). A cópia
+# em cache não executa — avisar seria ruído a cada commit de quem dogfooda.
+reg "$tmp/p-live" "$COPY"; mkt "$tmp/p-live" "$REPO"
+doc "$tmp/p-live"
+chk "repo é a raiz viva → exit 0" "$rc" "0"
+grep -q 'ok   instalação do plugin: o repo é a raiz viva' "$tmp/out" \
+  && ok "cópia divergente INERTE não vira aviso" \
+  || bad "cópia divergente INERTE não vira aviso ($(line))"
+grep -q 'não executa' "$tmp/out" \
+  && ok "a linha diz por que a cópia é inerte" || bad "a linha diz por que a cópia é inerte"
+
+# marketplace de diretório apontando para OUTRO lugar não absolve nada
+reg "$tmp/p-outro-dir" "$COPY"; mkt "$tmp/p-outro-dir" "$tmp/cache"
+doc "$tmp/p-outro-dir"
+grep -q 'warn instalação do plugin' "$tmp/out" \
+  && ok "marketplace de diretório apontando para outro lugar → aviso" \
+  || bad "marketplace de diretório apontando para outro lugar → aviso ($(line))"
+
+# marketplace de github (a cópia em cache É a que executa) → aviso
+reg "$tmp/p-github" "$COPY"; mkt "$tmp/p-github" "$REPO" "github"
+doc "$tmp/p-github"
+grep -q 'warn instalação do plugin' "$tmp/out" \
+  && ok "marketplace github não faz do repo a raiz viva" \
+  || bad "marketplace github não faz do repo a raiz viva ($(line))"
+
+# known_marketplaces.json corrompido degrada para o lado seguro (avisa)
+reg "$tmp/p-mkt-lixo" "$COPY"; printf 'lixo{' > "$tmp/p-mkt-lixo/known_marketplaces.json"
+doc "$tmp/p-mkt-lixo"
+chk "known_marketplaces.json corrompido → exit 0" "$rc" "0"
+grep -q 'warn instalação do plugin' "$tmp/out" \
+  && ok "marketplace ilegível não vira álibi (degrada avisando)" \
+  || bad "marketplace ilegível não vira álibi ($(line))"
+
+# ---------------------------------------------------------------------------
 echo "-- caminho registrado que sumiu"
 # ---------------------------------------------------------------------------
 reg "$tmp/p-gone" "$tmp/nao-existe/1.0.4"
@@ -173,6 +216,14 @@ chk "install.registered = 1"       "$(jq -r '.install.registered' "$CAP")" "1"
 chk "install.divergent = 1 (cópia adulterada)" "$(jq -r '.install.divergent' "$CAP")" "1"
 doc "$tmp/p-repo"; CAP="$HOME_USED/capabilities.json"
 chk "install.divergent = 0 quando o registro é o repo" "$(jq -r '.install.divergent' "$CAP")" "0"
+chk "install.repo_is_live é bool" "$(jq -r '.install.repo_is_live | type' "$CAP")" "boolean"
+chk "repo_is_live=false sem marketplace de diretório" \
+    "$(jq -r '.install.repo_is_live' "$CAP")" "false"
+doc "$tmp/p-live"; CAP="$HOME_USED/capabilities.json"
+chk "repo_is_live=true com marketplace de diretório para cá" \
+    "$(jq -r '.install.repo_is_live' "$CAP")" "true"
+chk "install.divergent conta a cópia inerte (fato, não veredito)" \
+    "$(jq -r '.install.divergent' "$CAP")" "1"
 chk "envelope não carrega caminho (§6: paths só no snapshot)" \
     "$(jq -r '.install | tostring | test("/") | tostring' "$CAP")" "false"
 

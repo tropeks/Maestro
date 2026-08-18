@@ -122,12 +122,16 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
   (S-706) um andar acima. O doctor compara `cmp` byte a byte os 8 arquivos que DEFINEM
   comportamento (3 hooks + `hooks.json` + `lib/common.sh` + `routing-table.yaml` +
   `bin/maestro` + `plugin.json`); o fato entra no envelope (`install.{registered,divergent}`).
-  Costura de teste: `MAESTRO_PLUGINS_DIR`. *AC: comparação por conteúdo, não por versão (as
+  Costura de teste: `MAESTRO_PLUGINS_DIR`. **Emenda do mesmo dia:** a severidade depende de
+  QUEM EXECUTA — marketplace `source: directory` apontando para o repo faz do repo o
+  `${CLAUDE_PLUGIN_ROOT}` vivo (medido em sessão headless), e aí a cópia em cache é inerte e
+  vira `ok`; sem ele, o `installPath` executa e divergir é warn. *AC: comparação por conteúdo, não por versão (as
   duas cópias diziam `1.0.4` e o E7 inteiro entrou sem bump); divergência só em doc/teste
   NÃO avisa; `installPath` = repo (ou symlink para ele) não avisa; caminho ausente avisa;
   registro ausente/corrompido/de outro plugin degrada sem inventar drift; sem jq ou sem cmp
-  → skip honesto; nunca falha o doctor; nada vaza para o `routing.jsonl`.*
-  **Entregue 2026-08-18** (test-install-drift.sh, 30 asserções).
+  → skip honesto; nunca falha o doctor; nada vaza para o `routing.jsonl`; cópia inerte sob
+  marketplace de diretório NÃO avisa; marketplace github/apontando para outro lugar/ilegível
+  degrada avisando.* **Entregue 2026-08-18** (test-install-drift.sh, 41 asserções).
 - **Dependências:** E2 (CLI/record), E4 (tabela + instrumento de eval).
 
 ---

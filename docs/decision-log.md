@@ -1,5 +1,34 @@
 # Decision log
 
+## 2026-08-18 — Realinhamento da instalação + S-710 aprende quem EXECUTA
+
+Sequência do achado anterior (mesma data). O Romulo mandou realinhar; realinhar exigiu
+primeiro responder a pergunta que a S-710 tinha pulado: **qual cópia executa?**
+
+- **Medição, não suposição.** `claude plugin update maestro@maestro` respondeu "já está na
+  última versão (1.0.4)" — a própria armadilha que a S-710 documentou: as duas cópias
+  declaram 1.0.4 e o update é por versão. A resposta veio de `.claude-plugin/marketplace.json`,
+  que declara `"source": "./"` (relativo à raiz do marketplace), somada a uma sessão
+  **headless de verdade** (`claude -p`) que devolveu a linha `- Padrão de entrega:` — texto
+  que só existe em `config/execution-ethos.md`, do repo. Marketplace `source: directory`
+  apontando para o repo ⇒ o repo É o `${CLAUDE_PLUGIN_ROOT}` vivo.
+- **Correção de desenho na própria S-710:** avisar sempre que a cópia em cache divergisse
+  transformaria o doctor em ruído — quem dogfooda o repo faz a cópia divergir a CADA commit.
+  A checagem agora lê `known_marketplaces.json`: com marketplace de diretório apontando para
+  cá, cópia divergente é **inerte** e vira `ok` nomeando o motivo; sem ele, quem executa é o
+  `installPath` e divergir continua sendo **warn** de rollback silencioso. Marketplace de
+  github, de diretório apontando para outro lugar, ou ilegível, degradam para o lado seguro
+  (avisam). Envelope ganhou `install.repo_is_live`.
+- **Realinhamento do ambiente** (ordem importa — nunca houve instante apontando para o vazio):
+  `installPath` repontado para `/home/rcosta00/dev/Maestro` (com `gitCommitSha` e
+  `lastUpdated` verdadeiros), e só então as 4 cópias de cache (0.3.0, 1.0.0, 1.0.1, 1.0.4)
+  **movidas, não apagadas**, para `~/.claude/plugins-cache-backup-20260818/` — a lição do
+  susto do `gstack-relink` (2026-08-10). Backup do registro em scratchpad antes de tocar.
+- **Prova de que a cópia era mesmo inerte:** com o cache do maestro FORA do disco, uma
+  sessão headless nova continua carregando o plugin, disparando os hooks e injetando o
+  conteúdo do repo. Não é inferência — é o plugin rodando sem cache nenhum.
+- **Estado:** doctor 30 checagens, **0 avisos**; suíte 1020 asserções, SUITE OK.
+
 ## 2026-08-18 — Migração do mount de `/home/rcosta00/dev` + S-710 (drift de instalação)
 
 - **Contexto:** `/home/rcosta00/dev` deixou de morar no rootfs e virou volume próprio

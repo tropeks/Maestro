@@ -75,6 +75,7 @@ N_CHECKS=0; N_WARN=0; N_SKIP=0; FAIL_ENV=0; FAIL_VAL=0
 CAP_BINDINGS_OK=0; CAP_SKILL_ROOTS=0   # E7/S-705: fatos capturados p/ capabilities.json
 CAP_INJECTION_BYTES=0                  # E7/S-703: conta real da injeção do SessionStart
 CAP_INSTALL_REGISTERED=0; CAP_INSTALL_DIVERGENT=0   # E7/S-710: instalação vs repo
+CAP_INSTALL_REPO_LIVE=0                # E7/S-710: o repo é o CLAUDE_PLUGIN_ROOT vivo?
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -616,14 +617,22 @@ check_vendor_integrity() { # S-706: vendor/ verificado offline contra manifesto 
 }
 
 check_plugin_install() { # S-710: cópia instalada do plugin divergente deste repo
-  # O Claude Code resolve `${CLAUDE_PLUGIN_ROOT}` (o que os hooks.json usam) a
-  # partir do registro em ~/.claude/plugins. Com marketplace `source: directory`
-  # a origem viva é o próprio repo, mas `installed_plugins.json` guarda um
-  # `installPath` que costuma ser uma CÓPIA em cache, congelada no instante da
-  # instalação. Cópia divergente = risco de ROLLBACK SILENCIOSO: a sessão que
-  # resolver por ela injeta uma tabela velha e hooks velhos, sem nenhum sinal —
-  # a mesma classe do incidente do --prefix (2026-08-10), agora na instalação.
-  # Sempre AVISO: o repo continua sendo a verdade e nada aqui derruba o doctor.
+  # O Claude Code resolve `${CLAUDE_PLUGIN_ROOT}` (o que o hooks.json usa) a
+  # partir de ~/.claude/plugins, e o `installPath` de installed_plugins.json
+  # costuma ser uma CÓPIA em cache, congelada no instante da instalação. A
+  # pergunta que decide a severidade é: QUEM EXECUTA?
+  #
+  #   - Marketplace `source: directory` com `installLocation` = este repo: o
+  #     plugin declara `"source": "./"` (relativo à raiz do marketplace), logo o
+  #     root vivo é o REPO. Medido ponta a ponta em 2026-08-18 — sessão headless
+  #     nova injeta o conteúdo do repo, e a cópia em cache (pré-E7, mesma versão
+  #     1.0.4) não produz aquelas seções. Cópia divergente aí é INERTE: não
+  #     executa, e avisar seria ruído a cada commit de quem dogfooda o repo.
+  #   - Sem esse marketplace, quem executa é o installPath registrado — e então
+  #     divergir é ROLLBACK SILENCIOSO: tabela e hooks velhos, sem sinal nenhum.
+  #     A classe do incidente do --prefix (2026-08-10), um andar acima.
+  #
+  # Nunca falha: o repo é a verdade e o pior caso aqui é um aviso.
   local base="${MAESTRO_PLUGINS_DIR:-$HOME/.claude/plugins}"
   local reg="$base/installed_plugins.json"
   if [[ ! -f "$reg" || ! -r "$reg" ]]; then
@@ -636,6 +645,20 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   local name='maestro' pj="$REPO_DIR/.claude-plugin/plugin.json"
   [[ -f "$pj" ]] && name=$(jq -r '.name // "maestro"' "$pj" 2>/dev/null) || true
   [[ -n "$name" && "$name" != "null" ]] || name='maestro'
+
+  # O repo é a raiz viva? (marketplace de diretório apontando para cá)
+  local repo_real; repo_real=$(cd -P -- "$REPO_DIR" && pwd)
+  local mk="$base/known_marketplaces.json" repo_is_live=0 loc loc_real
+  if [[ -f "$mk" && -r "$mk" ]]; then
+    while IFS= read -r loc; do
+      [[ -n "$loc" && -d "$loc" ]] || continue
+      loc_real=$(cd -P -- "$loc" 2>/dev/null && pwd) || continue
+      [[ "$loc_real" == "$repo_real" ]] && repo_is_live=1
+    done < <(jq -r '(to_entries // [])[]
+        | select((.value.source.source // "") == "directory")
+        | .value.installLocation // empty' "$mk" 2>/dev/null || true)
+  fi
+  CAP_INSTALL_REPO_LIVE=$repo_is_live
 
   local paths
   paths=$(jq -r --arg n "$name" '
@@ -653,7 +676,6 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   local files=(hooks/hooks.json hooks/session-start.sh hooks/pre-tool-gate.sh
                hooks/user-prompt-submit.sh hooks/lib/common.sh
                config/routing-table.yaml bin/maestro .claude-plugin/plugin.json)
-  local repo_real; repo_real=$(cd -P -- "$REPO_DIR" && pwd)
   local stale=() n_reg=0 p p_real rel diff
   while IFS= read -r p; do
     [[ -n "$p" ]] || continue
@@ -676,11 +698,14 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
 
   CAP_INSTALL_REGISTERED=$n_reg
   CAP_INSTALL_DIVERGENT=${#stale[@]}
-  if (( ${#stale[@]} > 0 )); then
+  if (( ${#stale[@]} == 0 )); then
+    report ok "instalação do plugin: $n_reg registro(s) sem cópia divergente"
+  elif (( repo_is_live == 1 )); then
+    report ok "instalação do plugin: o repo é a raiz viva (${#stale[@]} cópia(s) em cache inerte(s))" \
+      "marketplace de diretório aponta para $repo_real — a cópia registrada não executa"
+  else
     report warn "instalação do plugin: cópia registrada idêntica a este repo" \
       "$(join_semi "${stale[@]}") — sessão que resolver por essa cópia roda Maestro antigo (fix: reinstale o plugin apontando para $repo_real, ou remova a cópia)"
-  else
-    report ok "instalação do plugin: $n_reg registro(s) sem cópia divergente"
   fi
 }
 
@@ -767,13 +792,14 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
        --argjson b_ok "$CAP_BINDINGS_OK" --argjson b_roots "$CAP_SKILL_ROOTS" \
        --argjson roster "$rn" --argjson inj "$CAP_INJECTION_BYTES" \
        --argjson ireg "$CAP_INSTALL_REGISTERED" --argjson idiv "$CAP_INSTALL_DIVERGENT" \
+       --argjson ilive "$([[ $CAP_INSTALL_REPO_LIVE -eq 1 ]] && echo true || echo false)" \
        '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
          runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
                   git:{present:$git,version:$gitv}, flock:{present:$flock}},
          doctor:{checks:$checks,warns:$warns,skips:$skips,fail_env:$fail_env,fail_val:$fail_val},
          bindings:{resolved:$b_ok, skill_roots:$b_roots},
          roster:{agents:$roster}, injection:{bytes:$inj, budget:8000},
-         install:{registered:$ireg, divergent:$idiv}}' > "$tmp" 2>/dev/null \
+         install:{registered:$ireg, divergent:$idiv, repo_is_live:$ilive}}' > "$tmp" 2>/dev/null \
      && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
     report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
   else

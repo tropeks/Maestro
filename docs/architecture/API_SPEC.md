@@ -66,7 +66,9 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 - **Emenda E7 (S-710):** compara a cópia do plugin registrada em
   `$MAESTRO_PLUGINS_DIR` (default `~/.claude/plugins`) com este repo e avisa
   `instalação do plugin` quando os arquivos de comportamento divergem — nunca falha; o
-  fato vai ao envelope em `install.{registered,divergent}`.
+  fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
+  quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
+  é inerte e a linha é `ok`.
 
 ## 3. Envelope de erro (CLI)
 

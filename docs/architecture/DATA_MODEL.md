@@ -183,11 +183,12 @@ Escritos pelo `maestro doctor` a cada rodada; **estado local de diagnóstico, n�
             "git":{"present":true,"version":"2.43.0"},"flock":{"present":true}},
  "doctor":{"checks":27,"warns":1,"skips":0,"fail_env":0,"fail_val":0},
  "bindings":{"resolved":9,"skill_roots":3},"roster":{"agents":9},
- "injection":{"bytes":5895,"budget":8000},"install":{"registered":1,"divergent":0}}
+ "injection":{"bytes":5895,"budget":8000},"install":{"registered":1,"divergent":0,"repo_is_live":true}}
 ```
 
 `install` (E7/S-710) conta as cópias do plugin registradas no Claude Code e quantas
-divergem deste repo — **contadores, nunca caminhos**: o caminho aparece só na linha do
+divergem deste repo, mais `repo_is_live` (o repo é o `${CLAUDE_PLUGIN_ROOT}` vivo, via
+marketplace de diretório) — **contadores e bool, nunca caminhos**: o caminho aparece só na linha do
 doctor, que não é log. Só fatos (bool/int/string), nunca pass/fail reinterpretado; consumidor decide staleness
 por `generated_epoch` (≥24h = velho). Sem jq o envelope não é escrito (skip honesto).
 `bindings-snapshot.tsv` é `alvo\tcaminho\tsha256` por linha — base do aviso
