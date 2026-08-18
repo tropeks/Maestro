@@ -182,7 +182,8 @@ Escritos pelo `maestro doctor` a cada rodada; **estado local de diagnóstico, n�
  "runtime":{"bun":{"present":true,"version":"1.3.14"},"jq":{"present":true},
             "git":{"present":true,"version":"2.43.0"},"flock":{"present":true}},
  "doctor":{"checks":27,"warns":1,"skips":0,"fail_env":0,"fail_val":0},
- "bindings":{"resolved":9,"skill_roots":3},"roster":{"agents":9}}
+ "bindings":{"resolved":9,"skill_roots":3},"roster":{"agents":9},
+ "injection":{"bytes":5895,"budget":8000}}
 ```
 
 Só fatos (bool/int/string), nunca pass/fail reinterpretado; consumidor decide staleness

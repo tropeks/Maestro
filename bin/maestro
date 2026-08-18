@@ -73,6 +73,7 @@ CI=0
 C_OK=''; C_WARN=''; C_FAIL=''; C_OFF=''
 N_CHECKS=0; N_WARN=0; N_SKIP=0; FAIL_ENV=0; FAIL_VAL=0
 CAP_BINDINGS_OK=0; CAP_SKILL_ROOTS=0   # E7/S-705: fatos capturados p/ capabilities.json
+CAP_INJECTION_BYTES=0                  # E7/S-703: conta real da injeção do SessionStart
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -613,6 +614,63 @@ check_vendor_integrity() { # S-706: vendor/ verificado offline contra manifesto 
   fi
 }
 
+check_injection_bill() { # S-703: conta real da injeção vs teto de 8000B
+  # Roda o hook de verdade (stdin sintético, estado em mktemp) e mede os bytes
+  # que uma sessão receberia AGORA, com a config real deste repo. O RATCHET
+  # (teto consciente, abaixo dos 8000B duros) vive no teste versionado
+  # (tests/hooks/test-injection-budget.sh) — o doctor reporta o fato e avisa
+  # acima de 90%; estourar os 8000B é falha de conteúdo.
+  local hook="$REPO_DIR/hooks/session-start.sh"
+  [[ -f "$hook" ]] || return 0
+  local th tp bytes
+  th=$(mktemp -d 2>/dev/null) || return 0
+  tp=$(mktemp -d 2>/dev/null) || { rm -rf "$th"; return 0; }
+  bytes=$(printf '{"session_id":"doctor-bill"}' \
+    | MAESTRO_HOME="$th" CLAUDE_PROJECT_DIR="$tp" MAESTRO_OFF='' bash "$hook" 2>/dev/null \
+    | wc -c | tr -d ' ') || bytes=''
+  rm -rf "$th" "$tp"
+  if [[ ! "$bytes" =~ ^[0-9]+$ ]] || (( bytes == 0 )); then
+    report warn "injeção SessionStart: medição indisponível" "hook não emitiu (ambiente?)"
+    return 0
+  fi
+  CAP_INJECTION_BYTES=$bytes
+  if (( bytes > 8000 )); then
+    report fail_val "injeção SessionStart dentro do teto de 8000B" "medido ${bytes}B (API_SPEC §1)"
+  elif (( bytes > 7200 )); then
+    report warn "injeção SessionStart: ${bytes}B de 8000B" "acima de 90% do teto — enxugue antes de adicionar seção"
+  else
+    report ok "injeção SessionStart: ${bytes}B de 8000B"
+  fi
+}
+
+check_session_env() { # S-704: sinais do harness FORA do envelope do Maestro
+  if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" == "1" ]]; then
+    report warn "agent teams experimental ATIVO (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)" \
+      "teams podem se formar sem pedido e o roteamento do Maestro não os governa"
+  else
+    report ok "agent teams experimental inativo"
+  fi
+  # MCP servers rodam além dos trilhos do Maestro (o gate não os intercepta) —
+  # o doctor NOMEIA a superfície, nunca valores/config (só as chaves de nome).
+  if ! has jq; then
+    report skip "MCP fora-do-envelope" "requer jq"
+    return 0
+  fi
+  local names='' f n
+  for f in "$HOME/.claude.json" "${CLAUDE_PROJECT_DIR:-$PWD}/.mcp.json"; do
+    [[ -f "$f" ]] || continue
+    n=$(jq -r '(.mcpServers // {}) | keys | join(" ")' "$f" 2>/dev/null) || n=''
+    [[ -n "$n" ]] && names+=" $n"
+  done
+  # shellcheck disable=SC2086
+  names=$(printf '%s\n' $names | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//') || names=''
+  if [[ -n "$names" ]]; then
+    report ok "MCP fora-do-envelope: $(wc -w <<<"$names" | tr -d ' ') server(s) — $names"
+  else
+    report ok "MCP fora-do-envelope: nenhum configurado"
+  fi
+}
+
 write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilities.v1
   # FATOS (não pass/fail) para consumidores FORA do doctor: o delegate() cita o
   # envelope quando decide/status quebram sem Bun; `maestro status` mostra a
@@ -637,13 +695,13 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
        --argjson checks "$checks" --argjson warns "$warns" --argjson skips "$skips" \
        --argjson fail_env "$fenv" --argjson fail_val "$fval" \
        --argjson b_ok "$CAP_BINDINGS_OK" --argjson b_roots "$CAP_SKILL_ROOTS" \
-       --argjson roster "$rn" \
+       --argjson roster "$rn" --argjson inj "$CAP_INJECTION_BYTES" \
        '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
          runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
                   git:{present:$git,version:$gitv}, flock:{present:$flock}},
          doctor:{checks:$checks,warns:$warns,skips:$skips,fail_env:$fail_env,fail_val:$fail_val},
          bindings:{resolved:$b_ok, skill_roots:$b_roots},
-         roster:{agents:$roster}}' > "$tmp" 2>/dev/null \
+         roster:{agents:$roster}, injection:{bytes:$inj, budget:8000}}' > "$tmp" 2>/dev/null \
      && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
     report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
   else
@@ -947,6 +1005,8 @@ doctor() {
 
   check_records
   check_vendor_integrity
+  check_session_env
+  check_injection_bill
   write_capabilities
 
   # --- veredito ---------------------------------------------------------------

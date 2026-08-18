@@ -1,5 +1,22 @@
 # Decision log
 
+## 2026-08-18 — Sessão E7 parte 6 (S-703 + S-704 — E7 COMPLETO)
+
+- **Gatilho:** o mote recém-shipado (S-709) cobrou a própria conta — S-703/S-704 eram as
+  duas pontas soltas do épico, tamanho S, resolve permanente ao alcance. Fechadas.
+- **S-703:** o doctor roda o session-start de verdade (stdin sintético, estado em mktemp,
+  `MAESTRO_OFF=''` para medir mesmo com kill-switch na env) e reporta a conta real;
+  RATCHET de 6500B no teste versionado com protocolo de bump consciente. Nota: a conta
+  já pegou a tendência — 4887B → 5883B em um dia de seções novas; era exatamente o risco.
+- **S-704:** agent teams experimental vira warn quando ativo; MCP servers nomeados como
+  fora-do-envelope com assert de que config/URL jamais vaza (a linha do doctor carrega só
+  as CHAVES de nome). Primeira execução real já nomeou o supermemory — o gap que o ECC
+  audit apontou ("Copilot firewall doesn't cover MCP") agora é visível a cada doctor.
+- **Gotcha de ferramenta:** patch python com `\\\\` em vez de `\\` fez um anchor falhar —
+  como a escrita é atômica no fim do script, nada foi aplicado (o design "falha alto
+  antes de escrever" pagou); reescrito com backslash via `chr(92)`.
+- **E7 completo:** S-701..S-709 entregues. Doctor 24→30 checagens.
+
 ## 2026-08-18 — Sessão E7 parte 5 (S-709 — mote de execução + Maestro como RAD padrão)
 
 - **Diretriz do Capitão:** (a) Maestro, não Legatus, é a metodologia RAD padrão do

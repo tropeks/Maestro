@@ -61,11 +61,17 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
   citando caso e antes→depois; duas execuções do instrumento são idênticas; o SCORE
   continua fora do CI (filosofia do run-eval.sh); baseline regenerável no mesmo PR.*
   **Entregue 2026-08-17** (test-eval-diff.sh).
-- **S-703:** ratchet da injeção SessionStart (context-bill: medir bytes reais injetados
-  contra o teto de 8000B com protocolo de ratchet + linha no doctor). *Pendente.*
-- **S-704:** doctor: check de `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` ativo (teams podem
-  se formar sem pedido) + linha nomeando MCP servers conectados como fora-do-envelope.
-  *Pendente.*
+- **S-703:** ratchet da injeção SessionStart. O doctor roda o hook de verdade e mede os
+  bytes reais (`injeção SessionStart: NB de 8000B`; warn >90%, fail_val >8000); o fato
+  entra no envelope (`injection.{bytes,budget}`); o RATCHET consciente (6500B, bump só
+  deliberado e no mesmo commit) vive em test-injection-budget.sh. *AC: medição real;
+  estouro do ratchet reprova nomeando o protocolo; envelope carrega inteiros.*
+  **Entregue 2026-08-18.**
+- **S-704:** doctor: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` → warn (teams podem se
+  formar sem pedido; o roteamento não os governa); MCP servers de `~/.claude.json` +
+  `.mcp.json` do projeto nomeados como fora-do-envelope — SÓ nomes, nunca config/URL
+  (assert de não-vazamento no teste). *AC: warn com a env; nomes listados; config não
+  vaza; nada disso derruba o doctor.* **Entregue 2026-08-18** (test-injection-budget.sh).
 - **S-709:** mote de execução na injeção (diretriz do Romulo, 2026-08-18: "the marginal
   cost of completeness is near zero — do the whole thing, with tests, with documentation;
   padrão 'holy shit, that's done'; boil the ocean"). `config/execution-ethos.md` canônico,
