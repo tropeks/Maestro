@@ -44,7 +44,8 @@ Fundação instalável: sem ela nada existe; com ela já dá pra dogfood.
 - **S-601:** spike claude-mem em 1 projeto; validar coexistência de hooks (ordem SessionStart). *AC: relatório curto + decisão registrada (ADR-007 → Aceito ou trocado por GBrain).*
 
 ### E7 — P0 RAD hardening (P1, S) — emenda 2026-08-17, aprovada pelo Romulo
-Origem: docs/research/RAD_PATTERNS_FOR_MAESTRO.md §7-P0 + ECC_DELTA_AUDIT.md §5-P0.
+Origem: pesquisa RAD interna (RAD_PATTERNS_FOR_MAESTRO §7-P0 + ECC_DELTA_AUDIT §5-P0;
+material privado, mantido fora do repo).
 Princípio: carimbos, não componentes — evidência amarrada a conteúdo e tabela blindada
 por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
 - **S-701:** fingerprint de conteúdo. `bin/maestro-wtree` (bash puro, padrão adaptado do

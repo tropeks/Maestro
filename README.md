@@ -157,7 +157,6 @@ enquanto a dívida não fecha).
 | [`docs/architecture/API_SPEC.md`](docs/architecture/API_SPEC.md) | contratos dos hooks e do CLI |
 | [`docs/architecture/EPICS.md`](docs/architecture/EPICS.md) | escopo — nada entra sem emenda aqui |
 | [`docs/decision-log.md`](docs/decision-log.md) | diário de decisões, incidentes e correções |
-| [`docs/research/`](docs/research/) | pesquisa de padrões RAD: 30+ projetos auditados |
 
 ## Licença
 
