@@ -1,67 +1,74 @@
-# Maestro (v1.0 — E1 a E5)
+# Maestro
 
-Camada de roteamento MoE para Claude Code. Estado atual: **E1 a E5 completos** —
-injeção da routing table no SessionStart, gate estrutural no PreToolUse,
-CLI `decide|status|log`, logging do override manual e roster de 9 agentes
-tierizados. E4 (curadoria dos packs) é o próximo épico — ver
-`docs/architecture/EPICS.md`.
+**Camada de roteamento MoE para o Claude Code** — hooks determinísticos, uma routing
+table declarativa e um roster de agentes tierizados por custo.
 
-Filosofia: trilhos determinísticos (hooks garantem QUE a decisão acontece),
-IA nas bordas (o Claude da sessão decide O QUE fazer, guiado pela tabela).
+[![CI](https://github.com/tropeks/Maestro/actions/workflows/ci.yml/badge.svg)](https://github.com/tropeks/Maestro/actions/workflows/ci.yml)
+![bash puro nos hooks](https://img.shields.io/badge/hooks-bash%20puro-4EAA25?logo=gnubash&logoColor=white)
+![CLI em Bun](https://img.shields.io/badge/CLI-Bun-black?logo=bun)
+![licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)
 
-## Instalar (local)
-```
-git clone https://github.com/tropeks/Maestro ~/dev/maestro
-claude  # dentro do Claude Code:
-/plugin marketplace add ~/dev/maestro
-/plugin install maestro@maestro
-```
+> **Filosofia:** trilhos determinísticos, IA nas bordas. Os hooks garantem **QUE** a
+> decisão de roteamento acontece; o Claude da sessão decide **O QUE** fazer, guiado
+> pela tabela. Nenhum LLM no caminho crítico, nenhuma rede em runtime, nenhum
+> componente que bloqueie trabalho ao falhar.
 
-## Validar
-```
-~/dev/maestro/bin/maestro doctor      # 21 checagens; --ci para pipeline
-bash ~/dev/maestro/tests/run-all.sh   # suíte completa (698 asserções)
-```
+## O problema
 
-A CI (`.github/workflows/ci.yml`) roda exatamente isso a cada push/PR, mais
-`shellcheck` em `hooks/`, `bin/maestro` e `tests/`. O gate do shellcheck bloqueia
-em `error`; `warning`/`info` saem como anotação no PR enquanto a dívida não fecha.
+Numa sessão longa do Claude Code, o modelo principal tende a fazer tudo sozinho — no
+contexto mais caro da casa. Um bugfix mecânico de uma linha custa o mesmo raciocínio
+premium que uma decisão de arquitetura. O Maestro inverte o padrão: **delegar é a
+regra, executar direto é a exceção**, e a tarefa desce para o modelo mais barato que
+dá conta dela — medido em eval cego, essa inversão levou o acerto de roteamento de
+73% para 100% (15/15, dois juízes independentes).
 
-## Uso
+## Como funciona
 
-O SessionStart injeta um bloco `<maestro-routing>` com o `session_id` da sessão,
-as rotas, as heurísticas de execução e a instrução canônica. Antes de editar
-código, registre a decisão:
-
-```
-maestro decide --session <id> --workflow fix --mode subagent --agents golang-pro \
-               --reason "bug em 1 módulo Go"
-```
-
-Sem decision record válido (TTL 4h), o gate **avisa** em toda edição de código —
-`gate.mode: warn` é o default. A promoção para `block` é uma linha em
-`config/routing-table.yaml`, depois de uma semana de dados reais (roadmap Fase 1b).
-
-```
-maestro status         # decisão corrente, validade, últimos eventos
-maestro log --summary  # o dashboard do baseline: override manual, gate, agentes
+```mermaid
+flowchart LR
+    subgraph hooks["hooks (bash puro, &lt;50ms)"]
+        SS[SessionStart] -->|injeta| INJ["routing table + roster<br/>+ gates + heurísticas"]
+        PT[PreToolUse] -->|Edit/Write| GATE{decision<br/>record?}
+        PB[PreToolUse] -->|Bash| GUARD["guarda destrutiva<br/>(rm -rf, force push, DROP)"]
+    end
+    subgraph cli["CLI (Bun)"]
+        DEC["maestro decide"] --> REC[("decision record<br/>TTL 4h")]
+        DOC["maestro doctor"] --> ENV[("capabilities.json<br/>+ snapshots de drift")]
+    end
+    GATE -.->|sem record: warn| REC
+    INJ -->|"o Claude da sessão<br/>escolhe workflow + agente"| DEC
 ```
 
-## Roster
+1. **SessionStart** injeta um bloco `<maestro-routing>` (~6KB, orçamento com ratchet
+   testado): rotas de intenção → workflow, bindings step → executor, heurísticas de
+   delegação, gates humanos e o roster filtrado pelo `.maestro.yaml` do projeto.
+2. O Claude da sessão registra a decisão antes de editar código:
 
-Nove agentes, com o modelo proporcional à complexidade do papel:
+   ```bash
+   maestro decide --session <id> --workflow fix --mode subagent \
+                  --agents golang-pro --reason "bug em 1 módulo Go"
+   ```
 
-| agente | model | quando |
+3. **PreToolUse** confere: edição de código sem decision record válido gera aviso em
+   toda edição (`gate.mode: warn` é o default; a promoção a `block` é uma linha de
+   config, tomada com dados de dogfood — não por fé).
+4. `maestro log --summary` fecha o loop: taxa de override manual, distribuição de
+   modelo por tarefa — o instrumento que diz se o roteamento está funcionando.
+
+## Roster — o modelo proporcional ao papel
+
+| agente | modelo | quando |
 |---|---|---|
-| `dev-junior` | haiku | tarefa mecânica de escopo fechado |
+| `dev-junior` | haiku | tarefa mecânica de escopo fechado e critério objetivo |
 | `dev-pleno` | sonnet | feature/bugfix que exige julgamento |
-| `engenheiro` | sonnet | arquitetura e plano (pede Opus na saída quando precisa) |
-| `revisor` | sonnet | review **read-only** — sem Write/Edit/Bash |
-| `qa` | sonnet | teste funcional e evidência |
-| `golang-pro` `python-pro` `typescript-pro` `postgres-pro` | sonnet | linguagem detectada vence o perfil de senioridade |
+| `engenheiro` | sonnet | arquitetura e plano — entrega trade-offs, não código |
+| `revisor` | sonnet | review **read-only** — sem Write, Edit ou Bash |
+| `qa` | sonnet | teste funcional e evidência — não implementa correção |
+| `golang-pro` · `python-pro` · `typescript-pro` · `postgres-pro` | sonnet | a linguagem do alvo vence o perfil de senioridade |
 
 Os quatro especialistas são adaptados de [wshobson/agents](https://github.com/wshobson/agents)
-(MIT), com os originais pinados por commit em `vendor/` e atribuição no frontmatter.
+(MIT), com os originais pinados por commit em `vendor/` — que é read-only e verificado
+por manifesto `sha256` a cada `doctor`.
 
 Um `.maestro.yaml` na raiz do projeto restringe o roster ativo:
 
@@ -69,54 +76,99 @@ Um `.maestro.yaml` na raiz do projeto restringe o roster ativo:
 version: 1
 project: remedix
 languages: [go]
-experts: [golang-pro]     # só ele aparece na injeção
+experts: [golang-pro]   # só ele aparece na injeção
 ```
 
-## Autoproteção
+## Workflows e gates
 
-O gate bloqueia **sempre**, mesmo com decisão registrada:
+| intenção (exemplos) | workflow | steps | gate humano |
+|---|---|---|---|
+| "quebrou, corrige" | `fix` | investigate → implement → review | — |
+| "adiciona, implementa" | `feature` | plan → implement → review → qa | plano |
+| "limpa, reorganiza" | `refactor` | plan → implement → review | plano |
+| "deploya, publica" | `ship` | ship | ship |
+| "segurança, auditoria" | `audit` | audit | — |
+| "testa, valida" | `verify` | qa | — |
+| "revisa o PR" | `codereview` | review | — |
 
-- `.claude/` e `.github/workflows/` em qualquer projeto — é por onde se
-  desregistram hooks, se injeta `env` e se executa CI;
-- `hooks/`, `bin/`, `src/`, `agents/`, `config/routing-table.yaml` e
-  `.claude-plugin/` **sob a raiz do plugin** — o roteador não reescreve as
-  próprias regras (ADR-003 v1.1).
+Cada step tem um **binding** declarado (`skill:` · `agent:` · `native:`) na
+`config/routing-table.yaml` — schema versionado, com **eval-on-diff**: mutação de
+rota reprova a CI nomeando o caso que mudou de veredito e o antes → depois.
 
-Trabalhando no repo do próprio Maestro, isso significa que um agente edita
-`docs/`, `tests/` e `README.md`, mas não o gate nem o CLI — esses são do humano.
+Os gates humanos seguem risco, não burocracia: param **só** o quase-irreversível
+(produção real, billing, auth/secrets, migração destrutiva, force push). Em
+desenvolvimento privado com a mudança verificada por testes, commit, push em branch
+e PR fluem sem pergunta — com a decisão registrada.
 
-## Kill-switch
+## Instalar
 
-`MAESTRO_OFF=1` desativa todos os hooks instantaneamente. Nenhum componente do
-Maestro bloqueia trabalho: qualquer falha degrada com exit 0.
+```bash
+git clone https://github.com/tropeks/Maestro ~/dev/Maestro
+claude   # dentro do Claude Code:
+# /plugin marketplace add ~/dev/Maestro
+# /plugin install maestro@maestro
+```
 
-## Privacidade
+Dependências de runtime: `bash`, `jq`, `flock` (hooks) e [Bun](https://bun.sh) (CLI).
+Os hooks nunca invocam Bun — se o Bun sumir, o CLI degrada com mensagem citando o
+último `doctor`; os trilhos continuam de pé.
 
-O log (`~/.maestro/logs/routing.jsonl`) carrega **só metadados**, com chaves
-tipadas e vocabulário fechado. Nunca o texto do prompt, nunca o caminho completo
-de um arquivo — só a extensão. Nenhuma chave aceita `/`.
+## Validar
+
+```bash
+bin/maestro doctor        # 30 checagens; --ci para pipeline
+bash tests/run-all.sh     # suíte completa: 1020 asserções, hermética
+```
+
+O `doctor` não confia — mede: roda o hook de injeção de verdade e conta os bytes;
+compara os bindings resolvidos contra o snapshot da última rodada
+(`binding-resolution-drift`); verifica o `vendor/` contra o manifesto pinado; compara
+a cópia instalada do plugin com o repo **por conteúdo, byte a byte** — porque versão
+igual já escondeu seis commits de diferença. Tudo que ele apura vira fatos inteiros
+num envelope (`capabilities.json`) que os consumidores leem depois.
+
+A CI roda exatamente isso a cada push/PR, mais `shellcheck` em `hooks/`, `bin/` e
+`tests/` (gate bloqueante em `error`; o inventário completo sai como anotação no PR
+enquanto a dívida não fecha).
+
+## Fronteiras invioláveis
+
+- **`hooks/` é bash puro** — nunca invoca Bun, nunca importa `src/`. NFR: <50ms.
+- **Kill-switch:** `MAESTRO_OFF=1` desativa tudo instantaneamente. Falha de qualquer
+  componente degrada para o fluxo manual com exit 0 — o Maestro **nunca** bloqueia
+  trabalho por estar quebrado.
+- **Privacidade do log:** `~/.maestro/logs/routing.jsonl` carrega só metadados com
+  vocabulário fechado — jamais o texto do prompt, jamais caminho completo de arquivo
+  (só a extensão). Nenhuma chave aceita `/`.
+- **Sem float em métrica de custo** (inteiros de tokens/centavos), **sem rede em
+  runtime**, **`vendor/` read-only**.
+- **Autoproteção:** o gate bloqueia sempre — mesmo com decisão registrada — edição de
+  `.claude/` e `.github/workflows/` em qualquer projeto, e de `hooks/`, `bin/`,
+  `src/`, `agents/`, `config/routing-table.yaml` e `.claude-plugin/` sob a raiz do
+  plugin. O roteador não reescreve as próprias regras; agentes editam `docs/`,
+  `tests/` e este README — o gate e o CLI são do humano.
+
+## Documentação
+
+| doc | o quê |
+|---|---|
+| [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | ADRs — as decisões e os porquês |
+| [`docs/architecture/DATA_MODEL.md`](docs/architecture/DATA_MODEL.md) | schemas: decision record, log, envelope |
+| [`docs/architecture/API_SPEC.md`](docs/architecture/API_SPEC.md) | contratos dos hooks e do CLI |
+| [`docs/architecture/EPICS.md`](docs/architecture/EPICS.md) | escopo — nada entra sem emenda aqui |
+| [`docs/decision-log.md`](docs/decision-log.md) | diário de decisões, incidentes e correções |
+| [`docs/research/`](docs/research/) | pesquisa de padrões RAD: 30+ projetos auditados |
 
 ## Licença
 
 São **duas licenças diferentes** no mesmo repositório, e elas não se misturam:
 
-| O quê | Licença | Titular |
+| o quê | licença | titular |
 |---|---|---|
-| O Maestro — `hooks/`, `bin/`, `src/`, `config/`, `docs/`, `tests/` e os 5 agentes próprios (`dev-junior`, `dev-pleno`, `engenheiro`, `revisor`, `qa`) | MIT (`LICENSE`) | © 2026 Romulo de Jesus Costa |
-| `vendor/wshobson-agents/` — cópias verbatim de [wshobson/agents](https://github.com/wshobson/agents), pinadas por commit em `PINNED.md` | MIT (`vendor/wshobson-agents/LICENSE`) | © 2024 Seth Hobson |
-| `agents/golang-pro.md`, `python-pro.md`, `typescript-pro.md`, `postgres-pro.md` — **adaptações** (obras derivadas) do material acima | MIT do upstream | © 2024 Seth Hobson, adaptado |
+| O Maestro — `hooks/`, `bin/`, `src/`, `config/`, `docs/`, `tests/` e os 5 agentes próprios | MIT ([`LICENSE`](LICENSE)) | © 2026 Romulo de Jesus Costa |
+| `vendor/wshobson-agents/` — cópias verbatim, pinadas por commit em `PINNED.md` | MIT do upstream | © 2024 Seth Hobson |
+| `agents/{golang,python,typescript,postgres}-pro.md` — adaptações (obras derivadas) | MIT do upstream | © 2024 Seth Hobson, adaptado |
 
-Escolher MIT para o projeto **não relicencia** o material vendorizado: ele
-continua sob a MIT do Seth Hobson, com o aviso de copyright dele preservado em
-`vendor/wshobson-agents/LICENSE`. Os quatro especialistas adaptados carregam a
-procedência no frontmatter (`# upstream: wshobson/agents@<commit> (MIT, Seth
-Hobson)`), que é a atribuição exigida pelo ADR-004. `vendor/` é read-only: toda
-adaptação vive em `agents/`, nunca no original.
-
-Por que MIT e não outra: é a mesma licença do material que o repo já
-redistribui (zero atrito de compatibilidade), preserva o aviso de garantia — que
-importa numa ferramenta cujos hooks liberam ou barram edição de código — e não
-cria obstáculo para a fase 2, quando outras pessoas usarem o plugin. Apache-2.0
-traria concessão de patente e `NOTICE` sem superfície patenteável que justifique
-o overhead; copyleft seria hostil a um plugin carregado dentro de um host
-proprietário; domínio público abriria mão da atribuição e do disclaimer.
+Escolher MIT para o projeto **não relicencia** o material vendorizado: ele continua
+sob a MIT do Seth Hobson, com o aviso de copyright preservado em
+`vendor/wshobson-agents/LICENSE` e a procedência no frontmatter de cada adaptação.
