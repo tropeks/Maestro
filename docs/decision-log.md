@@ -1,5 +1,43 @@
 # Decision log
 
+## 2026-08-18 — Migração do mount de `/home/rcosta00/dev` + S-710 (drift de instalação)
+
+- **Contexto:** `/home/rcosta00/dev` deixou de morar no rootfs e virou volume próprio
+  (`/dev/mapper/pve-agent_data`, 885G, 4% usado); o rootfs devolveu ~27G durante a própria
+  verificação, enquanto a cópia velha era recolhida. O **caminho não mudou**, e é por isso
+  que nada quebrou: `hooks.json` chama tudo por `${CLAUDE_PLUGIN_ROOT}`, o marketplace
+  `maestro` é `source: directory` apontando para `/home/rcosta00/dev/Maestro`, e não existe
+  caminho absoluto embutido em `hooks/`, `src/`, `bin/`, `config/` ou `.maestro.yaml`
+  (só uma citação em comentário). Verificado: doctor 29/29 ok e `tests/run-all.sh` SUITE OK
+  no mount novo; `~/.maestro` (estado, 260K) ficou no rootfs e sobreviveu inteiro —
+  `bindings-snapshot.tsv` com drift zero.
+- **O que a migração revelou (e a razão da S-710):** `~/.claude/plugins/installed_plugins.json`
+  registra o Maestro em `installPath` = **cópia em cache** (`.../cache/maestro/maestro/1.0.4`,
+  congelada em 2026-08-12, sha `f994973`), enquanto o plugin vivo é o repo — provado por
+  conteúdo, não por suposição: a injeção desta sessão traz as seções do E7 (mote, estilo,
+  Spock) e a cópia em cache não as produz (4184B contra 5993B do repo). A cópia é órfã
+  hoje, mas é **rollback silencioso engatilhado**: qualquer resolução que prefira o
+  `installPath` roda um Maestro pré-E7 sem emitir um único sinal.
+- **Decisão:** o doctor passa a comparar a cópia registrada com este repo
+  (`check_plugin_install`, E7/S-710) — mesma classe do incidente do `--prefix` (2026-08-10),
+  um andar acima: lá o alvo de um binding mudava embaixo do plugin, aqui muda o plugin
+  inteiro. Sempre **aviso**, nunca falha: o repo é a verdade e o aviso some quando a
+  instalação for realinhada.
+- **Por que comparar CONTEÚDO e não versão:** as duas cópias declaram `1.0.4` no
+  `plugin.json` — o E7 inteiro (6 commits) entrou sem bump. Versão teria absolvido a cópia
+  velha; `cmp` byte a byte nos 8 arquivos que definem comportamento (hooks, `hooks.json`,
+  `lib/common.sh`, `routing-table.yaml`, `bin/maestro`, `plugin.json`) pegou. Doc e teste
+  divergirem é irrelevante e não vira ruído — está testado.
+- **Gotcha de bash que o teste pegou (e o ambiente real escondia):** `set -euo pipefail` +
+  `arr+=("...$(cond && echo x)")` derruba o script inteiro quando a condição é falsa —
+  substituição de comando que devolve 1 dentro de atribuição não tem a isenção do `&&`.
+  Na máquina real dois arquivos divergiam (condição verdadeira) e o defeito ficou invisível;
+  o caso de UM arquivo divergente, no teste, matou o doctor com exit 1 e sem uma linha
+  sequer. Sufixo agora sai de `if`.
+- **Pendência de ambiente, não de código:** realinhar o registro do Claude Code (reinstalar
+  o plugin apontando para o repo, ou remover as cópias `0.3.0/1.0.0/1.0.1/1.0.4` do cache).
+  É estado do harness, mexe com sessões vivas e não é urgente — o doctor agora avisa até lá.
+
 ## 2026-08-18 — Sessão E7 parte 6 (S-703 + S-704 — E7 COMPLETO)
 
 - **Gatilho:** o mote recém-shipado (S-709) cobrou a própria conta — S-703/S-704 eram as

@@ -183,10 +183,12 @@ Escritos pelo `maestro doctor` a cada rodada; **estado local de diagnóstico, n�
             "git":{"present":true,"version":"2.43.0"},"flock":{"present":true}},
  "doctor":{"checks":27,"warns":1,"skips":0,"fail_env":0,"fail_val":0},
  "bindings":{"resolved":9,"skill_roots":3},"roster":{"agents":9},
- "injection":{"bytes":5895,"budget":8000}}
+ "injection":{"bytes":5895,"budget":8000},"install":{"registered":1,"divergent":0}}
 ```
 
-Só fatos (bool/int/string), nunca pass/fail reinterpretado; consumidor decide staleness
+`install` (E7/S-710) conta as cópias do plugin registradas no Claude Code e quantas
+divergem deste repo — **contadores, nunca caminhos**: o caminho aparece só na linha do
+doctor, que não é log. Só fatos (bool/int/string), nunca pass/fail reinterpretado; consumidor decide staleness
 por `generated_epoch` (≥24h = velho). Sem jq o envelope não é escrito (skip honesto).
 `bindings-snapshot.tsv` é `alvo\tcaminho\tsha256` por linha — base do aviso
 `binding-resolution-drift`; contém caminhos locais e por isso vive em `$MAESTRO_HOME`

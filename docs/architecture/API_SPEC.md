@@ -63,6 +63,10 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   `binding-resolution-drift` (aviso) e divergência do vendor/ contra
   `config/vendor.sha256` (falha de validação). `decide|status|log` sem Bun degradam
   citando o envelope ("último doctor: <ts>"; ≥24h = "envelope velho").
+- **Emenda E7 (S-710):** compara a cópia do plugin registrada em
+  `$MAESTRO_PLUGINS_DIR` (default `~/.claude/plugins`) com este repo e avisa
+  `instalação do plugin` quando os arquivos de comportamento divergem — nunca falha; o
+  fato vai ao envelope em `install.{registered,divergent}`.
 
 ## 3. Envelope de erro (CLI)
 

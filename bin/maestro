@@ -74,6 +74,7 @@ C_OK=''; C_WARN=''; C_FAIL=''; C_OFF=''
 N_CHECKS=0; N_WARN=0; N_SKIP=0; FAIL_ENV=0; FAIL_VAL=0
 CAP_BINDINGS_OK=0; CAP_SKILL_ROOTS=0   # E7/S-705: fatos capturados p/ capabilities.json
 CAP_INJECTION_BYTES=0                  # E7/S-703: conta real da injeção do SessionStart
+CAP_INSTALL_REGISTERED=0; CAP_INSTALL_DIVERGENT=0   # E7/S-710: instalação vs repo
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -614,6 +615,75 @@ check_vendor_integrity() { # S-706: vendor/ verificado offline contra manifesto 
   fi
 }
 
+check_plugin_install() { # S-710: cópia instalada do plugin divergente deste repo
+  # O Claude Code resolve `${CLAUDE_PLUGIN_ROOT}` (o que os hooks.json usam) a
+  # partir do registro em ~/.claude/plugins. Com marketplace `source: directory`
+  # a origem viva é o próprio repo, mas `installed_plugins.json` guarda um
+  # `installPath` que costuma ser uma CÓPIA em cache, congelada no instante da
+  # instalação. Cópia divergente = risco de ROLLBACK SILENCIOSO: a sessão que
+  # resolver por ela injeta uma tabela velha e hooks velhos, sem nenhum sinal —
+  # a mesma classe do incidente do --prefix (2026-08-10), agora na instalação.
+  # Sempre AVISO: o repo continua sendo a verdade e nada aqui derruba o doctor.
+  local base="${MAESTRO_PLUGINS_DIR:-$HOME/.claude/plugins}"
+  local reg="$base/installed_plugins.json"
+  if [[ ! -f "$reg" || ! -r "$reg" ]]; then
+    report ok "instalação do plugin: sem registro do Claude Code (repo usado direto)"
+    return 0
+  fi
+  has jq  || { report skip "instalação do plugin vs repo" "requer jq";  return 0; }
+  has cmp || { report skip "instalação do plugin vs repo" "requer cmp"; return 0; }
+
+  local name='maestro' pj="$REPO_DIR/.claude-plugin/plugin.json"
+  [[ -f "$pj" ]] && name=$(jq -r '.name // "maestro"' "$pj" 2>/dev/null) || true
+  [[ -n "$name" && "$name" != "null" ]] || name='maestro'
+
+  local paths
+  paths=$(jq -r --arg n "$name" '
+      (.plugins // {}) | to_entries[]
+      | select(.key == $n or (.key | startswith($n + "@")))
+      | (.value | if type == "array" then .[] else . end)
+      | .installPath // empty' "$reg" 2>/dev/null) || paths=''
+  if [[ -z "$paths" ]]; then
+    report ok "instalação do plugin: '$name' não registrado (repo usado direto)"
+    return 0
+  fi
+
+  # Arquivos que DEFINEM comportamento: se algum destes difere, a cópia roda
+  # outro Maestro. Docs e testes divergirem é irrelevante e não vira ruído.
+  local files=(hooks/hooks.json hooks/session-start.sh hooks/pre-tool-gate.sh
+               hooks/user-prompt-submit.sh hooks/lib/common.sh
+               config/routing-table.yaml bin/maestro .claude-plugin/plugin.json)
+  local repo_real; repo_real=$(cd -P -- "$REPO_DIR" && pwd)
+  local stale=() n_reg=0 p p_real rel diff
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    n_reg=$((n_reg + 1))
+    if [[ ! -d "$p" ]]; then stale+=("$p (ausente)"); continue; fi
+    p_real=$(cd -P -- "$p" 2>/dev/null && pwd) || p_real="$p"
+    [[ "$p_real" == "$repo_real" ]] && continue   # registro aponta para o repo
+    diff=()
+    for rel in "${files[@]}"; do
+      cmp -s -- "$REPO_DIR/$rel" "$p/$rel" || diff+=("$rel")
+    done
+    # set -e: o sufixo sai de um `if`, nunca de um `$( ... && ... )` — comando
+    # substituto que devolve 1 dentro de atribuição derruba o doctor inteiro.
+    if (( ${#diff[@]} > 0 )); then
+      local more=''
+      if (( ${#diff[@]} > 1 )); then more=" (+$(( ${#diff[@]} - 1 )))"; fi
+      stale+=("$p_real: ${#diff[@]} arquivo(s) — ${diff[0]}$more")
+    fi
+  done <<<"$paths"
+
+  CAP_INSTALL_REGISTERED=$n_reg
+  CAP_INSTALL_DIVERGENT=${#stale[@]}
+  if (( ${#stale[@]} > 0 )); then
+    report warn "instalação do plugin: cópia registrada idêntica a este repo" \
+      "$(join_semi "${stale[@]}") — sessão que resolver por essa cópia roda Maestro antigo (fix: reinstale o plugin apontando para $repo_real, ou remova a cópia)"
+  else
+    report ok "instalação do plugin: $n_reg registro(s) sem cópia divergente"
+  fi
+}
+
 check_injection_bill() { # S-703: conta real da injeção vs teto de 8000B
   # Roda o hook de verdade (stdin sintético, estado em mktemp) e mede os bytes
   # que uma sessão receberia AGORA, com a config real deste repo. O RATCHET
@@ -696,12 +766,14 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
        --argjson fail_env "$fenv" --argjson fail_val "$fval" \
        --argjson b_ok "$CAP_BINDINGS_OK" --argjson b_roots "$CAP_SKILL_ROOTS" \
        --argjson roster "$rn" --argjson inj "$CAP_INJECTION_BYTES" \
+       --argjson ireg "$CAP_INSTALL_REGISTERED" --argjson idiv "$CAP_INSTALL_DIVERGENT" \
        '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
          runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
                   git:{present:$git,version:$gitv}, flock:{present:$flock}},
          doctor:{checks:$checks,warns:$warns,skips:$skips,fail_env:$fail_env,fail_val:$fail_val},
          bindings:{resolved:$b_ok, skill_roots:$b_roots},
-         roster:{agents:$roster}, injection:{bytes:$inj, budget:8000}}' > "$tmp" 2>/dev/null \
+         roster:{agents:$roster}, injection:{bytes:$inj, budget:8000},
+         install:{registered:$ireg, divergent:$idiv}}' > "$tmp" 2>/dev/null \
      && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
     report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
   else
@@ -1005,6 +1077,7 @@ doctor() {
 
   check_records
   check_vendor_integrity
+  check_plugin_install
   check_session_env
   check_injection_bill
   write_capabilities
