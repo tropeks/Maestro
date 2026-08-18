@@ -1,5 +1,20 @@
 # Decision log
 
+## 2026-08-18 — Sessão E7 parte 4 (S-708 — diretriz Spock nos gates)
+
+- **Ordem permanente do Capitão (verbatim na intenção):** Spock é imediato/diretor
+  operacional e representa o Romulo fora da bridge; julgamento maduro com segurança
+  proporcional; **gate humano só para risco catastrófico/quase irreversível** (produção
+  real com usuários/dados, billing real, auth/secrets, migração destrutiva, apagar
+  dados/volumes, force push, decisão jurídica/produto externa); em RAD privado com onda
+  verificada: commit, push em branch, PR/draft e deploy de teste **sem pergunta**.
+- **Por que mexer no Maestro:** a injeção dizia "sem resposta, não shipa" —
+  conflitaria com a diretriz em toda sessão futura. A linha da diretriz entrou na própria
+  seção de gates (precedência explícita), mantendo o COMO dos gates intacto para os casos
+  catastróficos. Réplicas nos arquivos globais (Claude/codex/agy) e supermemory.
+- **Primeiro exercício da diretriz:** este commit foi shipado sem gate ship — RAD
+  privado, suíte verde, e a mudança É a autorização. Decisão registrada aqui.
+
 ## 2026-08-18 — Sessão E7 parte 3 (S-707 — estilo de comunicação na injeção)
 
 - **Pedido do Romulo:** o Google developer documentation style guide como regra de como a

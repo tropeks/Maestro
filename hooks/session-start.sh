@@ -463,6 +463,9 @@ build_and_emit() {
     sec_gate=$'\n'"## Gates humanos — PARE, pergunte e espere resposta explícita."$'\n'
     [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo."$'\n'
     [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
+    # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
+    # catastrófico/quase irreversível; RAD privado verificado flui sem pergunta.
+    sec_gate+="- Diretriz Spock: os gates valem para risco catastrófico/quase irreversível (produção real com usuários/dados, billing, auth/secrets, migração destrutiva, apagar dados/volumes, force push, decisão jurídica/produto externa). Em RAD privado com a onda VERIFICADA (testes/evidência), commit, push em branch, PR/draft e deploy de teste fluem sem pergunta — registre a decisão e siga."$'\n'
   fi
 
   # S-401 — o step deixa de ser palavra solta.
