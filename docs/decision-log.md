@@ -1,5 +1,21 @@
 # Decision log
 
+## 2026-08-18 — Sessão E7 parte 5 (S-709 — mote de execução + Maestro como RAD padrão)
+
+- **Diretriz do Capitão:** (a) Maestro, não Legatus, é a metodologia RAD padrão do
+  portfólio (Legatus segue como infra); (b) mote de execução permanente — completude a
+  custo marginal ~zero, "do the whole thing, with tests, with documentation", padrão
+  "holy shit, that's done", sem workaround quando o fix real existe, boil the ocean.
+- **Implementação:** `config/execution-ethos.md` injetado como `## Mote de execução`
+  (mesmo mecanismo do S-707; seam `MAESTRO_ETHOS_FILE`); ordem de cessão: estilo → mote →
+  heurísticas → roster. Réplica nos 3 globais; DECISÃO no supermemory default + cross-ref
+  no container do Legatus (sm_project_ClaudeProxy) e no do Maestro.
+- **Nota de orçamento:** injeção real foi a 5.883B de 8.000B (era 4.887B antes do mote).
+  Folga de 2,1KB — o ratchet da S-703 subiu de prioridade: é ele que impede a próxima
+  seção "só mais uma" de comer o teto em silêncio.
+- **Evidência:** test-style-injection cobre presença/degradação do mote; aritmética de
+  orçamento do test-session-start desconta S_ETHOS; suíte completa verde (exit sem pipe).
+
 ## 2026-08-18 — Sessão E7 parte 4 (S-708 — diretriz Spock nos gates)
 
 - **Ordem permanente do Capitão (verbatim na intenção):** Spock é imediato/diretor

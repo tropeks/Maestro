@@ -66,6 +66,15 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
 - **S-704:** doctor: check de `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` ativo (teams podem
   se formar sem pedido) + linha nomeando MCP servers conectados como fora-do-envelope.
   *Pendente.*
+- **S-709:** mote de execução na injeção (diretriz do Romulo, 2026-08-18: "the marginal
+  cost of completeness is near zero — do the whole thing, with tests, with documentation;
+  padrão 'holy shit, that's done'; boil the ocean"). `config/execution-ethos.md` canônico,
+  emitido como `## Mote de execução` pelo mesmo mecanismo do S-707; cede depois do estilo
+  e antes das heurísticas. Da mesma diretriz: **Maestro, não Legatus, é a metodologia RAD
+  padrão do portfólio** — registrado nos globais e nos containers de memória (default,
+  Maestro, ClaudeProxy/Legatus). *AC: seção presente; ausente degrada; cessão ordenada;
+  teto por arquivo.* **Entregue 2026-08-18** (asserts em test-style-injection e
+  test-session-start).
 - **S-708:** diretriz Spock na seção de gates humanos (ordem permanente do Romulo,
   2026-08-18): os gates plan/ship valem para risco catastrófico/quase irreversível
   (produção real com usuários/dados, billing, auth/secrets, migração destrutiva, apagar

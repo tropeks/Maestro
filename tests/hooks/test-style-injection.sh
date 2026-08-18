@@ -34,6 +34,17 @@ grep -q 'Clareza vence a regra' <<<"$OUT" \
   && ok "conteúdo vem de config/communication-style.md" \
   || bad "conteúdo vem de config/communication-style.md"
 
+echo "-- S-709: mote de execução (mesmo mecanismo)"
+run
+grep -q '## Mote de execução' <<<"$OUT" && ok "seção do mote presente" || bad "seção do mote presente"
+grep -q 'Boil the ocean' <<<"$OUT" \
+  && ok "conteúdo vem de config/execution-ethos.md" \
+  || bad "conteúdo vem de config/execution-ethos.md"
+run MAESTRO_ETHOS_FILE=/nao/existe/ethos.md
+[[ $RC -eq 0 ]] && ok "mote ausente: exit 0" || bad "mote ausente: exit 0 (rc=$RC)"
+grep -q '## Mote de execução' <<<"$OUT" && bad "mote ausente: seção NÃO aparece" \
+                                        || ok  "mote ausente: seção NÃO aparece"
+
 echo "-- degradação: arquivo ausente → sem seção, sem erro"
 run MAESTRO_STYLE_FILE=/nao/existe/style.md
 [[ $RC -eq 0 ]] && ok "arquivo ausente: exit 0" || bad "arquivo ausente: exit 0 (rc=$RC)"

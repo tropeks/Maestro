@@ -431,7 +431,7 @@ cleanup_records() {
 # 7. Montagem do bloco + orçamento de 8000 bytes.
 # ---------------------------------------------------------------------------
 build_and_emit() {
-  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_style sec_tail
+  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_ethos sec_style sec_tail
 
   sec_head="<maestro-routing>"$'\n'
   # Versão derivada do manifesto, não literal: a string ficou em "v0.1" até o
@@ -527,6 +527,16 @@ build_and_emit() {
   # MAESTRO_STYLE_FILE é costura de teste. Ausente/ilegível → seção vazia
   # (degrada em silêncio, como as demais). head -c 2000 = teto de segurança:
   # arquivo inchado não pode devorar o orçamento das seções de ação.
+  # S-709 — mote de execução (diretriz do Romulo, 2026-08-18): mesmo mecanismo
+  # do estilo; cede DEPOIS do estilo (o mote pauta a qualidade da entrega).
+  sec_ethos=""
+  local ethos_file="${MAESTRO_ETHOS_FILE:-$REPO_DIR/config/execution-ethos.md}"
+  if [[ -f "$ethos_file" && -r "$ethos_file" ]]; then
+    local ethos_body
+    ethos_body=$(head -c 2000 -- "$ethos_file" 2>/dev/null || true)
+    [[ -n "$ethos_body" ]] && sec_ethos=$'\n'"## Mote de execução"$'\n'"$ethos_body"$'\n'
+  fi
+
   sec_style=""
   local style_file="${MAESTRO_STYLE_FILE:-$REPO_DIR/config/communication-style.md}"
   if [[ -f "$style_file" && -r "$style_file" ]]; then
@@ -547,7 +557,7 @@ build_and_emit() {
   (( remaining < 0 )) && remaining=0
 
   local name cur allowed cut
-  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur sec_style; do
+  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur sec_ethos sec_style; do
     cur="${!name}"
     [[ -n "$cur" ]] || continue
     if (( ${#cur} <= remaining )); then
@@ -569,7 +579,7 @@ build_and_emit() {
     remaining=0
   done
 
-  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_style$sec_tail"
+  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_ethos$sec_style$sec_tail"
   # Cinto e suspensório: o teto vale mesmo com env exótica ou seção inesperada.
   # MAS o corte cego para no NÚCLEO (head + instrução canônica + fechamento): o
   # API_SPEC §1 diz que a instrução canônica e o session_id nunca truncam, e
