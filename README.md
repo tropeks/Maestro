@@ -57,6 +57,24 @@ flowchart LR
 4. `maestro log --summary` closes the loop: manual-override rate, model distribution
    per task — the instrument that tells you whether routing is actually working.
 
+### Situational awareness — no more cold-start sweeps
+
+A fresh session normally re-scans the repo to figure out where the project
+stands. Maestro fixes this with a **project brief**: the outgoing session writes
+a short narrative (`maestro brief --write` — what was in flight, open decisions,
+next step), the CLI stamps it with timestamp + git HEAD + a content fingerprint,
+and SessionStart injects a ~300-byte pointer with an honest freshness verdict:
+
+```
+## Projeto
+brief: FRESH (2h, HEAD 73394c8) → read ~/.maestro/briefs/… BEFORE sweeping the repo
+memória: recall supermemory with containerTag sm_project_Maestro
+```
+
+A stale brief says so — "STALE (3 commits behind) → the brief gives context; git
+gives the truth". The rails guarantee THAT the state exists and is fresh; the AI
+writes WHAT it says. The brief is local working state — never memory, never logged.
+
 ## Roster — the model proportional to the role
 
 | agent | model | when |
@@ -118,8 +136,8 @@ citing the last `doctor` run; the rails stay up.
 ## Validate
 
 ```bash
-bin/maestro doctor        # 30 checks; --ci for pipelines
-bash tests/run-all.sh     # full suite: 1020 assertions, hermetic
+bin/maestro doctor        # 31 checks; --ci for pipelines
+bash tests/run-all.sh     # full suite: 1075 assertions, hermetic
 ```
 
 The `doctor` doesn't trust — it measures: it runs the injection hook for real and

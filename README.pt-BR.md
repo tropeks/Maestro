@@ -57,6 +57,25 @@ flowchart LR
 4. `maestro log --summary` fecha o loop: taxa de override manual, distribuição de
    modelo por tarefa — o instrumento que diz se o roteamento está funcionando.
 
+### Inteligência situacional — fim da varredura de cold start
+
+Sessão nova normalmente re-varre o repo para descobrir onde o projeto está. O
+Maestro resolve com um **brief de projeto**: a sessão que sai escreve uma
+narrativa curta (`maestro brief --write` — o que estava em curso, decisões
+abertas, próximo passo), o CLI carimba com timestamp + HEAD do git + fingerprint
+de conteúdo, e o SessionStart injeta um ponteiro de ~300 bytes com veredito
+honesto de freshness:
+
+```
+## Projeto
+brief: FRESCO (2h, HEAD 73394c8) → leia ~/.maestro/briefs/… ANTES de varrer o repo
+memória: recall no supermemory com containerTag sm_project_Maestro
+```
+
+Brief velho diz que é velho — "STALE (3 commits atrás) → o brief dá o contexto;
+o git dá a verdade". Os trilhos garantem QUE o estado existe e está fresco; a IA
+escreve O QUE ele diz. O brief é estado local de trabalho — nunca memória, nunca log.
+
 ## Roster — o modelo proporcional ao papel
 
 | agente | modelo | quando |
@@ -118,8 +137,8 @@ Os hooks nunca invocam Bun — se o Bun sumir, o CLI degrada com mensagem citand
 ## Validar
 
 ```bash
-bin/maestro doctor        # 30 checagens; --ci para pipeline
-bash tests/run-all.sh     # suíte completa: 1020 asserções, hermética
+bin/maestro doctor        # 31 checagens; --ci para pipeline
+bash tests/run-all.sh     # suíte completa: 1075 asserções, hermética
 ```
 
 O `doctor` não confia — mede: roda o hook de injeção de verdade e conta os bytes;

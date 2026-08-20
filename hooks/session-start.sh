@@ -237,7 +237,7 @@ parse_routing_table() {
 # 3. Profile do projeto — $CLAUDE_PROJECT_DIR/.maestro.yaml (DATA_MODEL §2).
 # Opcional: ausência não é erro, só significa "defaults globais".
 # ---------------------------------------------------------------------------
-P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""
+P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_MEMCT=""
 # `experts: []` (lista explicitamente vazia) é diferente de `experts` ausente:
 # a primeira é uma decisão do projeto, a segunda é silêncio. Só o texto bruto
 # distingue as duas, então o flag é levantado aqui, antes da normalização.
@@ -254,6 +254,7 @@ parse_profile() {
       EXPERTS)  [[ "$val" =~ ^\[[[:space:]]*\]$ ]] && P_EXPERTS_EMPTY=1
                 P_EXPERTS=$(yaml_inline_list "$val" '^[a-z0-9-]{1,40}$') ;;
       NOTES)    P_NOTES="$val" ;;
+      MEMCT)    [[ "$val" =~ ^[A-Za-z0-9._-]{1,64}$ ]] && P_MEMCT="$val" ;;
     esac
   done < <(awk '
     function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); return s }
@@ -261,6 +262,7 @@ parse_profile() {
     /^pipeline:/  { print "PIPELINE\t" clean(substr($0, 10)); next }
     /^languages:/ { print "LANGS\t"    clean(substr($0, 11)); next }
     /^experts:/   { print "EXPERTS\t"  clean(substr($0, 9));  next }
+    /^memory_container:/ { print "MEMCT\t" clean(substr($0, 18)); next }
     /^notes:/     { v = substr($0, 7); gsub(/\t/, " ", v); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); print "NOTES\t" v; next }
   ' "$PROFILE_FILE" 2>/dev/null)
 
@@ -431,7 +433,7 @@ cleanup_records() {
 # 7. Montagem do bloco + orçamento de 8000 bytes.
 # ---------------------------------------------------------------------------
 build_and_emit() {
-  local sec_head sec_instr sec_gate sec_bind sec_profile sec_routes sec_heur sec_roster sec_ethos sec_style sec_tail
+  local sec_head sec_instr sec_gate sec_bind sec_profile sec_project sec_routes sec_heur sec_roster sec_ethos sec_style sec_tail
 
   sec_head="<maestro-routing>"$'\n'
   # Versão derivada do manifesto, não literal: a string ficou em "v0.1" até o
@@ -500,6 +502,46 @@ build_and_emit() {
     [[ -n "$P_NOTES"    ]] && sec_profile+="nota: $P_NOTES"$'\n'
   fi
 
+  # E8/S-802 — inteligência situacional: injeta a GARANTIA de que o estado
+  # existe e está fresco, nunca o estado em si (orçamento + ADR-007). A leitura
+  # do brief é UMA leitura de arquivo em vez de uma varredura do repo. Freshness
+  # aqui é a barata (HEAD + idade); o veredito por conteúdo (wtree) é do CLI.
+  # S-803 — a IA escreve a narrativa: o trilho só cobra a atualização.
+  sec_project=$'\n'"## Projeto"$'\n'
+  local brief_f="" b_line=""
+  brief_f=$(maestro_brief_file "$PROJECT_DIR" 2>/dev/null) || brief_f=""
+  if [[ -n "$brief_f" && -f "$brief_f" && -r "$brief_f" ]]; then
+    local b_epoch="" b_head="" b_age="" b_cur=""
+    eval "$(awk 'NR>8 || /^-->$/ { exit }
+      /^epoch: / { v=substr($0,8); if (v ~ /^[0-9]+$/) print "b_epoch=" v }
+      /^head: /  { v=substr($0,7); if (v ~ /^([0-9a-f]{40}|none)$/) print "b_head=\047" v "\047" }' \
+      "$brief_f" 2>/dev/null)" 2>/dev/null || :
+    if [[ "$b_epoch" =~ ^[0-9]+$ ]]; then
+      local _d=$(( $(maestro_now_epoch) - b_epoch ))
+      if   (( _d < 0 ));     then b_age="?"
+      elif (( _d < 3600 ));  then b_age="$(( _d / 60 ))min"
+      elif (( _d < 86400 )); then b_age="$(( _d / 3600 ))h"
+      else                        b_age="$(( _d / 86400 ))d"; fi
+    fi
+    if [[ -z "$b_epoch" && -z "$b_head" ]]; then
+      b_line="brief: presente, carimbo ilegível → leia $brief_f e regrave (maestro brief --write)"
+    else
+      b_cur=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null) || b_cur=""
+      if [[ -n "$b_cur" && "$b_head" == "$b_cur" ]]; then
+        b_line="brief: FRESCO (${b_age:-?}, HEAD ${b_cur:0:7}) → leia $brief_f ANTES de varrer o repo"
+      elif [[ -n "$b_cur" && -n "$b_head" && "$b_head" != "none" ]]; then
+        local _n; _n=$(git -C "$PROJECT_DIR" rev-list --count "$b_head..$b_cur" 2>/dev/null) || _n=""
+        [[ "$_n" =~ ^[0-9]+$ ]] || _n="?"
+        b_line="brief: STALE ($_n commit(s) atrás, escrito ${b_age:-?}) → $brief_f dá o contexto; o git dá a verdade"
+      else
+        b_line="brief: escrito ${b_age:-?} (sem git para conferir) → leia $brief_f"
+      fi
+    fi
+  fi
+  [[ -n "$b_line" ]] && sec_project+="$b_line"$'\n'
+  [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
+  sec_project+="Ao fechar trabalho substancial, atualize o brief: maestro brief --write --session $SESSION_ID (narrativa curta via stdin: o que estava em curso, decisões abertas, próximo passo)"$'\n'
+
   sec_routes=""
   if [[ -n "$ROUTES$WORKFLOWS" ]]; then
     sec_routes=$'\n'"## Rotas (intenção → workflow) e workflows"$'\n'"$ROUTES$WORKFLOWS"
@@ -557,7 +599,7 @@ build_and_emit() {
   (( remaining < 0 )) && remaining=0
 
   local name cur allowed cut
-  for name in sec_gate sec_bind sec_profile sec_routes sec_roster sec_heur sec_ethos sec_style; do
+  for name in sec_gate sec_bind sec_profile sec_project sec_routes sec_roster sec_heur sec_ethos sec_style; do
     cur="${!name}"
     [[ -n "$cur" ]] || continue
     if (( ${#cur} <= remaining )); then
@@ -579,7 +621,7 @@ build_and_emit() {
     remaining=0
   done
 
-  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_routes$sec_heur$sec_roster$sec_ethos$sec_style$sec_tail"
+  local out="$sec_head$sec_instr$sec_gate$sec_bind$sec_profile$sec_project$sec_routes$sec_heur$sec_roster$sec_ethos$sec_style$sec_tail"
   # Cinto e suspensório: o teto vale mesmo com env exótica ou seção inesperada.
   # MAS o corte cego para no NÚCLEO (head + instrução canônica + fechamento): o
   # API_SPEC §1 diz que a instrução canônica e o session_id nunca truncam, e

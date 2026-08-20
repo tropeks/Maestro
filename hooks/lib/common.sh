@@ -62,6 +62,28 @@ maestro_ensure_dirs() {
 # → date(1) → 0. O builtin vem PRIMEIRO porque `date` custa um fork (~3ms
 # medidos) e o hook chama isso em todo evento — o NFR é 100ms/hook.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# E8/S-801 — caminho do brief de projeto (DATA_MODEL §7).
+# Chave = basename saneado + 8 hex do sha256 do caminho absoluto: legível no ls
+# e sem colisão entre projetos homônimos. ÚNICA definição — session-start e
+# bin/maestro derivam por aqui; divergência quebraria o ponteiro da injeção.
+# ---------------------------------------------------------------------------
+maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
+  # Hash djb2 em bash puro: isto roda DENTRO do session-start (NFR <100ms) e
+  # cada fork custa ~7ms nesta classe de máquina — sha256sum+tr+head eram 4.
+  # Não é hash criptográfico e não precisa ser: é chave de arquivo, e a única
+  # propriedade exigida é determinismo (CLI e hook derivam pela MESMA função).
+  local root="${1:-$PWD}" real base slug="" i c h=5381
+  real=$(cd -P -- "$root" 2>/dev/null && pwd) || real="$root"
+  base="${real##*/}"
+  slug="${base//[^a-zA-Z0-9._-]/-}"; slug="${slug:0:32}"
+  for (( i = 0; i < ${#real}; i++ )); do
+    printf -v c '%d' "'${real:i:1}" 2>/dev/null || c=63
+    h=$(( ((h * 33) + c) & 0xFFFFFFFF ))
+  done
+  printf '%s/briefs/%s-%08x.md' "${MAESTRO_HOME:-$HOME/.maestro}" "${slug:-projeto}" "$h"
+}
+
 maestro_now_epoch() {
   local e=""
   printf -v e '%(%s)T' -1 2>/dev/null || e=""

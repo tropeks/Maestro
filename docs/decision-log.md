@@ -1,5 +1,30 @@
 # Decision log
 
+## 2026-08-20 — E8: inteligência situacional por projeto (brief carimbado)
+
+- **Gatilho:** dor real do Capitão — toda sessão nova varre o repo para reconstruir
+  situação. Diagnóstico: as quatro fontes existentes (CLAUDE.md, MEMORY.md, supermemory,
+  injeção) dizem COMO decidir, nenhuma diz ONDE o projeto está agora. Plano aprovado
+  ("aprova!") via gate plan.
+- **Decisão de desenho:** injetar a GARANTIA, não o estado — a seção `## Projeto` carrega
+  ponteiro + veredito de freshness (~250-380B), e uma varredura vira UMA leitura de
+  arquivo. O estado em si viveria mal na injeção (orçamento) e pior no plugin (ADR-007:
+  memória é do supermemory). Freshness em duas camadas: HEAD no hook (barato), wtree
+  (S-701) no CLI — reuso direto do carimbo de conteúdo do E7.
+- **`memory_container:` no `.maestro.yaml`:** o gotcha "recall sem containerTag não cruza
+  container" morre de vez — a tag do projeto agora é injetada como instrução
+  determinística, não lembrada por disciplina.
+- **NFR defendido com medição:** a primeira versão usava sha256sum+tr+head na derivação da
+  chave e custou 37ms (114ms total contra baseline de 77ms — o "47ms" do E2 era de outra
+  máquina). Trocado por djb2 em bash puro (zero forks): 69ms sem brief, 97ms no pior caso.
+  Hash não-criptográfico é suficiente: a única propriedade exigida é determinismo, e a
+  definição é ÚNICA (common.sh) com paridade hook↔CLI pinada em teste.
+- **Fronteiras:** brief nunca vai ao routing.jsonl (testado); narrativa nunca é injetada
+  (testado); corrompido avisa e regrava, nunca quebra sessão; CLI inteiro sem Bun.
+- Injeção real: 5895B → 6087B no doctor (sem profile/brief) e 6266B no repo com o
+  profile completo — ratchet de 6500B respeitado sem bump. Suíte 1020 → 1075 asserções.
+  Doctor 30 → 31 checagens (briefs validados).
+
 ## 2026-08-18 — Segunda reescrita: histórico de commits traduzido para inglês
 
 - **Ordem do Capitão** ("no git tbm"), na sequência do English-first do README. As 38

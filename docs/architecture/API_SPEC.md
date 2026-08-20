@@ -56,6 +56,15 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 ### `maestro log [--summary]`
 - `--summary`: agrega o JSONL → taxa de decisões automáticas vs. `override_manual`, distribuição de modelos por tarefa (o instrumento do baseline do brief).
 
+### `maestro brief` (E8/S-801)
+- Bash puro (sem Bun — o antídoto do cold start não pode depender de runtime).
+- Sem flag: lê com veredito de freshness (`FRESCO`/`STALE — N commit(s)`/fora de
+  git) e imprime a narrativa. Brief ausente é informativo, exit 0.
+- `--write` (narrativa via stdin ou `--file`, cap 16KB) e `--auto` (esqueleto
+  determinístico do git) carimbam ts/epoch/HEAD/wtree(S-701)/session e gravam
+  atômico em `$MAESTRO_HOME/briefs/` (DATA_MODEL §7). `--path` só o caminho.
+- Exit: 0 ok · 1 validação (narrativa vazia, flag/session malformada) · 2 ambiente.
+
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
 - **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de
@@ -69,6 +78,10 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
   quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
   é inerte e a linha é `ok`.
+- **Emenda E8:** valida cabeçalho e epoch de todo brief em `$MAESTRO_HOME/briefs/`
+  (malformado é warn nomeando o arquivo); o SessionStart emite a seção `## Projeto`
+  (ponteiro do brief + freshness barata por HEAD + `memória:` do
+  `memory_container` + cobrança S-803) — nunca a narrativa, só a garantia.
 
 ## 3. Envelope de erro (CLI)
 

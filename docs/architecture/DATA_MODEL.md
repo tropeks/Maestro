@@ -109,8 +109,12 @@ project: remedix
 languages: [go, python, typescript]
 experts: [golang-pro, python-pro, typescript-pro]   # subconjunto do roster ativo aqui
 pipeline: default            # ou nome de workflow custom
+memory_container: sm_project_Remedix   # E8/S-802: containerTag do supermemory deste projeto
 notes: "agente Go é o coração; nunca tocar sem testes"
 ```
+`memory_container` (`^[A-Za-z0-9._-]{1,64}$`; malformado é omitido) vira a linha
+`memória:` da seção `## Projeto` da injeção — o recall com a tag certa deixa de
+depender de disciplina.
 `# classification: confidential`
 
 ### 3. Decision record — `~/.maestro/sessions/<session_id>.json` (efêmero)
@@ -196,6 +200,33 @@ por `generated_epoch` (≥24h = velho). Sem jq o envelope não é escrito (skip 
 (mesma classe do `gate-policy.sh`), jamais no log. `config/vendor.sha256` (repo,
 versionado) é o manifesto de integridade do vendor/ — divergência reprova o doctor.
 `# classification: confidential` (paths locais no snapshot)
+
+### 7. Brief de projeto — `~/.maestro/briefs/<slug>-<hash8>.md` (E8/S-801)
+
+Estado situacional por projeto: a narrativa que poupa a varredura de cold start
+("o que estava em curso, decisões abertas, próximo passo"). **Estado local de
+trabalho, não memória** (ADR-007 intocado: conhecimento durável é do supermemory)
+e **não log** (caminhos e narrativa jamais tocam o routing.jsonl). Chave =
+basename saneado + djb2/8hex do caminho absoluto, derivada por
+`maestro_brief_file()` (common.sh) — definição ÚNICA, usada por CLI e hook.
+
+```
+<!-- maestro-brief v1
+ts: 2026-08-20T10:11:12-03:00
+epoch: 1755690672
+head: <sha40 | none>
+wtree: <hash40 (S-701) | none>
+session: <id | desconhecido>
+-->
+<narrativa markdown, escrita pela IA; cap de 16KB no write>
+```
+
+Escrito por `maestro brief --write|--auto` (bash puro, atômico tmp+mv). Freshness
+em duas camadas: o **hook** compara só `head` + idade (<100ms); o **CLI** também
+compara `wtree` — HEAD igual com working tree diferente é dito com todas as letras.
+Carimbo ilegível → aviso de regravação, nunca crash. O doctor valida cabeçalho e
+`epoch` de todo brief existente.
+`# classification: confidential` (narrativa livre + paths locais)
 
 ---
 

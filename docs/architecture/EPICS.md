@@ -135,6 +135,34 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
   degrada avisando.* **Entregue 2026-08-18** (test-install-drift.sh, 41 asserções).
 - **Dependências:** E2 (CLI/record), E4 (tabela + instrumento de eval).
 
+### E8 — Inteligência situacional por projeto (P1, S) — emenda 2026-08-20, plano aprovado pelo Romulo
+Origem: dor real de dogfood ("toda sessão nova varre o repo para saber onde está") +
+recomendação de handoff `maestro.handoff.v1` do ECC audit (P1). Princípio: **injetar a
+GARANTIA de que o estado existe e está fresco, nunca o estado em si** — trilhos cobram e
+verificam; a IA escreve a narrativa. Brief é estado local de trabalho: não é memória
+(ADR-007 intocado) e não é log (§4 intocado).
+- **S-801:** `maestro brief` — CLI bash puro (sem Bun): leitura com veredito de freshness
+  em duas camadas (HEAD barato + wtree/S-701 por conteúdo), `--write` (stdin/--file, cap
+  16KB, atômico), `--auto` (esqueleto determinístico do git), `--path`; carimbos
+  ts/epoch/HEAD/wtree/session; chave derivada por `maestro_brief_file()` no common.sh —
+  definição única para CLI e hook (paridade testada). *AC: FRESCO/STALE contando commits;
+  wtree acusa working tree mudado com HEAD igual; fora de git degrada honesto; corrompido
+  avisa e não quebra; sem Bun funciona inteiro; nada vaza ao routing.jsonl.*
+  **Entregue 2026-08-20** (test-brief.sh, 36 asserções).
+- **S-802:** seção `## Projeto` no SessionStart: ponteiro do brief + freshness barata
+  (HEAD + idade; hash djb2 puro-bash para caber no NFR — medido 69ms sem brief, 97ms com,
+  baseline 77ms) + linha `memória:` derivada do `memory_container:` do `.maestro.yaml`
+  (recall com a tag certa vira trilho, não disciplina). *AC: ponteiro do hook = caminho do
+  CLI; narrativa NUNCA injetada; malformado omite; sob orçamento a seção cede depois do
+  profile e antes de rotas; núcleo sobrevive.* **Entregue 2026-08-20**
+  (test-brief-injection.sh, 20 asserções).
+- **S-803:** cobrança canônica na mesma seção: "ao fechar trabalho substancial, atualize o
+  brief" com o session_id real — o trilho garante QUE a atualização é pedida; a IA decide
+  O QUE escrever. Doctor valida os briefs existentes (cabeçalho v1 + epoch).
+  *AC: cobrança presente com sid; briefs malformados viram warn nomeado.*
+  **Entregue 2026-08-20.**
+- **Dependências:** E2 (injeção/CLI), E7/S-701 (wtree).
+
 ---
 
 ## Grafo de dependências
