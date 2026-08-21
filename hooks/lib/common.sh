@@ -128,7 +128,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -148,6 +148,7 @@ _maestro_set_key_regex() {
     cmd)        _maestro_re='^[a-z0-9:_-]{1,48}$' ;;
     project)    _maestro_re='^[A-Za-z0-9._-]{1,48}$' ;;
     gate_mode)  _maestro_re='^(warn|block)$' ;;
+    smell)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;
     n)          _maestro_re='^[0-9]{1,9}$' ;;
     *)          _maestro_re=""; return 1 ;;
   esac

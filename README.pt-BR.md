@@ -76,6 +76,19 @@ Brief velho diz que é velho — "STALE (3 commits atrás) → o brief dá o con
 o git dá a verdade". Os trilhos garantem QUE o estado existe e está fresco; a IA
 escreve O QUE ele diz. O brief é estado local de trabalho — nunca memória, nunca log.
 
+### Habit sensors — cutucões anti-slop na hora da edição
+
+Depois de cada edição de código, um hook PostToolUse roda 14 **habit sensors** em awk
+puro no arquivo editado — erro engolido, supressão `@ts-ignore`/`# noqa` nua, escape
+`as any`, comentário-assinatura de slop ("in a real implementation…"), debug esquecido,
+código comentado, teste pulado, função gigante, e um sensor de sessão de *test-gap*
+(N edições de código, zero de teste). Cada achado sai **com o guia de coaching**
+(`config/habit-guides/`) para o agente corrigir o design em vez de burlar a métrica —
+o padrão [habit-hooks](https://github.com/habit-hooks/habit-hooks), reconstruído dentro
+das fronteiras do Maestro (bash puro, zero deps, ~40ms, warn-only, cooldown de 15min
+por arquivo+smell). `maestro habits` roda os mesmos sensores sobre o diff para review
+e CI; `habits:` no `.maestro.yaml` ajusta o conjunto por projeto.
+
 ## Roster — o modelo proporcional ao papel
 
 | agente | modelo | quando |

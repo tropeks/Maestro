@@ -75,6 +75,19 @@ A stale brief says so — "STALE (3 commits behind) → the brief gives context;
 gives the truth". The rails guarantee THAT the state exists and is fresh; the AI
 writes WHAT it says. The brief is local working state — never memory, never logged.
 
+### Habit sensors — anti-slop nudges at edit time
+
+After every code edit, a PostToolUse hook runs 14 pure-awk **habit sensors** on the
+edited file — swallowed errors, `@ts-ignore`/bare `# noqa` suppressions, `as any`
+escapes, slop-signature comments ("in a real implementation…"), debug leftovers,
+commented-out code, skipped tests, oversized functions, and a session-level
+*test-gap* sensor (N source edits, zero test edits). Each finding ships **with its
+coaching guide** (`config/habit-guides/`) so the agent fixes the design instead of
+gaming the metric — the [habit-hooks](https://github.com/habit-hooks/habit-hooks)
+pattern, rebuilt inside Maestro's boundaries (pure bash, zero deps, ~40ms, warn-only,
+15-min cooldown per file+smell). `maestro habits` runs the same sensors over the diff
+for review and CI; `habits:` in `.maestro.yaml` tunes the set per project.
+
 ## Roster — the model proportional to the role
 
 | agent | model | when |

@@ -23,6 +23,11 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
+- **`post-edit-habits.sh` (E9, PostToolUse em Edit|Write|MultiEdit):** roda os habit
+  sensors no arquivo editado e, com achado, emite `<maestro-habit>` (≤3 achados + ≤2
+  guias capados em 700B) no stderr com exit 2 — feedback ao agente, NUNCA bloqueio
+  (a edição já aconteceu). Cooldown de 15min por (arquivo, smell) em
+  `$MAESTRO_HOME/sessions/`. Limpo/degradação → exit 0. Kill-switch idem aos demais.
 - **Lê do stdin:** `tool_name`, `tool_input.file_path`, `session_id`.
 - **Lógica:**
   1. **denylist por caminho** (repo do plugin, `agents/`, `config/routing-table.yaml`, `.github/workflows/`, configs executáveis) → block sempre (exit 2), mesmo com decisão registrada
@@ -65,6 +70,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   atômico em `$MAESTRO_HOME/briefs/` (DATA_MODEL §7). `--path` só o caminho.
 - Exit: 0 ok · 1 validação (narrativa vazia, flag/session malformada) · 2 ambiente.
 
+### `maestro habits` (E9/S-903)
+- Os mesmos sensores do hook pós-edição (motor único `hooks/lib/habit-sensors.awk`),
+  sobre o diff vs HEAD + untracked (default), `--all` (repo inteiro, exige git) ou
+  caminhos explícitos. Respeita `habits:` do `.maestro.yaml`.
+- Achado sai como `arquivo:linha: smell — detalhe`, com os guias dos smells distintos
+  ao final (sensor + guia, sempre juntos). Exit: 0 limpo · 1 achados · 2 ambiente.
+
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
 - **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de
@@ -78,6 +90,8 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
   quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
   é inerte e a linha é `ok`.
+- **Emenda E9:** hooks esperados passam a ser 4 (PostToolUse do habit hook);
+  todo sensor do motor precisa de guia em `config/habit-guides/` (`fail_val` sem).
 - **Emenda E8:** valida cabeçalho e epoch de todo brief em `$MAESTRO_HOME/briefs/`
   (malformado é warn nomeando o arquivo); o SessionStart emite a seção `## Projeto`
   (ponteiro do brief + freshness barata por HEAD + `memória:` do

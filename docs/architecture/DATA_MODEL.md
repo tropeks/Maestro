@@ -115,6 +115,9 @@ notes: "agente Go é o coração; nunca tocar sem testes"
 `memory_container` (`^[A-Za-z0-9._-]{1,64}$`; malformado é omitido) vira a linha
 `memória:` da seção `## Projeto` da injeção — o recall com a tag certa deixa de
 depender de disciplina.
+`habits` (E9): lista inline de sensores ativos do habit hook (`[a, b]`; `[]` =
+desligado no projeto; ausente = todos) — vale para o hook pós-edição E para
+`maestro habits`.
 `# classification: confidential`
 
 ### 3. Decision record — `~/.maestro/sessions/<session_id>.json` (efêmero)
@@ -162,6 +165,10 @@ do log são um **conjunto fechado e tipado**, validado em `common.sh::log_event`
 Nenhuma chave aceita `/` — garantia estrutural contra vazamento de caminho. `reason` vive
 só no decision record (§3), nunca no log.
 Rotação: por tamanho (10MB) ou mensal, arquivo `routing-YYYY-MM.jsonl`.
+
+**Emenda E9:** evento `habit_warn` entra no vocabulário fechado, com a chave
+`smell` (`^[a-z][a-z-]{2,23}$` — categoria, nunca caminho/linha) e `n`
+(contagem de achados). Um evento por emissão do hook, nunca por achado.
 
 ### 5. Roster — `agents/*.md` (repo do plugin)
 

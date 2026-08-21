@@ -44,7 +44,7 @@ MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
 MAESTRO_HOME_DEFAULT="$HOME/.maestro"
 MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
-EXPECTED_EVENTS=(SessionStart PreToolUse UserPromptSubmit)
+EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit)
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
 RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree'
 
@@ -57,6 +57,8 @@ maestro <comando>
   decide          registra decisão de roteamento (delegado a src/cli.ts — requer Bun)
   status          mostra decisão da sessão corrente (idem)
   log             agrega o routing.jsonl (idem)
+  habits          habit sensors (E9) sobre o diff (default), --all ou caminhos: os mesmos
+                  sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
@@ -179,17 +181,17 @@ check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
     report ok "hooks.json é JSON válido"
   fi
 
-  # 1) os 3 eventos esperados existem
+  # 1) os 4 eventos esperados existem
   local events missing=() ev
   events=$(hooks_json_events "$f" || true)
   for ev in "${EXPECTED_EVENTS[@]}"; do
     printf '%s\n' "$events" | grep -qx "$ev" || missing+=("$ev")
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
-    report fail_val "hooks.json registra os 3 eventos esperados" \
+    report fail_val "hooks.json registra os 4 eventos esperados" \
       "faltando: ${missing[*]} (plugin instalado com hook não registrado)"
   else
-    report ok "hooks.json registra os 3 eventos esperados"
+    report ok "hooks.json registra os 4 eventos esperados"
   fi
 
   # 2) matcher do PreToolUse cobre Edit|Write|MultiEdit
@@ -712,6 +714,24 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   fi
 }
 
+check_habit_guides() { # E9: todo sensor com guia — sensor sem guia é métrica nua
+  local gd="$REPO_DIR/config/habit-guides" eng="$REPO_DIR/hooks/lib/habit-sensors.awk"
+  [[ -f "$eng" ]] || { report skip "habit guides" "motor de sensores ausente"; return 0; }
+  local smells missing=() sm
+  smells=$(grep -oE 'emit\("[a-z-]+"' "$eng" 2>/dev/null | sed 's/emit("//; s/"//' | awk '!seen[$0]++')
+  smells+=$'\n'"test-gap"   # sensor de sessão: vive no hook, não no awk
+  while IFS= read -r sm; do
+    [[ -n "$sm" ]] || continue
+    [[ -s "$gd/$sm.md" ]] || missing+=("$sm")
+  done <<<"$smells"
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    report fail_val "habit guides: todo sensor tem guia" \
+      "sem guia: ${missing[*]} (sensor sem guia é linter cru — escreva config/habit-guides/<smell>.md)"
+  else
+    report ok "habit guides: $(grep -c . <<<"$smells") sensor(es), todos com guia"
+  fi
+}
+
 check_briefs() { # E8: briefs de projeto — carimbos válidos, staleness visível
   local bdir="$MAESTRO_HOME/briefs" f n=0 bad=() newest=0 e
   [[ -d "$bdir" ]] || { report ok "briefs de projeto: nenhum (crie com maestro brief --write)"; return 0; }
@@ -1067,7 +1087,7 @@ doctor() {
   fi
 
   local h
-  for h in session-start pre-tool-gate user-prompt-submit; do
+  for h in session-start pre-tool-gate post-edit-habits user-prompt-submit; do
     if [[ ! -f "$REPO_DIR/hooks/$h.sh" ]]; then
       report fail_env "hook $h.sh presente e executável" "arquivo não existe"
     elif [[ ! -x "$REPO_DIR/hooks/$h.sh" ]]; then
@@ -1131,6 +1151,7 @@ doctor() {
 
   check_records
   check_briefs
+  check_habit_guides
   check_vendor_integrity
   check_plugin_install
   check_session_env
@@ -1154,6 +1175,99 @@ doctor() {
     printf 'doctor: instalação saudável (%s checagens, %s aviso(s))\n' "$N_CHECKS" "$N_WARN"
   fi
   exit 0
+}
+
+# ---------------------------------------------------------------- habits (E9)
+
+cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
+  # O hook cutuca na edição; este comando varre o diff (ou caminhos dados) para
+  # o step de review e para CI opcional. Sensor único (hooks/lib/
+  # habit-sensors.awk), dois momentos — divergência entre eles seria dois
+  # vocabulários de smell. Exit: 0 limpo · 1 achados · 2 ambiente.
+  local scope="diff" paths=() proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  while (( $# )); do
+    case "$1" in
+      --all) scope="all" ;;
+      --project) proj="${2:-}"; shift ;;
+      -*) die validation "flag desconhecida '$1'" "maestro habits [--all] [caminhos...]" 1 ;;
+      *) scope="paths"; paths+=("$1") ;;
+    esac
+    shift
+  done
+  local engine="$REPO_DIR/hooks/lib/habit-sensors.awk"
+  local guides="${MAESTRO_HABIT_GUIDES:-$REPO_DIR/config/habit-guides}"
+  [[ -f "$engine" ]] || die env "hooks/lib/habit-sensors.awk ausente" "reinstale o plugin (maestro doctor)" 2
+
+  # sensores ativos: mesma resolução do hook (MAESTRO_HABITS > .maestro.yaml > all)
+  local enabled="all" hline=""
+  if [[ -n "${MAESTRO_HABITS+x}" ]]; then
+    enabled="$MAESTRO_HABITS"
+  elif [[ -f "$proj/.maestro.yaml" ]]; then
+    hline=$(awk '/^habits:/ { sub(/^habits:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
+      "$proj/.maestro.yaml" 2>/dev/null) || hline=""
+    if [[ "$hline" =~ ^\[[[:space:]]*\]$ ]]; then enabled=""
+    elif [[ "$hline" =~ ^\[.*\]$ ]]; then
+      enabled=$(printf '%s' "$hline" | tr -d '[]" ' | tr ',' '\n' \
+        | grep -E '^[a-z-]{1,24}$' | paste -sd, -) || enabled=""
+    fi
+  fi
+  [[ -n "$enabled" ]] || { echo "habits: desligado neste projeto (habits: [])"; return 0; }
+
+  local files=()
+  if [[ "$scope" == "paths" ]]; then
+    files=("${paths[@]}")
+  elif [[ "$scope" == "all" ]]; then
+    while IFS= read -r f; do files+=("$proj/$f"); done \
+      < <(git -C "$proj" ls-files 2>/dev/null || true)
+    [[ ${#files[@]} -gt 0 ]] || die env "--all exige git" "passe caminhos explícitos" 2
+  else
+    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$proj/$f"); done < <(
+      { git -C "$proj" diff --name-only HEAD 2>/dev/null
+        git -C "$proj" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+    if [[ ${#files[@]} -eq 0 ]]; then
+      echo "habits: diff limpo (nada alterado desde HEAD; use --all ou caminhos)"
+      return 0
+    fi
+  fi
+
+  local total=0 shown ext base is_test out smells=''
+  for f in "${files[@]}"; do
+    [[ -f "$f" && -r "$f" ]] || continue
+    case "$f" in */vendor/*|*/node_modules/*|*/.git/*) continue ;; esac
+    base="${f##*/}"; ext="${base##*.}"
+    [[ "$ext" != "$base" ]] || continue
+    case "$ext" in
+      py|js|jsx|ts|tsx|go|rs|java|rb|php|c|h|cpp|hpp|cs|lua|sh|bash|zsh) ;;
+      *) continue ;;
+    esac
+    is_test=0
+    case "$base" in test*|*_test.*|*.test.*|*.spec.*|conftest.py) is_test=1 ;; esac
+    case "$f" in */tests/*|*/test/*|*/__tests__/*) is_test=1 ;; esac
+    out=$(awk -v EXT="$ext" -v ENABLED="$enabled" -v ISTEST="$is_test" \
+      -f "$engine" "$f" 2>/dev/null | head -50) || out=""
+    [[ -n "$out" ]] || continue
+    shown="${f#"$proj"/}"
+    while IFS=$'\t' read -r smell lineno detail; do
+      [[ -n "$smell" ]] || continue
+      total=$(( total + 1 ))
+      printf '%s:%s: %s — %s\n' "$shown" "$lineno" "$smell" "$detail"
+      case " $smells " in *" $smell "*) ;; *) smells+="${smells:+ }$smell" ;; esac
+    done <<<"$out"
+  done
+
+  if (( total == 0 )); then
+    echo "habits: limpo (${#files[@]} arquivo(s) sensoriado(s))"
+    return 0
+  fi
+  printf -- '---\n%s achado(s). Guias (sensor + guia, sempre juntos):\n' "$total"
+  local g=0 gf
+  for smell in $smells; do
+    gf="$guides/$smell.md"
+    [[ -f "$gf" ]] || continue
+    g=$(( g + 1 )); (( g > 5 )) && { printf '… (guias restantes em %s/)\n' "$guides"; break; }
+    printf '\n'; head -c 700 -- "$gf" 2>/dev/null || :; printf '\n'
+  done
+  return 1
 }
 
 # ----------------------------------------------------------------- brief (E8)
@@ -1340,6 +1454,7 @@ case "$cmd" in
   doctor) shift; doctor "$@" ;;
   decide|status|log) shift; delegate "$cmd" "$@" ;;
   brief) shift; cmd_brief "$@" ;;
+  habits) shift; cmd_habits "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

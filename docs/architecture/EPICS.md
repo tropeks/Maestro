@@ -163,6 +163,43 @@ verificam; a IA escreve a narrativa. Brief é estado local de trabalho: não é 
   **Entregue 2026-08-20.**
 - **Dependências:** E2 (injeção/CLI), E7/S-701 (wtree).
 
+### E9 — Habit hooks: sensores anti-slop + guias (P1, M) — emenda 2026-08-21, plano aprovado pelo Romulo
+Origem: spec de Habit Hooks trazida pelo Capitão (conceito do projeto habit-hooks, MIT —
+github.com/habit-hooks/habit-hooks) + pesquisa de catálogos de slop de LLM. Princípio do
+padrão: **sensor determinístico e guia qualitativo, sempre juntos** — o guia explica o
+PORQUÊ para a correção ser de design, não de burla de métrica. Correção de encaixe sobre a
+spec original: hábito dispara NA EDIÇÃO (hook PostToolUse), não sob demanda (skill), e o
+guia é config versionada, não corpo de agente — método ≠ executor.
+- **S-901:** hook `post-edit-habits.sh` (PostToolUse em Edit|Write|MultiEdit) + motor único
+  `hooks/lib/habit-sensors.awk` (uma passada de awk, bash puro). 14 sensores:
+  oversized-{function,file}, deep-nesting, too-many-params, swallowed-error,
+  debug-leftover, lint-suppression, type-escape, slop-comment, empty-impl, dead-code,
+  skipped-test, risky-shortcut e test-gap (sensor de SESSÃO: N edições de src sem teste,
+  nag nos degraus 5/15/40). Viés conservador: falso negativo > falso positivo — sensor que
+  grita errado ensina o agente a ignorá-lo; shell não aciona swallowed-error (`|| true` é
+  degradação-por-design NESTA casa). Anti-ruído: cooldown 15min por (arquivo, smell), ≤3
+  achados + ≤2 guias por emissão. Warn-only estrutural: PostToolUse nunca bloqueia (a
+  edição já valeu); exit 2 só entrega o texto ao agente. Log: `habit_warn` com
+  smell+n+file_ext (DATA_MODEL §4 emendado) — jamais caminho. *AC: positivos por sensor;
+  adversariais (código limpo, idioma de shell, console.log EM teste); cooldown; test-gap
+  1 nag no degrau; kill-switch; vendor/ fora; degradações exit 0; latência medida 39ms
+  limpo / 68ms com 3000 linhas.* **Entregue 2026-08-21** (test-habits.sh, 38 asserções).
+- **S-902:** `config/habit-guides/<smell>.md` (14 guias versionados, ~300-700B, emitidos
+  capados em 700B) + `habits:` no `.maestro.yaml` (lista liga/desliga por projeto; `[]` =
+  desligado; ausente = todos). Doctor: todo sensor do motor tem guia (`fail_val` sem —
+  sensor sem guia é linter cru) e os 4 eventos de hook registrados. *AC: config filtra no
+  hook E no CLI; guia ausente reprova o doctor.* **Entregue 2026-08-21.**
+- **S-903:** `maestro habits` — os MESMOS sensores sobre o diff (default), `--all` ou
+  caminhos; para o step review e CI opcional. Exit 0 limpo · 1 achados · 2 ambiente.
+  Sensor único pinado em teste: hook e CLI referenciam o mesmo awk. *AC: diff limpo/sujo;
+  --all exige git; config respeitada; achado nomeia arquivo:linha e smell com guia junto.*
+  **Entregue 2026-08-21** (test-habits-cli.sh, 14 asserções).
+- **Rejeitados com registro:** `generic-name` (ruído demais para heurística awk);
+  integração com o habit-hooks upstream no hook (Python 3.11 + eslint/ruff quebra
+  bash-puro/zero-deps/latência; quem quiser o pipeline pesado roda o tool dele no review —
+  composição, não duplicação); `hardcoded-secret` (superfície do `audit`/gstack-cso).
+- **Dependências:** E2 (hooks/CLI), E8 (padrão de config por projeto).
+
 ---
 
 ## Grafo de dependências

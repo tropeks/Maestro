@@ -1,5 +1,34 @@
 # Decision log
 
+## 2026-08-21 — E9: habit hooks — sensores anti-slop com guia (plano aprovado)
+
+- **Gatilho:** spec de Habit Hooks trazida pelo Capitão + pedido de pesquisa antes de
+  fechar. A pesquisa achou a fonte (projeto habit-hooks, MIT) e dois catálogos de slop de
+  LLM; dois sensores entraram por ela: `lint-suppression` (burlar a métrica é o
+  anti-hábito nº 1 — nem o upstream tem) e `type-escape`/`risky-shortcut`.
+- **Correção de encaixe sobre a spec:** ela mapeava sensor→skill e guia→agente. Hábito
+  dispara NA EDIÇÃO, não sob demanda → hook PostToolUse; guia é CONFIG versionada
+  (mecanismo do estilo/mote), não corpo de agente — método ≠ executor. Quem corrige é o
+  roster de sempre via H3/H5.
+- **Não reimplementar ≠ não integrar:** o habit-hooks upstream (Python 3.11 + eslint/ruff/
+  jscpd) quebra três fronteiras de hook (bash puro, zero deps, latência). Composição:
+  nosso sensor fino na edição; quem quiser o pipeline pesado roda o upstream no review.
+- **Viés conservador escrito no motor:** falso negativo > falso positivo — sensor que
+  grita errado ensina o agente a ignorar sensores. Shell não aciona swallowed-error
+  (`|| true`/`2>/dev/null` é degradação-por-design NESTA casa); console.log em arquivo de
+  teste não dispara; vendor/ fora.
+- **Anti-ruído como requisito de primeira classe:** cooldown 15min por (arquivo, smell);
+  ≤3 achados + ≤2 guias por emissão; test-gap só nos degraus 5/15/40 de edições sem teste.
+- **Warn-only estrutural:** PostToolUse não bloqueia nada (a edição já valeu); exit 2 é o
+  canal de feedback ao agente, não um gate.
+- **Log:** `habit_warn` no vocabulário fechado com `smell` + `n` + `file_ext` — categoria,
+  nunca caminho/linha; um evento por emissão, não por achado.
+- **Rejeitados:** `generic-name` (ruído em heurística awk), `hardcoded-secret` (superfície
+  do audit), integração upstream no hook (acima).
+- Medições: hook 39ms limpo / 68ms com 3000 linhas (NFR 100ms). Doctor 31 → 33 checagens.
+  Suíte 1075 → 1125 asserções. Dogfood imediato: `maestro habits` no diff do próprio E9
+  apontou `oversized-function` real no common.sh.
+
 ## 2026-08-20 — E8: inteligência situacional por projeto (brief carimbado)
 
 - **Gatilho:** dor real do Capitão — toda sessão nova varre o repo para reconstruir
