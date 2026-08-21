@@ -59,6 +59,8 @@ maestro <comando>
   log             agrega o routing.jsonl (idem)
   habits          habit sensors (E9) sobre o diff (default), --all ou caminhos: os mesmos
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
+                  --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
+                  presente, --all reprova SÓ o que exceder o baseline (S-905)
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
@@ -714,6 +716,26 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   fi
 }
 
+check_commands() { # E9/S-904: slash commands do plugin — frontmatter mínimo
+  local cd_="$REPO_DIR/commands" f bad=() n=0
+  [[ -d "$cd_" ]] || { report ok "commands/: nenhum (plugin sem slash command)"; return 0; }
+  shopt -s nullglob
+  for f in "$cd_"/*.md; do
+    n=$(( n + 1 ))
+    awk 'NR==1 { exit ($0 == "---") ? 0 : 1 }' "$f" 2>/dev/null \
+      || { bad+=("${f##*/} (sem frontmatter)"); continue; }
+    awk 'NR>1 && /^---$/ { exit } /^description:/ { found=1 } END { exit !found }' "$f" 2>/dev/null \
+      || bad+=("${f##*/} (sem description)")
+  done
+  shopt -u nullglob
+  if (( n == 0 )); then report ok "commands/: nenhum (plugin sem slash command)"
+  elif (( ${#bad[@]} > 0 )); then
+    report fail_val "commands/: frontmatter válido" "${bad[*]} — comando sem description não aparece no /help"
+  else
+    report ok "commands/: $n slash command(s) com frontmatter válido"
+  fi
+}
+
 check_habit_guides() { # E9: todo sensor com guia — sensor sem guia é métrica nua
   local gd="$REPO_DIR/config/habit-guides" eng="$REPO_DIR/hooks/lib/habit-sensors.awk"
   [[ -f "$eng" ]] || { report skip "habit guides" "motor de sensores ausente"; return 0; }
@@ -738,7 +760,7 @@ check_briefs() { # E8: briefs de projeto — carimbos válidos, staleness visív
   shopt -s nullglob
   for f in "$bdir"/*.md; do
     n=$(( n + 1 ))
-    if ! head -1 -- "$f" 2>/dev/null | grep -q '^<!-- maestro-brief v1$'; then
+    if ! awk 'NR==1 { exit ($0 == "<!-- maestro-brief v1") ? 0 : 1 }' "$f" 2>/dev/null; then
       bad+=("${f##*/} (cabeçalho)"); continue
     fi
     e=$(awk 'NR>8 { exit } /^epoch: / { print substr($0,8); exit }' "$f" 2>/dev/null)
@@ -1152,6 +1174,7 @@ doctor() {
   check_records
   check_briefs
   check_habit_guides
+  check_commands
   check_vendor_integrity
   check_plugin_install
   check_session_env
@@ -1184,12 +1207,13 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
   # o step de review e para CI opcional. Sensor único (hooks/lib/
   # habit-sensors.awk), dois momentos — divergência entre eles seria dois
   # vocabulários de smell. Exit: 0 limpo · 1 achados · 2 ambiente.
-  local scope="diff" paths=() proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  local scope="diff" paths=() proj="${CLAUDE_PROJECT_DIR:-$PWD}" write_baseline=0
   while (( $# )); do
     case "$1" in
       --all) scope="all" ;;
+      --baseline) write_baseline=1; scope="all" ;;   # S-905: catraca grava do repo inteiro
       --project) proj="${2:-}"; shift ;;
-      -*) die validation "flag desconhecida '$1'" "maestro habits [--all] [caminhos...]" 1 ;;
+      -*) die validation "flag desconhecida '$1'" "maestro habits [--all|--baseline] [caminhos...]" 1 ;;
       *) scope="paths"; paths+=("$1") ;;
     esac
     shift
@@ -1217,8 +1241,11 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
   if [[ "$scope" == "paths" ]]; then
     files=("${paths[@]}")
   elif [[ "$scope" == "all" ]]; then
-    while IFS= read -r f; do files+=("$proj/$f"); done \
-      < <(git -C "$proj" ls-files 2>/dev/null || true)
+    # rastreados + novos não-ignorados: slop novo chega em arquivo novo, e um
+    # --all que não o vê é uma catraca com o dente quebrado.
+    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$proj/$f"); done < <(
+      { git -C "$proj" ls-files 2>/dev/null
+        git -C "$proj" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
     [[ ${#files[@]} -gt 0 ]] || die env "--all exige git" "passe caminhos explícitos" 2
   else
     while IFS= read -r f; do [[ -n "$f" ]] && files+=("$proj/$f"); done < <(
@@ -1231,6 +1258,7 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
   fi
 
   local total=0 shown ext base is_test out smells=''
+  declare -A count=()
   for f in "${files[@]}"; do
     [[ -f "$f" && -r "$f" ]] || continue
     case "$f" in */vendor/*|*/node_modules/*|*/.git/*) continue ;; esac
@@ -1250,10 +1278,55 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
     while IFS=$'\t' read -r smell lineno detail; do
       [[ -n "$smell" ]] || continue
       total=$(( total + 1 ))
+      count["$smell"]=$(( ${count["$smell"]:-0} + 1 ))
       printf '%s:%s: %s — %s\n' "$shown" "$lineno" "$smell" "$detail"
       case " $smells " in *" $smell "*) ;; *) smells+="${smells:+ }$smell" ;; esac
     done <<<"$out"
   done
+
+  # ---- S-905: a catraca ----------------------------------------------------
+  # Baseline = contagem POR SMELL, versionada no projeto (.maestro-habits.tsv).
+  # Só desce por regravação deliberada (--baseline); subir exige editar o
+  # arquivo — visível em review. Comparação SÓ no escopo --all (o baseline é do
+  # repo inteiro; compará-lo com um diff seria mentir a régua). Padrão da casa:
+  # mesmo desenho do ratchet da injeção (S-703) e do eval-on-diff (S-702).
+  local bfile="$proj/.maestro-habits.tsv"
+  if (( write_baseline == 1 )); then
+    local btmp="$bfile.tmp.$$" sm
+    {
+      printf '# maestro habits baseline (S-905) — catraca anti-slop: só desce.\n'
+      printf '# Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline\n'
+      for sm in $smells; do printf '%s\t%s\n' "$sm" "${count[$sm]}"; done | sort
+    } > "$btmp" 2>/dev/null && mv -f "$btmp" "$bfile" 2>/dev/null \
+      || { rm -f "$btmp" 2>/dev/null; die env "não consegui gravar $bfile" "cheque permissões" 2; }
+    printf -- '---\nbaseline gravado: %s (%s achado(s) em %s smell(s))\n' \
+      "${bfile##*/}" "$total" "$(printf '%s\n' $smells | grep -c . || true)"
+    return 0
+  fi
+
+  if [[ "$scope" == "all" && -f "$bfile" && -r "$bfile" ]]; then
+    local over=() sm bl cur improved=0
+    declare -A base=()
+    while IFS=$'\t' read -r sm bl; do
+      [[ "$sm" =~ ^[a-z][a-z-]{2,23}$ && "$bl" =~ ^[0-9]+$ ]] && base["$sm"]=$bl
+    done < "$bfile"
+    for sm in "${!count[@]}"; do
+      cur=${count[$sm]}; bl=${base[$sm]:-0}
+      if (( cur > bl )); then over+=("$sm: $cur > baseline $bl")
+      elif (( cur < bl )); then improved=1; fi
+    done
+    for sm in "${!base[@]}"; do
+      [[ -n "${count[$sm]:-}" ]] || { (( base[$sm] > 0 )) && improved=1; }
+    done
+    if (( ${#over[@]} > 0 )); then
+      printf -- '---\nCATRACA: slop novo acima do baseline — %s\n' "$(join_semi "${over[@]}")"
+      printf 'Conserte o que entrou; a régua não sobe para acomodar o novo.\n'
+      return 1
+    fi
+    printf -- '---\ndentro da catraca: %s achado(s), nenhum smell acima do baseline\n' "$total"
+    (( improved == 1 )) && printf 'a régua pode descer: rode `maestro habits --baseline` no mesmo commit do fix\n'
+    return 0
+  fi
 
   if (( total == 0 )); then
     echo "habits: limpo (${#files[@]} arquivo(s) sensoriado(s))"

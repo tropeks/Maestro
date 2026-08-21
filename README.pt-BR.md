@@ -88,6 +88,9 @@ o padrão [habit-hooks](https://github.com/habit-hooks/habit-hooks), reconstruí
 das fronteiras do Maestro (bash puro, zero deps, ~40ms, warn-only, cooldown de 15min
 por arquivo+smell). `maestro habits` roda os mesmos sensores sobre o diff para review
 e CI; `habits:` no `.maestro.yaml` ajusta o conjunto por projeto.
+`maestro habits --baseline` grava a catraca por smell (`.maestro-habits.tsv`) — a CI
+reprova só o slop que EXCEDER o baseline — e o slash command `/maestro:deslop` paga
+a dívida em lotes revisáveis, com suíte como gate e agentes tierizados.
 
 ## Roster — o modelo proporcional ao papel
 

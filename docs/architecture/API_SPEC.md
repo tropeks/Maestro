@@ -76,6 +76,10 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   caminhos explícitos. Respeita `habits:` do `.maestro.yaml`.
 - Achado sai como `arquivo:linha: smell — detalhe`, com os guias dos smells distintos
   ao final (sensor + guia, sempre juntos). Exit: 0 limpo · 1 achados · 2 ambiente.
+- **S-905 (catraca):** `--baseline` grava `.maestro-habits.tsv` (smell → contagem,
+  versionado no projeto). Com o arquivo presente, `--all` compara e reprova (exit 1)
+  APENAS smell acima do baseline; igual passa; melhora imprime o convite a regravar.
+  Escopos diff/caminho ignoram o baseline (a régua é do repo inteiro).
 
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.

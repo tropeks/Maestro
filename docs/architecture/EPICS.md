@@ -205,6 +205,22 @@ guia é config versionada, não corpo de agente — método ≠ executor.
   integração com o habit-hooks upstream no hook (Python 3.11 + eslint/ruff quebra
   bash-puro/zero-deps/latência; quem quiser o pipeline pesado roda o tool dele no review —
   composição, não duplicação); `hardcoded-secret` (superfície do `audit`/gstack-cso).
+- **S-904:** `/maestro:deslop` (emenda 2026-08-21, plano aprovado) — slash command do
+  plugin (`commands/deslop.md`): sweep da dívida de slop com triagem por classe ANTES do
+  fan-out (mecânico → dev-junior; julgamento → especialista H5 com teste no lote; falso
+  positivo → ajuste de `habits:`, nunca supressão inline), execução em PIPELINE de lotes
+  (paralelo dentro, serial entre; suíte é o gate; lote quebrado reverte), revisor no diff
+  final, commit local como teto (Spock). Doctor valida frontmatter de commands/*.md.
+  *AC: tabela de triagem mostrada antes de editar; --dry só relata; baseline desce a cada
+  lote.* **Entregue 2026-08-21.**
+- **S-905:** catraca de baseline — `maestro habits --baseline` grava contagem POR smell em
+  `.maestro-habits.tsv` (versionado no projeto); com baseline presente, `--all` reprova SÓ
+  o que EXCEDER (dívida igual passa; melhora convida a regravar para baixo no mesmo
+  commit). Mesmo desenho do ratchet da injeção (S-703) e do eval-on-diff (S-702). `--all`
+  passa a ver untracked não-ignorados — catraca sem isso tem o dente quebrado (achado do
+  smoke). Comparação SÓ no escopo --all: régua do repo não mede diff. *AC: igual passa;
+  exceder reprova nomeando smell e contagens; untracked conta; regravar desce; escopo por
+  caminho ignora baseline.* **Entregue 2026-08-21** (test-habits-cli.sh, 34 asserções).
 - **Dependências:** E2 (hooks/CLI), E8 (padrão de config por projeto).
 
 ---

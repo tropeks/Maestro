@@ -87,6 +87,9 @@ gaming the metric — the [habit-hooks](https://github.com/habit-hooks/habit-hoo
 pattern, rebuilt inside Maestro's boundaries (pure bash, zero deps, ~40ms, warn-only,
 15-min cooldown per file+smell). `maestro habits` runs the same sensors over the diff
 for review and CI; `habits:` in `.maestro.yaml` tunes the set per project.
+`maestro habits --baseline` pins a per-smell ratchet (`.maestro-habits.tsv`) — CI
+fails only on slop that EXCEEDS the baseline — and the `/maestro:deslop` slash
+command pays the debt down in reviewable, test-gated batches with tiered agents.
 
 ## Roster — the model proportional to the role
 

@@ -118,6 +118,9 @@ depender de disciplina.
 `habits` (E9): lista inline de sensores ativos do habit hook (`[a, b]`; `[]` =
 desligado no projeto; ausente = todos) — vale para o hook pós-edição E para
 `maestro habits`.
+`.maestro-habits.tsv` (E9/S-905, raiz do projeto, VERSIONADO): baseline da catraca
+anti-slop — `smell\tcontagem` por linha, comentários com `#`. Só desce por
+`maestro habits --baseline`; subir exige editar o arquivo (visível em review).
 `# classification: confidential`
 
 ### 3. Decision record — `~/.maestro/sessions/<session_id>.json` (efêmero)

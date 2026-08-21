@@ -1,5 +1,26 @@
 # Decision log
 
+## 2026-08-21 — E9 parte 3: /maestro:deslop + catraca de baseline (S-904 + S-905)
+
+- **Origem:** pedido do Capitão ("slash command pra lançar um swarm e arrumar todos os
+  slops") + contraproposta aceita: sweep sem catraca é esfregão com a torneira aberta.
+- **Desenho do sweep:** triagem por classe ANTES do fan-out; pipeline de lotes (paralelo
+  dentro do lote, serial entre lotes, suíte como gate com reversão de lote quebrado) — não
+  enxame simultâneo, que produz mega-diff inrevisável e conflito de edição. Falso positivo
+  é saída de primeira classe: ajuste de `habits:`, nunca supressão inline (dispararia o
+  próprio lint-suppression). Commit local é o teto do comando (Spock: push/PR ficam com o
+  fluxo do projeto).
+- **Catraca (S-905):** terceira aplicação do mesmo padrão da casa (ratchet da injeção,
+  eval-on-diff): baseline versionado por smell, reprova só o que EXCEDE, desce por
+  regravação deliberada no mesmo commit. Furo achado no smoke e fechado: `--all` usava só
+  `git ls-files` e não via arquivo novo untracked — exatamente por onde slop novo chega.
+- **Shim dos testes pagou de novo:** `check_commands`/`check_briefs` usavam `head`, que o
+  PATH mínimo do teste de mutação não tem → doctor morria com 127 sem Bun. Trocado por awk.
+- **Dogfood imediato:** baseline do próprio Maestro gravado — 39 achados em 7 smells
+  (15 oversized-function, 8 deep-nesting, 8 oversized-file…) agora sob catraca; o
+  `/maestro:deslop` deste repo é o candidato natural de primeira execução.
+- Doctor 33 → 35 checagens. Suíte 1130 → 1150 asserções.
+
 ## 2026-08-21 — E9 rodada 2: a pesquisa de ferramentas anti-slop, completa
 
 - **Gatilho:** o Capitão perguntou se a pesquisa tinha sido feita. Tinha — mas com fôlego
