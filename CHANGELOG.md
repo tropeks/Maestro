@@ -4,6 +4,33 @@ All notable changes to Maestro. Format follows [Keep a Changelog](https://keepac
 versioning follows [SemVer](https://semver.org). Entries before v1.1.0 were reconstructed
 from the decision log and tag messages when this file was introduced.
 
+## [1.2.0] — 2026-08-21
+
+Epic E9: anti-slop habit sensors — the habit-hooks pattern (deterministic sensor +
+qualitative coaching guide, always together) rebuilt inside Maestro's boundaries.
+Everything is warn-only; nothing blocks an edit.
+
+### Added
+- **Habit sensors at edit time**: a PostToolUse hook runs 14 pure-awk sensors on every
+  edited code file — oversized-{function,file}, deep-nesting, too-many-params,
+  swallowed-error (incl. bare `except:`), debug-leftover, lint-suppression, type-escape,
+  slop-comment (incl. hedging phrases), empty-impl (incl. pass-only bodies), dead-code,
+  skipped-test, risky-shortcut (incl. `import *`), and a session-level test-gap sensor.
+  Findings ship with their coaching guide (`config/habit-guides/`); 15-min cooldown per
+  (file, smell), ≤3 findings + ≤2 guides per emission; ~40ms typical. `habits:` in
+  `.maestro.yaml` tunes the set per project. New `habit_warn` log event (category only).
+- **`maestro habits`**: the same engine over the diff (default), `--all`, or paths — for
+  the review step and CI. Exit 0 clean · 1 findings · 2 environment.
+- **Per-smell baseline ratchet**: `maestro habits --baseline` pins counts in
+  `.maestro-habits.tsv` (versioned); with it present, `--all` fails only smells that
+  EXCEED the baseline. Untracked non-ignored files count.
+- **`/maestro:deslop`**: slash command that pays slop debt in reviewable batches —
+  triage by class (mechanical → haiku tier; judgment → language specialist with tests;
+  honest false positives → config, never inline suppression), suite as the gate between
+  batches, reviewer over the final diff, baseline re-pinned per batch.
+- Doctor: 4 hook events, every sensor must have a guide, command frontmatter validated
+  (35 checks).
+
 ## [1.1.0] — 2026-08-20
 
 Epics E7 (RAD hardening) and E8 (situational awareness), plus the public-release
@@ -77,6 +104,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.2.0]: https://github.com/tropeks/Maestro/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tropeks/Maestro/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/tropeks/Maestro/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/tropeks/Maestro/compare/v1.0.0...v1.0.1
