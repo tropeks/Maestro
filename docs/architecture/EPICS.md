@@ -194,7 +194,14 @@ guia é config versionada, não corpo de agente — método ≠ executor.
   Sensor único pinado em teste: hook e CLI referenciam o mesmo awk. *AC: diff limpo/sujo;
   --all exige git; config respeitada; achado nomeia arquivo:linha e smell com guia junto.*
   **Entregue 2026-08-21** (test-habits-cli.sh, 14 asserções).
+- **2ª rodada de pesquisa (2026-08-21, a pedido do Capitão):** sloppylint e
+  AI-SLOP-Detector (ambos MIT) renderam 4 padrões awk-baratos incorporados aos sensores
+  existentes: `except:` sem tipo (pega até SystemExit) em swallowed-error; hedging
+  comments ("should work hopefully") em slop-comment; `from x import *` em
+  risky-shortcut; corpo só-`pass` (fora de @abstractmethod/@overload) em empty-impl.
 - **Rejeitados com registro:** `generic-name` (ruído demais para heurística awk);
+  imports alucinados/phantom (exige resolução de ambiente); cross-language leakage e
+  clone clusters (AST/similaridade — território dos tools upstream); magic numbers (ruído);
   integração com o habit-hooks upstream no hook (Python 3.11 + eslint/ruff quebra
   bash-puro/zero-deps/latência; quem quiser o pipeline pesado roda o tool dele no review —
   composição, não duplicação); `hardcoded-secret` (superfície do `audit`/gstack-cso).

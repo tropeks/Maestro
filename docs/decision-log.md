@@ -1,5 +1,26 @@
 # Decision log
 
+## 2026-08-21 — E9 rodada 2: a pesquisa de ferramentas anti-slop, completa
+
+- **Gatilho:** o Capitão perguntou se a pesquisa tinha sido feita. Tinha — mas com fôlego
+  curto: 2 searches, 2 fontes lidas a fundo (habit-hooks, catálogo scanaislop), e 3
+  ferramentas nomeadas pela busca ficaram sem abrir. Lacuna fechada.
+- **Fontes da rodada 2:** sloppylint (MIT, 4 eixos: noise/lies/soul/structure) e
+  AI-SLOP-Detector (MIT, 27 checks em 5 categorias, score geométrico 4D).
+- **Incorporado (4 padrões, todos awk-baratos, dentro de sensores existentes — zero
+  smell novo, zero guia novo):** bare `except:` mesmo com corpo real (swallowed-error);
+  hedging comments — "should work hopefully", "not sure if" (slop-comment);
+  `from x import *` (risky-shortcut); corpo só-`pass` com exclusão de
+  @abstractmethod/@overload (empty-impl).
+- **Rejeitado com o porquê:** phantom/hallucinated imports (exige resolver pacotes no
+  ambiente — quebra zero-deps e é papel de linter real); cross-language leakage e clone
+  clusters (AST/similaridade); magic numbers (ruído); score de slop agregado (número
+  sintético convida a otimizar o número — exatamente o anti-padrão que o E9 combate).
+- **Bug de teste que o anti-ruído expôs:** a fixture da rodada juntava 4 smells num
+  arquivo e a emissão lista ≤3 — o assert do 4º falhava por design correto do hook.
+  Fixture dividida; o cap continua intocado.
+- Suíte 1125 → 1130 asserções. Motor continua 14 sensores.
+
 ## 2026-08-21 — E9: habit hooks — sensores anti-slop com guia (plano aprovado)
 
 - **Gatilho:** spec de Habit Hooks trazida pelo Capitão + pedido de pesquisa antes de

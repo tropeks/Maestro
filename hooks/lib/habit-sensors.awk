@@ -34,6 +34,7 @@ BEGIN {
   fn_line = 0; fn_indent = -1
   comment_run = 0; comment_start = 0
   nest_hit = 0; pending_except = 0; pending_catch = 0
+  pending_bare = 0; pending_pydef = 0; prev_abstract = 0
   brace = (EXT ~ /^(js|jsx|ts|tsx|go|rs|java|c|h|cpp|hpp|cs|php)$/)
   py    = (EXT == "py")
   sh    = (EXT ~ /^(sh|bash|zsh)$/)
@@ -110,13 +111,18 @@ function close_fn(endline,   fn_len) {
     if (pending_except && !is_blank) {
       if (stripped ~ /^(pass|\.\.\.)[ \t]*(#.*)?$/)
         emit("swallowed-error", NR, "except sem tratamento")
-      pending_except = 0
+      else if (pending_bare)
+        emit("swallowed-error", NR - 1, "except: sem tipo (pega até SystemExit)")
+      pending_except = 0; pending_bare = 0
     }
     if (pending_catch && !is_blank) {
       if (stripped ~ /^\}/) emit("swallowed-error", NR - 1, "catch vazio")
       pending_catch = 0
     }
-    if (py && stripped ~ /^except([^:]*)?:[ \t]*(#.*)?$/) pending_except = 1
+    if (py && stripped ~ /^except([^:]*)?:[ \t]*(#.*)?$/) {
+      pending_except = 1
+      pending_bare = (stripped ~ /^except[ \t]*:/) ? 1 : 0
+    }
     else if (py && stripped ~ /^except([^:]*)?:[ \t]*(pass|\.\.\.)[ \t]*(#.*)?$/)
       emit("swallowed-error", NR, "except inline sem tratamento")
     if (brace && stripped ~ /catch[ \t]*(\([^)]*\))?[ \t]*\{[ \t]*\}/)
@@ -160,11 +166,26 @@ function close_fn(endline,   fn_len) {
         low ~ /rest of (the|your) (code|file|function)/ ||
         low ~ /\.\.\. *existing code *\.\.\./ ||
         low ~ /todo:? implement/ ||
+        low ~ /should work( now)?( hopefully)?[.!]? *$/ ||
+        low ~ /hopefully (this|that|it)/ ||
+        low ~ /not (100%|entirely|totally) sure/ ||
+        low ~ /(this|it) might (work|break|fail)/ ||
         low ~ /por simplicidade/ || low ~ /numa implementa..o real/)
       emit("slop-comment", NR, "frase-assinatura de slop")
   }
 
   # ---- empty-impl: esqueleto entregue como produto --------------------------
+  # def com corpo imediato `pass` (fora de @abstractmethod/@overload, que são
+  # legítimos): função declaradamente vazia — catálogo do AI-SLOP-Detector.
+  if (want("empty-impl") && py) {
+    if (pending_pydef && !is_blank) {
+      if (stripped ~ /^pass[ \t]*(#.*)?$/ && !prev_abstract)
+        emit("empty-impl", NR, "corpo é só pass")
+      pending_pydef = 0; prev_abstract = 0
+    }
+    if (stripped ~ /^@.*(abstractmethod|overload)/) prev_abstract = 1
+    if (fn_start) pending_pydef = 1
+  }
   if (want("empty-impl") && !is_comment) {
     if (line ~ /raise NotImplementedError/ ||
         line ~ /throw new Error\((["'])[Nn]ot implemented/ ||
@@ -206,6 +227,8 @@ function close_fn(endline,   fn_len) {
   if (want("risky-shortcut") && !is_comment) {
     if (py && stripped ~ /^(async )?def [A-Za-z_][A-Za-z0-9_]*\([^)]*=[ \t]*(\[\]|\{\})/)
       emit("risky-shortcut", NR, "default mutável em parâmetro")
+    if (py && stripped ~ /^from [A-Za-z0-9_.]+ import \*/)
+      emit("risky-shortcut", NR, "import * esconde a superfície do módulo")
     if (EXT == "rs" && !ISTEST && line ~ /\.unwrap\(\)/)
       emit("risky-shortcut", NR, ".unwrap() fora de teste")
   }

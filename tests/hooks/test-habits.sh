@@ -109,6 +109,42 @@ grep -q 'skipped-test' <<<"$OUT" && ok "teste pulado/asserção vazia dispara EM
                                  || bad "teste pulado/asserção vazia dispara EM teste"
 
 # ---------------------------------------------------------------------------
+echo "-- padrões da 2ª rodada de pesquisa (sloppylint / AI-SLOP-Detector)"
+# ---------------------------------------------------------------------------
+cat > "$PROJ/pesq.py" <<'FX'
+from os.path import *
+try:
+    go()
+except:
+    log.warning("falhou")  # hopefully this holds
+FX
+run_hook "$PROJ/pesq.py" Edit pesq-1
+grep -q 'import \*' <<<"$OUT" || grep -q 'risky-shortcut' <<<"$OUT" \
+  && ok "from x import * dispara risky-shortcut" || bad "from x import * dispara risky-shortcut"
+grep -q 'sem tipo' <<<"$OUT" && ok "except: sem tipo dispara mesmo com corpo real" \
+                             || bad "except: sem tipo dispara mesmo com corpo real"
+grep -q 'slop-comment' <<<"$OUT" && ok "hedging comment é assinatura de slop" \
+                                 || bad "hedging comment é assinatura de slop"
+cat > "$PROJ/pesq2.py" <<'FX'
+def stub():
+    pass
+FX
+run_hook "$PROJ/pesq2.py" Edit pesq-1
+grep -q 'empty-impl' <<<"$OUT" && ok "corpo só-pass dispara empty-impl" \
+                               || bad "corpo só-pass dispara empty-impl"
+
+cat > "$PROJ/abstrato.py" <<'FX'
+from abc import abstractmethod
+class Base:
+    @abstractmethod
+    def contract(self):
+        pass
+FX
+run_hook "$PROJ/abstrato.py" Edit pesq-2
+grep -q 'empty-impl' <<<"$OUT" && bad "@abstractmethod + pass é contrato, não slop" \
+                               || ok "@abstractmethod + pass é contrato, não slop"
+
+# ---------------------------------------------------------------------------
 echo "-- cooldown: refatoração em curso não é reincidência"
 # ---------------------------------------------------------------------------
 run_hook "$PROJ/a.py" Edit cool-1
