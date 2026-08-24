@@ -8,3 +8,6 @@ node_modules/
 .DS_Store
 *.swp
 docs/research/
+
+# Marcador interno do Claude Code (marketplace orfao) — nunca versionar
+.orphaned_at
