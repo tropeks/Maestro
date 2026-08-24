@@ -4,6 +4,37 @@ All notable changes to Maestro. Format follows [Keep a Changelog](https://keepac
 versioning follows [SemVer](https://semver.org). Entries before v1.1.0 were reconstructed
 from the decision log and tag messages when this file was introduced.
 
+## [1.3.0] — 2026-08-23
+
+Epic E10: the calibration loop — Maestro learns in batches, never at runtime.
+Telemetry → retro → proposed diffs → exam (suite + eval-on-diff) → versioned
+commit. Learning is git history.
+
+### Added
+- **`maestro outcome`**: closes each decision with its result
+  (accepted|rework|reverted, optional suite pass|fail) — the dependent variable
+  the log was missing. Decision record amendment v1.5; enums only, never text.
+- **`maestro retro [--days N]`**: deterministic window report — override rate,
+  decisions by mode/workflow, gate stats, habit_warn by smell, outcomes,
+  consents, declared-but-unused workflows — plus the warn→block promotion
+  criterion encoded (≥14d, ≥10 decisions, override <20%). An empty log answers
+  "no data" instead of inventing conclusions.
+- **`/maestro:retro`**: the AI reads the report, proposes concrete diffs each
+  tied to its justifying signal, and — on explicit approval — applies them under
+  minimal consent, passes the suite + eval-on-diff exam before committing, then
+  revokes.
+- **Scoped consent** (ADR-003 amendment v1.2): `maestro consent --grant
+  routing-table|roster [--ttl 1min–4h]` lifts the self-protection denylist for
+  DATA only — hooks/, bin/, src/, and .claude-plugin/ have no consentable scope
+  by construction; a forged consent file for them unlocks nothing (tested).
+  Fail closed; does not bypass the decision record; fully audited; active
+  consents surface as doctor warnings.
+
+### Noted
+- First real retro run over 14 days of dogfood: 113 decisions, 10% override →
+  warn→block promotion eligible — the roadmap Fase 1b gate met on production
+  data.
+
 ## [1.2.0] — 2026-08-21
 
 Epic E9: anti-slop habit sensors — the habit-hooks pattern (deterministic sensor +
@@ -104,6 +135,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.3.0]: https://github.com/tropeks/Maestro/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tropeks/Maestro/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tropeks/Maestro/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/tropeks/Maestro/compare/v1.0.1...v1.0.2
