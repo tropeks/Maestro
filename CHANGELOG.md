@@ -4,6 +4,34 @@ All notable changes to Maestro. Format follows [Keep a Changelog](https://keepac
 versioning follows [SemVer](https://semver.org). Entries before v1.1.0 were reconstructed
 from the decision log and tag messages when this file was introduced.
 
+## [1.4.0] — 2026-08-24
+
+Epic E11: knowledge-graph freshness — structure without re-reading code. The
+brief (E8) covers state; a graphify graph covers structure; the invariant is
+that a stale map is worse than no map.
+
+### Added
+- **`grafo:` line in the `## Projeto` injection**: when `graphify-out/graph.json`
+  exists, sessions are pointed at it with an honest verdict — fresh → "answer
+  structure via graphify query BEFORE reading code"; stale (counting commits
+  since generation) → "do NOT trust it". No graph → no line; graphify stays
+  optional and out of the envelope. Freshness needs no new stamp: graph mtime
+  vs last commit date.
+- **`maestro graph [--check]`**: freshness status; `--check` exits 1 only on
+  STALE — the refresh routine's trigger.
+- **`bin/maestro-graph-refresh`**: versioned operator routine (weekly machine
+  crontab, not a hook — the one place headless `claude` is acceptable; session
+  hooks stay pure bash, no network). Scans for existing graphs and incrementally
+  updates only the stale ones: per-run cap, flock, timeout, its own operations
+  log. Generating a first graph remains a human decision.
+- **Graph-aware `/maestro:deslop`**: batches built by graph QUERY (verified file
+  independence) when the graph is fresh; degrades to session knowledge otherwise.
+
+### Noted
+- Measurement gate on record: deeper wiring (workflow bindings, auto-generation)
+  only enters if a measured large-repo run moves the number — the same court
+  that rejected gbrain at 36% recall@1.
+
 ## [1.3.0] — 2026-08-23
 
 Epic E10: the calibration loop — Maestro learns in batches, never at runtime.
@@ -135,6 +163,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.4.0]: https://github.com/tropeks/Maestro/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/tropeks/Maestro/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tropeks/Maestro/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tropeks/Maestro/compare/v1.0.2...v1.1.0
