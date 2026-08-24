@@ -255,6 +255,32 @@ a IA pode aplicar os diffs de config ela mesma.
   não-versionado (classe já rejeitada no ECC audit); memória no Maestro (ADR-007).
 - **Dependências:** E7 (eval-on-diff = exame), E9 (habit_warn = sinal), ADR-008 (override).
 
+### E11 — Grafo de conhecimento com freshness (P2, S) — emenda 2026-08-24, aprovado
+Objetivo do Capitão: "o agente não ficar perdido e ter que ficar sempre lendo código".
+Divisão honesta: brief (E8) = ESTADO; grafo (graphify, skill externa, opcional) =
+ESTRUTURA. Invariante: grafo velho é fato morto vestido de mapa — o veredito nunca finge
+frescor. Freshness SEM carimbo novo: mtime do graphify-out/graph.json vs último commit.
+- **S-1101:** `maestro_graph_state()` (common.sh, 2 forks) + linha `grafo:` na seção
+  `## Projeto`: FRESCO → "responda estrutura via graphify query ANTES de ler código";
+  STALE → "NÃO confie; atualize com /graphify . --update"; ausente → nenhuma linha
+  (graphify é opcional e fora do envelope). `maestro graph [--check]` no CLI (--check sai
+  1 se STALE — o gatilho da rotina). **Entregue 2026-08-24.**
+- **S-1102:** `/maestro:deslop` monta lotes por CONSULTA ao grafo quando FRESCO
+  (independência verificada em vez de palpite); STALE/ausente degrada para o
+  comportamento anterior. **Entregue 2026-08-24.**
+- **S-1103:** rotina de frescor `bin/maestro-graph-refresh` — FERRAMENTA DE OPERADOR
+  (crontab semanal), não hook: é o único lugar onde `claude` headless é aceitável; os
+  hooks seguem bash puro e sem rede. Varre $MAESTRO_GRAPH_ROOTS por grafos, atualiza SÓ
+  os STALE (`--check`), teto de projetos por rodada, flock, timeout, log de operação
+  próprio (nunca o routing.jsonl). Grafo que não existe não é gerado — gerar é decisão
+  humana. *AC: fake-claude chamado só no stale; teto respeitado; falha não toca o grafo;
+  degradações exit 0.* **Entregue 2026-08-24** (test-graph.sh, 24 asserções).
+- **Gate de medição registrado:** binding de workflow ou geração automática só entram se
+  medição em repo grande (tool calls até a primeira edição correta, com vs sem grafo)
+  mover número — precedente gbrain/claude-mem: camada de conhecimento não ganha isenção
+  do tribunal.
+- **Dependências:** E8 (padrão ponteiro+freshness), skill graphify instalada (opcional).
+
 ---
 
 ## Grafo de dependências

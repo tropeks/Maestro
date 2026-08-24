@@ -61,6 +61,8 @@ maestro <comando>
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
                   --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
+  graph           freshness do grafo graphify (E11): mtime do graphify-out/graph.json vs
+                  último commit — --check sai 1 se STALE (para a rotina de refresh)
   consent         consentimento escopado (E10): --grant/--revoke routing-table|roster,
                   TTL 1min–4h — destrava DADOS na denylist, nunca hooks/bin/src
   outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
@@ -1229,6 +1231,46 @@ doctor() {
   exit 0
 }
 
+# ----------------------------------------------------------------- graph (E11)
+
+cmd_graph() { # E11: freshness do grafo graphify — status para humanos e --check para rotina
+  # O grafo é do graphify (skill externa, fora do envelope); o Maestro só mede
+  # o frescor: mtime do graphify-out/graph.json vs último commit. Sem carimbo
+  # próprio, sem dependência — grafo velho é fato morto vestido de mapa, e o
+  # papel do Maestro é dizer isso em voz alta.
+  # --check: exit 0 fresco/ausente · 1 STALE (a rotina de refresh usa isto).
+  local check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  while (( $# )); do
+    case "$1" in
+      --check) check=1 ;;
+      --project) proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" "maestro graph [--check] [--project dir]" 1 ;;
+    esac
+    shift
+  done
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local st word num
+  st=$(maestro_graph_state "$proj")
+  word="${st%% *}"; num="${st#* }"
+  case "$word" in
+    absent)
+      echo "grafo: ausente (gere com /graphify . — opcional; vale em codebase grande)"
+      return 0 ;;
+    fresh)
+      if (( num < 60 )); then num="${num}min"; else num="$(( num / 60 ))h"; fi
+      echo "grafo: FRESCO (gerado há $num, nenhum commit depois) — graphify query responde estrutura"
+      return 0 ;;
+    stale)
+      echo "grafo: STALE — $num commit(s) depois da geração. Atualize: /graphify . --update"
+      (( check == 1 )) && return 1 || return 0 ;;
+    nogit)
+      echo "grafo: presente, projeto sem git — frescor não verificável"
+      return 0 ;;
+  esac
+  return 0
+}
+
 # --------------------------------------------------------------- consent (E10)
 
 cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegida
@@ -1768,6 +1810,7 @@ case "$cmd" in
   consent) shift; cmd_consent "$@" ;;
   outcome) shift; cmd_outcome "$@" ;;
   retro) shift; cmd_retro "$@" ;;
+  graph) shift; cmd_graph "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

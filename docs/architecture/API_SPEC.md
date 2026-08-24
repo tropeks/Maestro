@@ -92,6 +92,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
 
+### `maestro graph` (E11)
+- Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
+  commit. `--check` sai 1 apenas em STALE (gatilho de `bin/maestro-graph-refresh`, a
+  rotina de operador via crontab — único lugar onde `claude` headless é aceitável; hooks
+  seguem sem rede). A injeção emite a linha `grafo:` na seção `## Projeto` só quando o
+  grafo existe; STALE manda desconfiar, nunca consultar.
+
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
 - **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de

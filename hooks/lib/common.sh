@@ -84,6 +84,33 @@ maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
   printf '%s/briefs/%s-%08x.md' "${MAESTRO_HOME:-$HOME/.maestro}" "${slug:-projeto}" "$h"
 }
 
+# ---------------------------------------------------------------------------
+# E11 — estado do grafo graphify (graphify-out/graph.json) SEM carimbo próprio:
+# freshness = mtime do graph.json vs data do último commit. Barato (2 forks) —
+# roda dentro do session-start. Saída em uma linha:
+#   absent | nogit <idade_min> | fresh <idade_min> | stale <commits_atras>
+# Grafo velho é fato morto vestido de mapa: o veredito NUNCA finge frescor.
+# ---------------------------------------------------------------------------
+maestro_graph_state() { # <raiz-do-projeto>
+  local root="${1:-$PWD}" gj mt now age last n
+  gj="$root/graphify-out/graph.json"
+  [[ -f "$gj" && -r "$gj" ]] || { printf 'absent\n'; return 0; }
+  mt=$(stat -c %Y -- "$gj" 2>/dev/null) || mt=""
+  now=$(maestro_now_epoch)
+  [[ "$mt" =~ ^[0-9]+$ ]] || { printf 'nogit 0\n'; return 0; }
+  age=$(( (now - mt) / 60 )); (( age < 0 )) && age=0
+  last=$(git -C "$root" log -1 --format=%ct 2>/dev/null) || last=""
+  [[ "$last" =~ ^[0-9]+$ ]] || { printf 'nogit %s\n' "$age"; return 0; }
+  if (( mt >= last )); then
+    printf 'fresh %s\n' "$age"
+  else
+    n=$(git -C "$root" rev-list --count HEAD --since="@$mt" 2>/dev/null) || n=""
+    [[ "$n" =~ ^[0-9]+$ ]] || n="?"
+    printf 'stale %s\n' "$n"
+  fi
+  return 0
+}
+
 maestro_now_epoch() {
   local e=""
   printf -v e '%(%s)T' -1 2>/dev/null || e=""

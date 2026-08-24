@@ -539,6 +539,19 @@ build_and_emit() {
     fi
   fi
   [[ -n "$b_line" ]] && sec_project+="$b_line"$'\n'
+  # E11 — grafo graphify: aponta e diz a idade; grafo velho NUNCA vira "consulte"
+  local g_state g_word g_num
+  g_state=$(maestro_graph_state "$PROJECT_DIR" 2>/dev/null) || g_state="absent"
+  g_word="${g_state%% *}"; g_num="${g_state#* }"
+  case "$g_word" in
+    fresh)
+      if (( g_num < 60 )); then g_num="${g_num}min"; else g_num="$(( g_num / 60 ))h"; fi
+      sec_project+="grafo: FRESCO (${g_num}) → responda estrutura via graphify query ANTES de ler código"$'\n' ;;
+    stale)
+      sec_project+="grafo: STALE ($g_num commit(s) depois dele) → NÃO confie na estrutura; atualize com /graphify . --update"$'\n' ;;
+    nogit)
+      sec_project+="grafo: presente (sem git para conferir frescor) → graphify query com desconfiança"$'\n' ;;
+  esac
   [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
   sec_project+="Ao fechar trabalho substancial, atualize o brief: maestro brief --write --session $SESSION_ID (narrativa curta via stdin: o que estava em curso, decisões abertas, próximo passo)"$'\n'
 

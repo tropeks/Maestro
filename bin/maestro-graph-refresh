@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# bin/maestro-graph-refresh — rotina de frescor dos grafos graphify (E11).
+#
+# FERRAMENTA DE OPERADOR, não hook: roda por crontab/manual, FORA do caminho de
+# sessão — é aqui (e só aqui) que invocar `claude` headless é aceitável; os
+# hooks continuam bash puro e sem rede. Instalação típica (1x por máquina):
+#   (crontab -l 2>/dev/null; echo '7 3 * * 1 <repo>/bin/maestro-graph-refresh') | crontab -
+#
+# O que faz: varre $MAESTRO_GRAPH_ROOTS (default ~/dev) por graphify-out/
+# graph.json; para cada grafo STALE (maestro graph --check), roda o update
+# incremental numa sessão headless, com timeout. Grafo fresco/ausente = pulo.
+# Log de operação em $MAESTRO_HOME/logs/graph-refresh.log (nunca o routing.jsonl
+# — vocabulário do DATA_MODEL §4 é de sessão, não de operador).
+#
+# Custos sob controle: só roda onde JÁ existe grafo (gerar é decisão humana),
+# só quando stale, no máximo $MAESTRO_GRAPH_MAX projetos por rodada (default 3),
+# flock contra sobreposição, timeout por projeto.
+set -u
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAESTRO="$SELF/maestro"
+MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
+ROOTS="${MAESTRO_GRAPH_ROOTS:-$HOME/dev}"
+MAXPROJ="${MAESTRO_GRAPH_MAX:-3}"
+TIMEOUT="${MAESTRO_GRAPH_TIMEOUT:-900}"
+CLAUDE_BIN="${MAESTRO_CLAUDE_BIN:-claude}"
+LOG="$MAESTRO_HOME/logs/graph-refresh.log"
+
+[[ "$MAXPROJ" =~ ^[0-9]{1,2}$ ]] || MAXPROJ=3
+[[ "$TIMEOUT" =~ ^[0-9]{1,5}$ ]] || TIMEOUT=900
+
+mkdir -p "$MAESTRO_HOME/logs" 2>/dev/null || exit 0
+say() { printf '%s %s\n' "$(date -Iseconds)" "$1" >> "$LOG" 2>/dev/null || :; }
+
+# nunca duas rodadas ao mesmo tempo
+exec 8>"$MAESTRO_HOME/graph-refresh.lock" 2>/dev/null || exit 0
+flock -n 8 || { say "pulei: rodada anterior ainda em curso"; exit 0; }
+
+command -v "$CLAUDE_BIN" >/dev/null 2>&1 || { say "claude ausente do PATH — nada a fazer"; exit 0; }
+[[ -x "$MAESTRO" ]] || { say "bin/maestro ausente — nada a fazer"; exit 0; }
+
+done_n=0
+for root in $ROOTS; do
+  [[ -d "$root" ]] || continue
+  for gj in "$root"/*/graphify-out/graph.json; do
+    [[ -f "$gj" ]] || continue
+    proj="${gj%/graphify-out/graph.json}"
+    if "$MAESTRO" graph --check --project "$proj" >/dev/null 2>&1; then
+      continue   # fresco ou ausente/sem-git: nada a fazer
+    fi
+    if (( done_n >= MAXPROJ )); then
+      say "teto de $MAXPROJ projetos por rodada atingido; ${proj##*/} fica para a próxima"
+      continue
+    fi
+    say "STALE: ${proj##*/} — rodando /graphify --update (timeout ${TIMEOUT}s)"
+    if ( cd "$proj" && timeout "$TIMEOUT" "$CLAUDE_BIN" -p --permission-mode acceptEdits \
+           "/graphify . --update" >/dev/null 2>&1 ); then
+      if "$MAESTRO" graph --check --project "$proj" >/dev/null 2>&1; then
+        say "ok: ${proj##*/} atualizado e FRESCO"
+      else
+        say "aviso: ${proj##*/} rodou mas segue STALE (veja o projeto)"
+      fi
+    else
+      say "falha/timeout em ${proj##*/} — grafo intocado, sessão descartada"
+    fi
+    done_n=$(( done_n + 1 ))
+  done
+done
+say "rodada encerrada: $done_n atualização(ões)"
+exit 0

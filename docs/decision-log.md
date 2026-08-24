@@ -1,5 +1,27 @@
 # Decision log
 
+## 2026-08-24 — E11: grafo com freshness — estrutura sem varredura (S-1101..S-1103)
+
+- **Pedido do Capitão:** "o agente não ficar perdido e ter que ficar sempre lendo código"
+  + rotina para manter o grafo fresco. Divisão que orienta tudo: brief = estado, grafo =
+  estrutura; o cold start de estado já era do E8, o E11 cobre a anatomia.
+- **Freshness sem inventar carimbo:** mtime do graph.json vs data do último commit — zero
+  estado novo, zero acoplamento com o formato do graphify. Empate de segundo (grafo e
+  commit no mesmo instante) resolve para FRESCO; o teste retrodata com touch.
+- **Invariante:** grafo velho NUNCA vira "consulte" — a classe do fato morto (containers
+  de arquivo do supermemory, --prefix) não entra pela porta da estrutura.
+- **A rotina é de OPERADOR, não de hook:** CronCreate do harness é session-only (morre com
+  a sessão) — inútil como rotina; a rotina real é crontab da máquina + script versionado
+  (bin/maestro-graph-refresh). É o único ponto do repo onde `claude` headless roda — a
+  fronteira "sem rede em runtime" é dos hooks/CLI de sessão e continua intacta. Custos
+  cercados: só grafo JÁ existente (gerar é decisão humana), só STALE, teto por rodada,
+  flock, timeout, log de operação separado do routing.jsonl.
+- **Gate de medição mantido:** binding em workflow / geração automática só com medição em
+  repo grande movendo número — gbrain caiu com 36% recall@1 medido; graphify não ganha
+  isenção do mesmo tribunal.
+- Crontab instalado (segunda 03:07). Hoje nenhum projeto tem grafo — a rotina é no-op até
+  o Capitão gerar o primeiro (candidatos: Vitali, NetForge). Suíte 1207 → 1229 asserções; injeção segue 6266B (a linha do grafo só existe onde há grafo — este repo não tem).
+
 ## 2026-08-24 — A catraca entra na CI e morde o autor primeiro
 
 - **Pergunta do Capitão** ("o deslop não é padrão de código?") expôs a distinção E o furo:

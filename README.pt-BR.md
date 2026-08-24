@@ -76,6 +76,13 @@ Brief velho diz que é velho — "STALE (3 commits atrás) → o brief dá o con
 o git dá a verdade". Os trilhos garantem QUE o estado existe e está fresco; a IA
 escreve O QUE ele diz. O brief é estado local de trabalho — nunca memória, nunca log.
 
+O mesmo tratamento de frescor cobre **estrutura**: se o projeto tem grafo de
+conhecimento do graphify (`graphify-out/`), a injeção aponta para ele — fresco →
+"responda estrutura via consulta ao grafo ANTES de ler código"; velho → "não
+confie". Uma rotina de operador versionada (`bin/maestro-graph-refresh`, crontab
+semanal) atualiza incrementalmente só os grafos STALE, com teto por rodada.
+Mapa velho é pior que mapa nenhum.
+
 ### Habit sensors — cutucões anti-slop na hora da edição
 
 Depois de cada edição de código, um hook PostToolUse roda 14 **habit sensors** em awk

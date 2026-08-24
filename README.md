@@ -75,6 +75,13 @@ A stale brief says so — "STALE (3 commits behind) → the brief gives context;
 gives the truth". The rails guarantee THAT the state exists and is fresh; the AI
 writes WHAT it says. The brief is local working state — never memory, never logged.
 
+The same freshness treatment covers **structure**: if the project has a
+[graphify](https://github.com/tropeks) knowledge graph (`graphify-out/`), the
+injection points at it — fresh → "answer structure via graph query BEFORE
+reading code"; stale → "do not trust it". A versioned operator routine
+(`bin/maestro-graph-refresh`, weekly crontab) incrementally refreshes only
+stale graphs, capped per run. A stale map is worse than no map.
+
 ### Habit sensors — anti-slop nudges at edit time
 
 After every code edit, a PostToolUse hook runs 14 pure-awk **habit sensors** on the

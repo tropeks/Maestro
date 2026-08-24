@@ -29,7 +29,11 @@ Se `--dry`: entregue a tabela com contagens e o plano de lotes, e pare aqui.
 ## 2. Execução em lotes (pipeline, não enxame)
 
 - **Lote = grupo de arquivos independentes** (sem import mútuo direto), no
-  máximo ~5 arquivos. Paralelize os agentes DENTRO do lote (um agente por
+  máximo ~5 arquivos. Antes de agrupar, rode `maestro graph`: se o grafo estiver
+  FRESCO, monte os lotes por CONSULTA (`graphify query "quais arquivos dependem
+  de X?"`) em vez de palpite — independência verificada é o que evita lote
+  quebrando a suíte. STALE ou ausente → agrupe pelo conhecimento da sessão,
+  como antes. Paralelize os agentes DENTRO do lote (um agente por
   arquivo ou por grupo coeso); NUNCA dois agentes no mesmo arquivo.
 - Ordem: lotes mecânicos primeiro (baratos, destravam o diff), depois os de
   julgamento.
