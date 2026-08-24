@@ -153,6 +153,12 @@ de conteúdo, não caminho nem texto, mas o vocabulário do JSONL só muda por e
 opcionalmente `suite` (pass|fail) ao record da sessão — a variável dependente do
 loop de calibração. Last-wins; nunca texto livre.
 
+**Correção (2026-08-24).** Os três campos estavam na emenda mas fora do
+`RECORD_FIELDS` do doctor, então a checagem "sem campos extras" reprovava
+exatamente o record de quem fechou o loop. Estão dentro agora, e **validados**:
+os dois enums são fechados e `outcome_ts`/`suite` só existem com `outcome`
+presente — desfecho órfão é erro de schema, não campo opcional.
+
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
 Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).

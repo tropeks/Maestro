@@ -191,6 +191,49 @@ else
   echo "skip decision record com campo extra (requer jq)"
 fi
 
+# Emenda v1.5 (E10/S-1001): `maestro outcome` grava outcome/outcome_ts/suite no
+# record. O RECORD_FIELDS nao os listava, entao o doctor reprovava exatamente o
+# record de quem fez a coisa certa (registrou o desfecho) — e a CI nunca viu,
+# porque a suite roda o doctor com MAESTRO_HOME temporario e zero record.
+d="$(fresh record-outcome-valido)"
+mkdir -p "$d/.state/sessions"
+cat >"$d/.state/sessions/fechado.json" <<J
+{"session_id":"fechado","ts":"$(date -Iseconds)","expires_at":"$(date -d '+4 hours' -Iseconds)","workflow":"ship","mode":"direct","reason":"release autorizada","outcome":"accepted","outcome_ts":"$(date -Iseconds)","suite":"pass"}
+J
+if command -v jq >/dev/null 2>&1; then
+  doctor_run "$d"; rc=$?
+  if [[ $rc -eq 0 ]] && printf '%s\n' "$OUT" | grep -q 'ok   decision records'; then
+    ok "decision record com desfecho (E10) passa no schema §3"
+  else
+    bad "decision record com desfecho reprovado pelo doctor (rc=$rc)"
+    printf '%s\n' "$OUT" | grep -i 'decision record' | sed 's/^/       | /'
+  fi
+else
+  echo "skip decision record com desfecho (requer jq)"
+fi
+
+d="$(fresh record-outcome-enum)"
+mkdir -p "$d/.state/sessions"
+cat >"$d/.state/sessions/torto.json" <<J
+{"session_id":"torto","ts":"$(date -Iseconds)","expires_at":"$(date -d '+4 hours' -Iseconds)","workflow":"ship","mode":"direct","outcome":"talvez"}
+J
+if command -v jq >/dev/null 2>&1; then
+  expect_break "decision record com outcome fora do enum" "$d" 1 'FAIL decision records: schema DATA_MODEL'
+else
+  echo "skip decision record com outcome fora do enum (requer jq)"
+fi
+
+d="$(fresh record-suite-orfa)"
+mkdir -p "$d/.state/sessions"
+cat >"$d/.state/sessions/orfa.json" <<J
+{"session_id":"orfa","ts":"$(date -Iseconds)","expires_at":"$(date -d '+4 hours' -Iseconds)","workflow":"ship","mode":"direct","suite":"pass"}
+J
+if command -v jq >/dev/null 2>&1; then
+  expect_break "decision record com suite sem outcome" "$d" 1 'FAIL decision records: schema DATA_MODEL'
+else
+  echo "skip decision record com suite sem outcome (requer jq)"
+fi
+
 # =============================================================== 3. TTL (API_SPEC §1)
 
 d="$(fresh ttl)"

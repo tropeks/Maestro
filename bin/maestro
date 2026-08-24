@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit)
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite'
 
 usage() {
   cat <<'U'
@@ -1070,6 +1070,10 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
     and (((.reason // "") | length) <= 120)
     and (if has("agents") then (.agents | type == "array") else true end)
     and (if has("wtree") then (.wtree | type == "string" and test("^[0-9a-f]{40}$")) else true end)
+    and (if has("outcome") then (.outcome as $o | ["accepted","rework","reverted"] | index($o) != null) else true end)
+    and (if has("outcome_ts") then (.outcome_ts | type == "string") else true end)
+    and (if has("suite") then (.suite as $s | ["pass","fail"] | index($s) != null) else true end)
+    and (if (has("outcome_ts") or has("suite")) then has("outcome") else true end)
   ' "$f" >/dev/null 2>&1
 }
 
