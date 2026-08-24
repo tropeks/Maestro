@@ -292,6 +292,7 @@ fi
 # (b) proteção absoluta de tudo sob o plugin: o mecanismo de enforcement se
 #     protege esteja onde estiver (review P1-3).
 DENIED=""
+DENIED_PLUGIN_REL=""
 if _gate_prefix_match "$REL" "$DENY_PATHS"; then DENIED="1"; fi
 # (c) caminho patológico "sujo": não foi normalizado, então o prefixo acima não
 #     é confiável — vale a checagem conservadora em qualquer posição.
@@ -309,7 +310,33 @@ if [[ -z "$DENIED" && -n "$PLUGIN_ROOT" ]]; then
     # enforcement (hooks, CLI, roster, routing table), não cada arquivo.
     # Vindo de OUTRO projeto, isto continua barrando quem tentar reescrever o
     # plugin instalado em ~/.claude/plugins/ (review P1-3).
-    if _gate_prefix_match "${ABS#"$_gate_proot"/}" "$DENY_SELF $DENY_PATHS"; then DENIED="1"; fi
+    if _gate_prefix_match "${ABS#"$_gate_proot"/}" "$DENY_SELF $DENY_PATHS"; then
+      DENIED="1"
+      DENIED_PLUGIN_REL="${ABS#"$_gate_proot"/}"
+    fi
+  fi
+fi
+
+# ── 3b. consentimento (E10/S-1005, ADR-003 v1.2) ───────────────────────────
+# Consentimento explícito do humano (maestro consent --grant) levanta a
+# denylist SÓ para DADOS — routing table e roster — e SÓ no ramo ancorado no
+# plugin (caminho normalizado; o ramo "dirty" nunca é consentível). hooks/,
+# bin/, src/ e .claude-plugin/ não têm escopo mapeado: nenhum arquivo de
+# consentimento, forjado ou não, os destrava. TTL curto; arquivo malformado
+# falha FECHADO (bloqueia). O resto do gate segue valendo — consent não é
+# bypass do decision record.
+if [[ -n "$DENIED" && -n "${DENIED_PLUGIN_REL:-}" ]]; then
+  _gate_scope=""
+  case "$DENIED_PLUGIN_REL" in
+    config/routing-table.yaml) _gate_scope="routing-table" ;;
+    agents/*)                  _gate_scope="roster" ;;
+  esac
+  if [[ -n "$_gate_scope" && -f "$MAESTRO_HOME/consents/$_gate_scope" ]]; then
+    _gate_exp=$(awk -F= '/^expires=/ { print $2; exit }'       "$MAESTRO_HOME/consents/$_gate_scope" 2>/dev/null)
+    if [[ "$_gate_exp" =~ ^[0-9]+$ ]] && (( _gate_exp > $(maestro_now_epoch) )); then
+      DENIED=""
+      LOG_ARGS+=("scope=$_gate_scope")
+    fi
   fi
 fi
 

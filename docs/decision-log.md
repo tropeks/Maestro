@@ -1,5 +1,40 @@
 # Decision log
 
+## 2026-08-23 — E10: o loop de aprendizado + consentimento escopado (S-1001..S-1005)
+
+- **Pergunta do Capitão:** "como fazer o Maestro aprender e se aprimorar?" Resposta de
+  desenho: NÃO aprende em runtime (IA ajustando trilho enquanto roda é a estrada do
+  claude-flow); aprende em lote — telemetria → retro → proposta → exame → commit. O
+  aprendizado vira história de git, revisável e reversível.
+- **Emenda do Capitão na aprovação:** "se eu der consentimento, a IA altera arquivos de
+  configuração." Virou o S-1005 e a Emenda v1.2 do ADR-003, com a invariante de segurança
+  desenhada ANTES do código: **consentimento destrava DADOS (routing-table, roster), nunca
+  a MÁQUINA (hooks/, bin/, src/, .claude-plugin/)** — senão consentir uma vez equivaleria a
+  poder remover o gate. Implementação: escopos são um mapeamento FECHADO dentro do próprio
+  gate; arquivo de consentimento forjado para "hooks" não destrava nada porque o caminho
+  nunca resolve para escopo. Fail closed em malformado/expirado. Consent não dispensa o
+  decision record — só levanta a denylist. TTL 1min–4h. Tudo auditado (consent_grant/
+  revoke + scope no evento do gate). Doctor mostra consents ativos como WARN — estado
+  elevado nunca fica invisível.
+- **A variável dependente que faltava (S-1001):** decide registra a aposta; `maestro
+  outcome` registra se pagou (accepted|rework|reverted + suite). Sem desfecho, o retro
+  não teria como dizer qual tier funciona — era o P1 do ECC audit ("enriched verdict").
+- **Retro determinístico (S-1002) + IA nas bordas (S-1003):** o CLI agrega números; o
+  comando /maestro:retro interpreta e propõe diffs COM o sinal que os justifica; o
+  eval-on-diff (S-702) é o exame que mata proposta que piora a tabela; commit fecha.
+  Log vazio → "sem dados" — calibrar sem dado é pior que não calibrar.
+- **Promoção codificada (S-1004):** o critério do roadmap Fase 1b vira código no retro
+  (≥14d, ≥10 decisões, override <20% → "PROMOÇÃO ELEGÍVEL") — proposta, nunca automático.
+- **Gotcha de smoke:** gate com política ausente degrada exit 0 INTEIRO (desenho de S-203:
+  política ausente = plugin não instalado); o primeiro smoke de consent parecia furado até
+  compilar a política via session-start. Registrado para o próximo que testar gate isolado.
+- Doctor 34 → 35 checagens. Suíte 1150 → 1206 asserções (test-consent 29, test-e10-cli 27).
+- **Dogfood na primeira execução:** o retro sobre o log REAL (14d) entregou o épico pago:
+  113 decisões, override 10% → PROMOÇÃO ELEGÍVEL — o critério da Fase 1b do roadmap está
+  cumprido com dado de produção. Sinais colaterais: direct em 47/113 (a exceção virou
+  42% — candidato a calibração via /maestro:retro) e zero desfechos registrados (o
+  instrumento nasceu agora; cobrar outcome nas próximas sessões).
+
 ## 2026-08-21 — E9 parte 3: /maestro:deslop + catraca de baseline (S-904 + S-905)
 
 - **Origem:** pedido do Capitão ("slash command pra lançar um swarm e arrumar todos os

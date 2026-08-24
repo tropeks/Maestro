@@ -223,6 +223,38 @@ guia é config versionada, não corpo de agente — método ≠ executor.
   caminho ignora baseline.* **Entregue 2026-08-21** (test-habits-cli.sh, 34 asserções).
 - **Dependências:** E2 (hooks/CLI), E8 (padrão de config por projeto).
 
+### E10 — Loop de calibração: o Maestro aprende em lote (P1, M) — emenda 2026-08-23, plano aprovado
+Princípio: **aprender em runtime é proibido** (IA ajustando trilho enquanto roda = teatro);
+o aprendizado é telemetria → retro → proposta de diff → exame (eval-on-diff) → commit.
+Aprendizado = história de git. Emenda do Capitão na aprovação: com consentimento explícito,
+a IA pode aplicar os diffs de config ela mesma.
+- **S-1001:** `maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]`
+  — a variável dependente que faltava: decide registra a aposta, outcome registra se pagou.
+  Atualiza o record (DATA_MODEL §3 v1.5) e loga enums (`outcome`, `suite`), jamais texto.
+  *AC: exige record existente; enums validados; last-wins.* **Entregue 2026-08-23.**
+- **S-1002:** `maestro retro [--days N]` — agregação determinística da janela: taxa de
+  override, decisões por modo/workflow, gates, habit_warn por smell, desfechos, consents,
+  workflows declarados sem uso. Bash+jq; log vazio responde "sem dados", nunca inventa.
+  *AC: taxa correta; smells por frequência; honestidade sem dados.* **Entregue 2026-08-23.**
+- **S-1003:** `/maestro:retro` (commands/retro.md) — a IA nas bordas interpreta o relatório
+  e propõe DIFFS com o sinal que os justifica (rotas, heurísticas, habits:, casos de eval
+  destilados com aprovação); com "aplica": consent mínimo → diff → suíte+eval-on-diff como
+  exame → commit → revoke. `--dry` para na proposta. *AC: pergunta antes de aplicar; exame
+  antes do commit; revoga ao final.* **Entregue 2026-08-23.**
+- **S-1004:** critério de promoção warn→block CODIFICADO no retro: ≥14d de janela, ≥10
+  decisões, override <20% → imprime "PROMOÇÃO ELEGÍVEL" propondo o diff — nunca automático.
+  *AC: não elegível abaixo do piso; elegível com critério cheio.* **Entregue 2026-08-23.**
+- **S-1005:** consentimento escopado (ADR-003 v1.2) — `maestro consent --grant/--revoke
+  <routing-table|roster> [--ttl 1min–4h]`; o gate levanta a denylist SÓ para o escopo
+  mapeado e SÓ no ramo normalizado ancorado no plugin; hooks/bin/src/.claude-plugin não têm
+  mapeamento (consent forjado não destrava — testado); fail closed; auditado
+  (consent_grant/revoke + scope no evento do gate); doctor mostra consents ativos como
+  warn. Consent NÃO dispensa o decision record. *AC: 29 asserções de segurança em
+  test-consent.sh.* **Entregue 2026-08-23.**
+- **Rejeitados com registro:** auto-tuning em runtime; hook com LLM; arquivo de "instintos"
+  não-versionado (classe já rejeitada no ECC audit); memória no Maestro (ADR-007).
+- **Dependências:** E7 (eval-on-diff = exame), E9 (habit_warn = sinal), ADR-008 (override).
+
 ---
 
 ## Grafo de dependências

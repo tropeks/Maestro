@@ -81,6 +81,17 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   APENAS smell acima do baseline; igual passa; melhora imprime o convite a regravar.
   Escopos diff/caminho ignoram o baseline (a régua é do repo inteiro).
 
+### `maestro consent` · `maestro outcome` · `maestro retro` (E10)
+- `consent --grant <routing-table|roster> [--ttl 1min–4h]` / `--revoke` / sem flag lista.
+  Levanta a denylist do gate SÓ para o escopo, com TTL; hooks/bin/src jamais consentíveis
+  (ADR-003 v1.2). Fail closed; auditado.
+- `outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]` — fecha a
+  decisão com o desfecho (DATA_MODEL §3 v1.5). Exige record existente.
+- `retro [--days N]` — relatório determinístico de calibração (override rate, gates,
+  smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
+  Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
+  suíte + eval-on-diff como exame antes do commit.
+
 ### `maestro doctor`
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
 - **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de

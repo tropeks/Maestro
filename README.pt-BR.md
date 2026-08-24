@@ -92,6 +92,19 @@ e CI; `habits:` no `.maestro.yaml` ajusta o conjunto por projeto.
 reprova só o slop que EXCEDER o baseline — e o slash command `/maestro:deslop` paga
 a dívida em lotes revisáveis, com suíte como gate e agentes tierizados.
 
+### O loop de aprendizado — em lote, nunca em runtime
+
+O Maestro não se auto-ajusta em runtime (os trilhos são determinísticos);
+aprende em lote: telemetria → `maestro retro` (taxa de override, gates,
+frequência de smells, **desfechos** — `maestro outcome` fecha cada decisão com
+accepted/rework/reverted) → `/maestro:retro` propõe diffs concretos com o sinal
+que justifica cada um → o exame do eval-on-diff mata proposta que piora a
+tabela → o commit versionado é o aprendizado. Com **consentimento** explícito,
+escopado e com TTL (`maestro consent --grant routing-table|roster`), a IA pode
+aplicar os diffs de config ela mesma — consentimento destrava DADOS, nunca a
+máquina: hooks, CLI e gate não têm escopo consentível, por construção
+(ADR-003 v1.2), e o doctor mostra consent ativo como aviso.
+
 ## Roster — o modelo proporcional ao papel
 
 | agente | modelo | quando |

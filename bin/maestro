@@ -61,6 +61,11 @@ maestro <comando>
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
                   --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
+  consent         consentimento escopado (E10): --grant/--revoke routing-table|roster,
+                  TTL 1min–4h — destrava DADOS na denylist, nunca hooks/bin/src
+  outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
+  retro           relatório de calibração (E10): agrega o log da janela (--days N) —
+                  override rate, gates, smells, desfechos, critério de promoção
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
@@ -716,6 +721,29 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   fi
 }
 
+check_consents() { # E10: consentimento ativo é estado ELEVADO — sempre visível
+  local cdir="$MAESTRO_HOME/consents" f sc exp now active=() n_exp=0
+  [[ -d "$cdir" ]] || { report ok "consentimentos: nenhum ativo (denylist integral)"; return 0; }
+  now=$(date +%s 2>/dev/null) || now=0
+  shopt -s nullglob
+  for f in "$cdir"/*; do
+    sc="${f##*/}"
+    exp=$(awk -F= '/^expires=/ { print $2; exit }' "$f" 2>/dev/null)
+    if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > now )); then
+      active+=("$sc ($(( (exp - now) / 60 ))min)")
+    else
+      rm -f "$f" 2>/dev/null && n_exp=$(( n_exp + 1 )) || :
+    fi
+  done
+  shopt -u nullglob
+  if [[ ${#active[@]} -gt 0 ]]; then
+    report warn "consentimentos ATIVOS: ${active[*]}" \
+      "a IA pode editar esses escopos — revogue com maestro consent --revoke se não for intencional"
+  else
+    report ok "consentimentos: nenhum ativo (denylist integral$( ((n_exp>0)) && printf '; %s expirado(s) removido(s)' "$n_exp" ))"
+  fi
+}
+
 check_commands() { # E9/S-904: slash commands do plugin — frontmatter mínimo
   local cd_="$REPO_DIR/commands" f bad=() n=0
   [[ -d "$cd_" ]] || { report ok "commands/: nenhum (plugin sem slash command)"; return 0; }
@@ -1175,6 +1203,7 @@ doctor() {
   check_briefs
   check_habit_guides
   check_commands
+  check_consents
   check_vendor_integrity
   check_plugin_install
   check_session_env
@@ -1198,6 +1227,214 @@ doctor() {
     printf 'doctor: instalação saudável (%s checagens, %s aviso(s))\n' "$N_CHECKS" "$N_WARN"
   fi
   exit 0
+}
+
+# --------------------------------------------------------------- consent (E10)
+
+cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegida
+  # Amendment do ADR-003 (v1.2): consentimento destrava DADOS (routing table,
+  # roster), NUNCA a máquina (hooks/, bin/, src/, .claude-plugin/) — consentir
+  # não pode equivaler a poder remover o gate. Escopado, com TTL curto,
+  # auditado no log (consent_grant/consent_revoke com scope; nunca caminho).
+  # O gate continua exigindo o resto do fluxo: consent só levanta a denylist.
+  local action="" scope="" ttl=1800 sid=""
+  while (( $# )); do
+    case "$1" in
+      --grant)  action="grant";  scope="${2:-}"; shift ;;
+      --revoke) action="revoke"; scope="${2:-}"; shift ;;
+      --ttl)
+        case "${2:-}" in
+          *m) ttl=$(( ${2%m} * 60 )) ;;
+          *h) ttl=$(( ${2%h} * 3600 )) ;;
+          *)  ttl="${2:-}" ;;
+        esac; shift ;;
+      --session) sid="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro consent [--grant|--revoke <escopo>] [--ttl 30m] [--session id]" 1 ;;
+    esac
+    shift
+  done
+  [[ "$ttl" =~ ^[0-9]{1,6}$ ]] && (( ttl >= 60 && ttl <= 14400 )) \
+    || die validation "TTL fora da janela (1min–4h)" "--ttl 30m é o default" 1
+  [[ -z "$sid" || "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] \
+    || die validation "session_id inválido" "use o id injetado pelo SessionStart" 1
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local cdir="$MAESTRO_HOME/consents" now
+  now=$(maestro_now_epoch)
+
+  if [[ -z "$action" ]]; then # listar
+    local f sc exp rem any=0
+    shopt -s nullglob
+    for f in "$cdir"/*; do
+      sc="${f##*/}"
+      exp=$(awk -F= '/^expires=/ { print $2; exit }' "$f" 2>/dev/null)
+      if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > now )); then
+        rem=$(( (exp - now) / 60 ))
+        printf 'ativo: %s (expira em %smin)\n' "$sc" "$rem"; any=1
+      else
+        rm -f "$f" 2>/dev/null || :
+      fi
+    done
+    shopt -u nullglob
+    (( any == 0 )) && echo "nenhum consentimento ativo (a denylist de autoproteção vale integral)"
+    return 0
+  fi
+
+  case "$scope" in
+    routing-table|roster) ;;
+    hooks|bin|src|cli|gate|plugin|.claude-plugin)
+      die validation "escopo '$scope' NUNCA é consentível" \
+        "consentimento destrava dados (routing-table, roster), não o mecanismo de enforcement (ADR-003 v1.2)" 1 ;;
+    *) die validation "escopo desconhecido '$scope'" "escopos consentíveis: routing-table, roster" 1 ;;
+  esac
+
+  if [[ "$action" == "revoke" ]]; then
+    if [[ -f "$cdir/$scope" ]]; then
+      rm -f "$cdir/$scope" 2>/dev/null || die env "não consegui remover $cdir/$scope" "cheque permissões" 2
+      log_event consent_revoke ${sid:+session_id="$sid"} scope="$scope"
+      printf 'consentimento revogado: %s\n' "$scope"
+    else
+      printf 'nada a revogar: %s não estava ativo\n' "$scope"
+    fi
+    return 0
+  fi
+
+  mkdir -p "$cdir" 2>/dev/null || die env "não consegui criar $cdir" "cheque MAESTRO_HOME" 2
+  local tmp="$cdir/$scope.tmp.$$"
+  {
+    printf 'expires=%s\n' "$(( now + ttl ))"
+    printf 'granted=%s\n' "$(date -Iseconds)"
+    printf 'session=%s\n' "${sid:-desconhecido}"
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$cdir/$scope" 2>/dev/null \
+    || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar consentimento" "cheque permissões" 2; }
+  log_event consent_grant ${sid:+session_id="$sid"} scope="$scope"
+  printf 'consentimento ATIVO: %s por %smin — a IA pode editar o escopo; o resto do gate segue valendo.\n' \
+    "$scope" "$(( ttl / 60 ))"
+  printf 'Revogue com: maestro consent --revoke %s (ou espere expirar)\n' "$scope"
+  return 0
+}
+
+# --------------------------------------------------------------- outcome (E10)
+
+cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao log
+  # decide registra a APOSTA (workflow/mode/agents); outcome registra se ela
+  # pagou: accepted | rework | reverted (+ suite pass|fail). Sem desfecho não
+  # há aprendizado — é ele que o retro cruza com mode/agents para dizer qual
+  # tier funciona. Enums no log, jamais texto.
+  local sid="" verdict="" suite=""
+  while (( $# )); do
+    case "$1" in
+      --session) sid="${2:-}"; shift ;;
+      --suite)   suite="${2:-}"; shift ;;
+      accepted|rework|reverted) verdict="$1" ;;
+      *) die validation "argumento desconhecido '$1'" \
+           "maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]" 1 ;;
+    esac
+    shift
+  done
+  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+    "maestro outcome --session <id> <accepted|rework|reverted>" 1
+  [[ -n "$verdict" ]] || die validation "desfecho obrigatório" "accepted | rework | reverted" 1
+  [[ -z "$suite" || "$suite" =~ ^(pass|fail)$ ]] || die validation "--suite aceita pass|fail" "" 1
+  has jq || die env "outcome exige jq" "instale jq (dependência declarada)" 2
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local rec="$MAESTRO_SESSIONS_DIR/$sid.json"
+  [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
+    "o desfecho fecha uma decisão existente (maestro decide primeiro)" 1
+  local tmp="$rec.tmp.$$"
+  if jq --arg o "$verdict" --arg su "$suite" --arg ts "$(date -Iseconds)" \
+       '.outcome = $o | .outcome_ts = $ts | (if $su != "" then .suite = $su else . end)' \
+       "$rec" > "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
+    log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
+    printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+  else
+    rm -f "$tmp" 2>/dev/null
+    die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
+  fi
+  return 0
+}
+
+# ----------------------------------------------------------------- retro (E10)
+
+cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
+  # Agregação DETERMINÍSTICA da janela (default 14 dias): o que aconteceu, em
+  # números — override rate, gates, smells, desfecho por modo, workflows sem
+  # uso. A INTERPRETAÇÃO é da IA nas bordas (/maestro:retro), que propõe diffs;
+  # o exame é o eval-on-diff; o commit é o aprendizado versionado.
+  local days=14
+  while (( $# )); do
+    case "$1" in
+      --days) days="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" "maestro retro [--days N]" 1 ;;
+    esac
+    shift
+  done
+  [[ "$days" =~ ^[0-9]{1,3}$ ]] && (( days >= 1 )) || die validation "--days exige 1–999" "" 1
+  has jq || die env "retro exige jq" "instale jq (dependência declarada)" 2
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local cutoff logs=() f
+  cutoff=$(date -Iseconds -d "-$days days" 2>/dev/null) || cutoff=""
+  shopt -s nullglob
+  logs=("$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl)
+  shopt -u nullglob
+  local have=0; for f in "${logs[@]}"; do [[ -f "$f" ]] && have=1; done
+  if (( have == 0 )); then
+    printf 'retro: log vazio — sem dados na janela de %sd, sem conclusão a tirar.\n' "$days"
+    return 0
+  fi
+
+  printf '== maestro retro — janela de %s dia(s)%s\n' "$days" "${cutoff:+ (desde $cutoff)}"
+  jq -rs --arg cut "$cutoff" '
+    map(select(type == "object")) | map(select($cut == "" or .ts >= $cut)) as $w |
+    ($w | map(select(.event == "decision"))) as $dec |
+    ($w | map(select(.event == "override_manual")) | length) as $ovr |
+    ($dec | length) as $ndec |
+    (if ($ndec + $ovr) > 0 then (100 * $ovr / ($ndec + $ovr) | floor) else 0 end) as $rate |
+    [
+      "-- decisões: \($ndec) · override manual: \($ovr) · taxa de override: \($rate)%",
+      "-- por modo: \($dec | group_by(.mode) | map("\(.[0].mode // "?"): \(length)") | join(" · "))",
+      "-- por workflow: \($dec | group_by(.workflow) | map("\(.[0].workflow // "?"): \(length)") | join(" · "))",
+      "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
+      "-- habit_warn: \($w | map(select(.event == "habit_warn")) | group_by(.smell) | sort_by(-length) | map("\(.[0].smell // "?"): \(length)") | join(" · ") | if . == "" then "nenhum" else . end)",
+      "-- desfechos: \($w | map(select(.event == "outcome")) | group_by(.outcome) | map("\(.[0].outcome // "?"): \(length)") | join(" · ") | if . == "" then "NENHUM registrado — sem desfecho não há aprendizado (maestro outcome)" else . end)",
+      "-- consentimentos: grant \($w | map(select(.event == "consent_grant")) | length) · revoke \($w | map(select(.event == "consent_revoke")) | length)"
+    ] | .[]
+  ' "${logs[@]}" 2>/dev/null || { echo "retro: log ilegível"; return 0; }
+
+  # workflows declarados e nunca usados na janela (tabela = fonte; awk como no hook)
+  local declared used unused=""
+  declared=$(awk '/^  [a-z]+:.*steps:/ { gsub(/^  |:.*/, ""); print }' \
+    "$REPO_DIR/config/routing-table.yaml" 2>/dev/null | awk '!s[$0]++')
+  used=$(jq -rs --arg cut "$cutoff" \
+    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | map(.workflow) | unique | .[]' \
+    "${logs[@]}" 2>/dev/null || true)
+  local wf
+  while IFS= read -r wf; do
+    [[ -n "$wf" ]] || continue
+    grep -qx "$wf" <<<"$used" || unused+="${unused:+ }$wf"
+  done <<<"$declared"
+  [[ -n "$unused" ]] && printf -- '-- workflows declarados sem uso na janela: %s\n' "${unused// /, }"
+
+  # S-1004 — critério de promoção warn→block, codificado (nunca automático)
+  local ndec ovr rate
+  ndec=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+  ovr=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+  rate=0; (( ndec + ovr > 0 )) && rate=$(( 100 * ovr / (ndec + ovr) ))
+  printf -- '-- sinais:\n'
+  (( rate >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$rate"
+  if (( days >= 14 && ndec >= 10 && rate < 20 )); then
+    printf '   PROMOÇÃO ELEGÍVEL: %sd de janela, %s decisões, override %s%% (<20%%) — proponha gate.mode warn→block (diff na routing-table; exige consentimento ou mão humana)\n' \
+      "$days" "$ndec" "$rate"
+  else
+    printf '   promoção warn→block: ainda não (exige ≥14d, ≥10 decisões, override <20%%)\n'
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------- habits (E9)
@@ -1528,6 +1765,9 @@ case "$cmd" in
   decide|status|log) shift; delegate "$cmd" "$@" ;;
   brief) shift; cmd_brief "$@" ;;
   habits) shift; cmd_habits "$@" ;;
+  consent) shift; cmd_consent "$@" ;;
+  outcome) shift; cmd_outcome "$@" ;;
+  retro) shift; cmd_retro "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

@@ -148,6 +148,11 @@ omitido em silêncio (nunca é erro de fluxo). Formato validado pelo doctor
 de conteúdo, não caminho nem texto, mas o vocabulário do JSONL só muda por emenda própria.
 `# classification: confidential` — **PROIBIDO** campo com texto do prompt do usuário.
 
+#### Emenda v1.5 (E10/S-1001) — desfecho no decision record
+`maestro outcome` acrescenta `outcome` (accepted|rework|reverted), `outcome_ts` e
+opcionalmente `suite` (pass|fail) ao record da sessão — a variável dependente do
+loop de calibração. Last-wins; nunca texto livre.
+
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
 Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).
@@ -168,6 +173,12 @@ do log são um **conjunto fechado e tipado**, validado em `common.sh::log_event`
 Nenhuma chave aceita `/` — garantia estrutural contra vazamento de caminho. `reason` vive
 só no decision record (§3), nunca no log.
 Rotação: por tamanho (10MB) ou mensal, arquivo `routing-YYYY-MM.jsonl`.
+
+**Emenda E10:** eventos `consent_grant`/`consent_revoke`/`outcome` no vocabulário,
+com chaves `scope` (`^[a-z][a-z-]{2,23}$`), `outcome` (enum) e `suite` (enum);
+`gate_pass`/`gate_warn` de edição consentida carregam `scope`. Consentimentos vivem
+em `$MAESTRO_HOME/consents/<escopo>` (`expires=<epoch>`, `granted`, `session`) —
+estado local, jamais no log além dos eventos.
 
 **Emenda E9:** evento `habit_warn` entra no vocabulário fechado, com a chave
 `smell` (`^[a-z][a-z-]{2,23}$` — categoria, nunca caminho/linha) e `n`

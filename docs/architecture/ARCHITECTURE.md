@@ -42,6 +42,15 @@ O Maestro é uma camada de roteamento e política sobre o Claude Code: um **plug
 **Alternativas:** bloquear edição direta sempre (rejeitado pelo usuário no G0); só instruir via prompt (rejeitado: é o status quo que falha).
 **Consequências:** overhead de 1 comando por tarefa; auditabilidade total; o log do gate É o instrumento de medição do baseline.
 **Emenda v1.1 (review Opus):** o gate é honestamente **anti-descuido/best-effort** — cobre Edit/Write/MultiEdit mas não Bash (`tee`, `git apply`, redirecionamentos); escapes são medidos, não perseguidos na v1. Rollout: **modo warn na primeira semana** de dogfood (loga sem bloquear), decisão warn vs. block com dados reais. Decision record tem **TTL de 4h** (limpo no SessionStart e no doctor) para não sobreviver a `--resume`. A política do gate (allowlist/denylist) é **por caminho + extensão**, com denylist explícita protegendo o próprio Maestro (plugin, roster, routing table), `.github/workflows/` e configs executáveis — o roteador não reescreve as próprias regras.
+**Emenda v1.2 (E10/S-1005, pedido do Romulo 2026-08-23):** consentimento humano
+explícito (`maestro consent --grant <escopo> --ttl ≤4h`) levanta a denylist de
+autoproteção **só para DADOS** — escopos `routing-table` e `roster` — **nunca para a
+máquina** (hooks/, bin/, src/, .claude-plugin/ não têm escopo mapeado no gate: nenhum
+arquivo de consentimento, forjado ou não, os destrava). Fail closed (malformado/expirado
+bloqueia); auditado no log (`consent_grant`/`consent_revoke` + `scope` no evento do gate);
+consent não dispensa o decision record — só a denylist é levantada. Consumidor canônico:
+`/maestro:retro`, que aplica diffs de calibração com aval, examina no eval-on-diff e revoga
+ao final.
 
 ### ADR-008 — Sinal observável de override manual
 **Status:** Aceito (v1.1, review Opus).

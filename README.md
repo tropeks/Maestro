@@ -91,6 +91,19 @@ for review and CI; `habits:` in `.maestro.yaml` tunes the set per project.
 fails only on slop that EXCEEDS the baseline — and the `/maestro:deslop` slash
 command pays the debt down in reviewable, test-gated batches with tiered agents.
 
+### The learning loop — batch, never at runtime
+
+Maestro never self-tunes at runtime (rails stay deterministic); it learns in
+batches: telemetry → `maestro retro` (override rate, gate stats, smell
+frequencies, **outcomes** — `maestro outcome` closes each decision with
+accepted/rework/reverted) → `/maestro:retro` proposes concrete diffs with the
+signal that justifies each → the eval-on-diff exam kills any proposal that
+worsens the table → a versioned commit is the learning. With explicit,
+scoped, TTL-bound **consent** (`maestro consent --grant routing-table|roster`),
+the AI may apply those config diffs itself — consent unlocks DATA, never the
+machine: hooks, CLI, and gate have no consentable scope, by construction
+(ADR-003 v1.2), and the doctor surfaces any active consent as a warning.
+
 ## Roster — the model proportional to the role
 
 | agent | model | when |
