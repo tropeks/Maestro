@@ -145,6 +145,19 @@ grep -q 'empty-impl' <<<"$OUT" && bad "@abstractmethod + pass é contrato, não 
                                || ok "@abstractmethod + pass é contrato, não slop"
 
 # ---------------------------------------------------------------------------
+echo "-- one-liner não é função gigante (falso positivo do dogfood da catraca)"
+# ---------------------------------------------------------------------------
+{
+  printf 'ok()  { printf "ok %%s" "$1"; }\n'
+  printf 'bad() { printf "no %%s" "$1"; }\n'
+  for i in $(seq 1 80); do printf 'echo linha%s\n' "$i"; done
+} > "$PROJ/oneliner.sh"
+out2=$(awk -v EXT=sh -v ENABLED=oversized-function -v ISTEST=0 \
+  -f "$ENGINE" "$PROJ/oneliner.sh")
+[[ -z "$out2" ]] && ok "helpers de uma linha não abrem função no sensor" \
+                 || bad "helpers de uma linha não abrem função no sensor ($out2)"
+
+# ---------------------------------------------------------------------------
 echo "-- cooldown: refatoração em curso não é reincidência"
 # ---------------------------------------------------------------------------
 run_hook "$PROJ/a.py" Edit cool-1

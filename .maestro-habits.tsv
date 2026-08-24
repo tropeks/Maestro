@@ -4,6 +4,6 @@ dead-code	3
 deep-nesting	8
 lint-suppression	1
 oversized-file	8
-oversized-function	15
+oversized-function	6
 skipped-test	2
 slop-comment	2

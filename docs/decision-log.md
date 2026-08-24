@@ -1,5 +1,24 @@
 # Decision log
 
+## 2026-08-24 — A catraca entra na CI e morde o autor primeiro
+
+- **Pergunta do Capitão** ("o deslop não é padrão de código?") expôs a distinção E o furo:
+  os habit sensors são a camada ACIMA do linter (design/completude, warn-only + guia), e a
+  parte "padrão" já era automática (hook + catraca) — mas a catraca NÃO rodava na CI. Com
+  o repo público, PR externo entraria sem régua. Passo `maestro habits --all` adicionado ao
+  workflow (edição de .github/workflows/ pelo canal de meta-trabalho aprovado, com o pedido
+  do Capitão como aval).
+- **A catraca mordeu o autor na primeira validação:** o E10 tinha entrado DEPOIS do baseline
+  com 1 deep-nesting + 1 oversized-function novos (test-e10-cli.sh). Doutrina aplicada a
+  quem a escreveu: a régua não sobe.
+- **O conserto revelou coisa melhor — falso positivo estrutural do motor:** helper de uma
+  linha (`ok() { ...; }`) nunca "fechava" na heurística e era medido até a próxima função;
+  NOVE dos 15 oversized-function do baseline eram essa classe. Corrigido no motor (one-liner
+  abre-e-fecha na mesma linha; regressão pinada em teste) + indent de continuação realinhado
+  no arquivo novo. Corrigir o sensor é mais honesto que reformatar código para agradá-lo.
+- **Resultado:** 39 → 30 achados; oversized-function 15 → 6; baseline regravado PARA BAIXO
+  no mesmo commit — o movimento que a catraca existe para produzir. Suíte 1206 → 1207.
+
 ## 2026-08-23 — E10: o loop de aprendizado + consentimento escopado (S-1001..S-1005)
 
 - **Pergunta do Capitão:** "como fazer o Maestro aprender e se aprimorar?" Resposta de

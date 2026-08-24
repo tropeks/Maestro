@@ -131,3 +131,12 @@ jobs:
       # default (o run-all já cobre o caminho isolado).
       - name: maestro doctor --ci
         run: ./bin/maestro doctor --ci
+
+      # Catraca anti-slop (E9/S-905) no PR: reprova SÓ smell que EXCEDER o
+      # baseline versionado (.maestro-habits.tsv) — dívida igual passa, slop
+      # novo não entra. Achado do Capitão em 2026-08-24: sem este passo, a
+      # catraca valia só para quem edita com o plugin; PR externo (repo é
+      # público) entrava sem régua. O passo do sensor É o padrão; o sweep
+      # (/maestro:deslop) é só a quitação do estoque.
+      - name: maestro habits (catraca vs baseline)
+        run: ./bin/maestro habits --all --project "$PWD"

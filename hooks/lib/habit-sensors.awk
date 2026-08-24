@@ -78,8 +78,17 @@ function close_fn(endline,   fn_len) {
 
   if (fn_start) {
     close_fn(NR)
-    fn_line = NR; fn_indent = ind
-
+    # one-liner (`ok() { ...; }`): abre e fecha na mesma linha — sem isto o
+    # helper de uma linha ficava "aberto" até a próxima função e virava falso
+    # positivo de oversized-function em todo arquivo de teste (achado do
+    # dogfood da catraca, 2026-08-24).
+    if (stripped ~ /\}[ \t]*(#.*)?$/ && stripped ~ /\{/) {
+      fn_start = 0
+    } else {
+      fn_line = NR; fn_indent = ind
+    }
+  }
+  if (fn_start) {
     # ---- too-many-params: só na linha de assinatura, só se fecha parêntese --
     if (want("too-many-params") && line ~ /\(/ && line ~ /\)/) {
       sig = line

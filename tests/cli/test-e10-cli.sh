@@ -66,8 +66,8 @@ grep -q 'swallowed-error: 2' <<<"$out" && ok "smells ordenados por frequência" 
 grep -q 'accepted: 1' <<<"$out" && ok "desfechos agregados" || bad "desfechos agregados"
 grep -q 'grant 1' <<<"$out" && ok "consentimentos contados" || bad "consentimentos contados"
 grep -q 'sem uso na janela' <<<"$out" && ok "workflows declarados sem uso aparecem" || bad "workflows sem uso"
-grep -q 'override em 25% (≥20%)' <<<"$out" && ok "sinal de calibração dispara com override alto" \
-                                           || bad "sinal de calibração"
+grep -q 'override em 25% (≥20%)' <<<"$out" \
+  && ok "sinal de calibração dispara com override alto" || bad "sinal de calibração"
 grep -q 'promoção warn→block: ainda não' <<<"$out" \
   && ok "promoção NÃO elegível com 3 decisões (piso é 10)" || bad "promoção não elegível"
 
