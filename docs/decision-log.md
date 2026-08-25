@@ -1,5 +1,28 @@
 # Decision log
 
+## 2026-08-25 — S-1006: autonomia de infra — consent `ops` + grupo docker + allow do harness
+
+- **Dor do Capitão** ("problema mau"): sessão precisa de `sudo docker`, "ele impede, eu
+  faço na mão". Caso concreto: migrar o docker para partição maior, inteiro manual.
+- **Diagnóstico em camadas (medido, não chutado):** (1) o pre-bash-guard bloqueia
+  privilege_escalation/container_destructive com exit 2 em sessão subagent|multi — e
+  delegar-por-padrão fez multi virar o dia a dia (66 de 113 decisões); (2) o harness sem
+  regra de allow pede permissão a cada docker; (3) sudo -n funciona (NOPASSWD), mas
+  rcosta00 nem estava no grupo docker — o que forçava o `sudo docker` que dispara tudo.
+- **Camada Maestro (S-1006):** consent `ops` no guarda. Invariante desenhada antes do
+  código: ops rebaixa bloqueio→aviso auditado SÓ quando todas as categorias são
+  operacionais; UMA categoria de destruição (rm_recursive, force push, sql_drop, dd…) e o
+  bloqueio vale integral — ops libera infraestrutura, nunca apagão. A mensagem de bloqueio
+  agora ENSINA o caminho ("peça aval ao humano e rode consent --grant ops") — o fluxo de
+  permissão explícita vira parte do produto, não tribal knowledge.
+- **Camadas fora do plugin:** rcosta00 adicionado ao grupo docker (sudo desnecessário para
+  docker a partir do próximo login); allow escopado no settings do harness (docker,
+  sudo docker, sudo systemctl … docker) — deliberadamente NÃO "sudo *": o resto continua
+  no fluxo normal.
+- **Gotcha de fixture:** `decide --mode multi` exige --agents; o primeiro smoke gravou
+  record nenhum e todos os probes passaram — falso verde de teste, não de produto.
+- Suíte 1229 → 1243 asserções (test-consent 29 → 41).
+
 ## 2026-08-24 — E11: grafo com freshness — estrutura sem varredura (S-1101..S-1103)
 
 - **Pedido do Capitão:** "o agente não ficar perdido e ter que ficar sempre lendo código"

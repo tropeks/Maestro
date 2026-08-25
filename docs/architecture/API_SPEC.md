@@ -82,8 +82,11 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   Escopos diff/caminho ignoram o baseline (a régua é do repo inteiro).
 
 ### `maestro consent` · `maestro outcome` · `maestro retro` (E10)
-- `consent --grant <routing-table|roster> [--ttl 1min–4h]` / `--revoke` / sem flag lista.
-  Levanta a denylist do gate SÓ para o escopo, com TTL; hooks/bin/src jamais consentíveis
+- `consent --grant <routing-table|roster|ops> [--ttl 1min–4h]` / `--revoke` / sem flag
+  lista. `routing-table`/`roster` levantam a denylist do gate; `ops` (S-1006) rebaixa o
+  BLOQUEIO do pre-bash-guard para aviso auditado quando TODAS as categorias são
+  operacionais (privilege_escalation, container_destructive, kubectl_delete) — destruição
+  de dados bloqueia integral mesmo com consent. hooks/bin/src jamais consentíveis
   (ADR-003 v1.2). Fail closed; auditado.
 - `outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]` — fecha a
   decisão com o desfecho (DATA_MODEL §3 v1.5). Exige record existente.

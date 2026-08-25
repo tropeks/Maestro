@@ -251,6 +251,18 @@ a IA pode aplicar os diffs de config ela mesma.
   (consent_grant/revoke + scope no evento do gate); doctor mostra consents ativos como
   warn. Consent NÃO dispensa o decision record. *AC: 29 asserções de segurança em
   test-consent.sh.* **Entregue 2026-08-23.**
+- **S-1006:** escopo `ops` no consent (emenda 2026-08-25, dor real do Capitão: migrar o
+  docker de partição na mão porque o guarda bloqueava sudo/docker em sessão multi). Com
+  `maestro consent --grant ops`, o pre-bash-guard REBAIXA bloqueio→aviso auditado, mas SÓ
+  quando TODAS as categorias levantadas são operacionais (privilege_escalation,
+  container_destructive, kubectl_delete); UMA categoria de destruição de dados
+  (rm_recursive, git_force_push, sql_drop, dd, disk_format…) e o bloqueio vale integral —
+  ops libera infraestrutura, nunca apagão. A mensagem de bloqueio ENSINA o caminho do
+  consent. Camadas irmãs fora do plugin: rcosta00 no grupo docker (sudo desnecessário
+  para docker no próximo login) e allow de `docker`/`sudo docker`/`sudo systemctl *
+  docker` no settings do harness. *AC: 12 asserções em test-consent.sh — bloqueio sem
+  consent, liberação auditada com, destruição bloqueada COM ops, revoke restaura.*
+  **Entregue 2026-08-25.**
 - **Rejeitados com registro:** auto-tuning em runtime; hook com LLM; arquivo de "instintos"
   não-versionado (classe já rejeitada no ECC audit); memória no Maestro (ADR-007).
 - **Dependências:** E7 (eval-on-diff = exame), E9 (habit_warn = sinal), ADR-008 (override).

@@ -548,7 +548,32 @@ if [[ "$SID" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
   fi
 fi
 
+# ── 5b. consent ops (E10/S-1006, ADR-003 v1.2) ────────────────────────────
+# Consentimento humano explícito (`maestro consent --grant ops`) rebaixa o
+# BLOQUEIO para AVISO — mas SÓ quando TODAS as categorias levantadas são
+# OPERACIONAIS (sudo/containers/kubectl). Basta UMA categoria de destruição de
+# dados (rm_recursive, git_force_push, sql_drop, dd, disk_format…) para o
+# bloqueio valer integral: ops libera infraestrutura, nunca apagão. Fail
+# closed: consent ausente/expirado/malformado = sem rebaixamento.
+OPS_CONSENTED=""
 if [[ "$MODE" == "subagent" || "$MODE" == "multi" ]]; then
+  _g_all_ops=1
+  for _g_cat in $G_CATS; do
+    case "$_g_cat" in
+      privilege_escalation | container_destructive | kubectl_delete) ;;
+      *) _g_all_ops=0; break ;;
+    esac
+  done
+  if [[ $_g_all_ops -eq 1 && -f "$MAESTRO_HOME/consents/ops" ]]; then
+    _g_exp=$(awk -F= '/^expires=/ { print $2; exit }' "$MAESTRO_HOME/consents/ops" 2>/dev/null)
+    if [[ "$_g_exp" =~ ^[0-9]+$ ]] && (( _g_exp > $(maestro_now_epoch) )); then
+      OPS_CONSENTED=1
+      LOG_ARGS+=("scope=ops")
+    fi
+  fi
+fi
+
+if [[ -z "$OPS_CONSENTED" && ( "$MODE" == "subagent" || "$MODE" == "multi" ) ]]; then
   # Mensagem ANTES do log: `log_event` fecha o fd 9 com `exec` e, apesar do
   # grupo protetor na common.sh, a ordem mantida aqui é a mesma do gate —
   # a mensagem instrutiva é o produto do exit 2 e não pode se perder.
@@ -565,7 +590,11 @@ if [[ "$MODE" == "subagent" || "$MODE" == "multi" ]]; then
     "  1. peça confirmação explícita ao humano, descrevendo o efeito exato; ou" \
     "  2. use a variante reversível — --force-with-lease no lugar de --force," \
     "     --dry-run antes de apagar, git stash no lugar de reset --hard," \
-    "     alvo restrito a artefato de build dentro do diretório do projeto."
+    "     alvo restrito a artefato de build dentro do diretório do projeto." \
+    "Operação de INFRA (sudo/docker/kubectl, sem destruição de dados)? Com o" \
+    "aval EXPLÍCITO do humano nesta conversa, rode:" \
+    "  maestro consent --grant ops --ttl 30m --session $SID" \
+    "e repita o comando — vira aviso auditado. Revogue ao terminar."
   log_event gate_block "${LOG_ARGS[@]}" "gate_mode=block"
   exit 2
 fi

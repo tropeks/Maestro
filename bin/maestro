@@ -63,8 +63,9 @@ maestro <comando>
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
   graph           freshness do grafo graphify (E11): mtime do graphify-out/graph.json vs
                   último commit — --check sai 1 se STALE (para a rotina de refresh)
-  consent         consentimento escopado (E10): --grant/--revoke routing-table|roster,
-                  TTL 1min–4h — destrava DADOS na denylist, nunca hooks/bin/src
+  consent         consentimento escopado (E10): --grant/--revoke routing-table|roster|ops,
+                  TTL 1min–4h — dados na denylist ou infra no guarda; nunca hooks/bin/src,
+                  nunca destruição de dados (ops não cobre rm -rf/force push/DROP)
   outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
   retro           relatório de calibração (E10): agrega o log da janela (--days N) —
                   override rate, gates, smells, desfechos, critério de promoção
@@ -1329,11 +1330,11 @@ cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegi
   fi
 
   case "$scope" in
-    routing-table|roster) ;;
+    routing-table|roster|ops) ;;
     hooks|bin|src|cli|gate|plugin|.claude-plugin)
       die validation "escopo '$scope' NUNCA é consentível" \
         "consentimento destrava dados (routing-table, roster), não o mecanismo de enforcement (ADR-003 v1.2)" 1 ;;
-    *) die validation "escopo desconhecido '$scope'" "escopos consentíveis: routing-table, roster" 1 ;;
+    *) die validation "escopo desconhecido '$scope'" "escopos consentíveis: routing-table, roster, ops" 1 ;;
   esac
 
   if [[ "$action" == "revoke" ]]; then

@@ -50,7 +50,9 @@ arquivo de consentimento, forjado ou não, os destrava). Fail closed (malformado
 bloqueia); auditado no log (`consent_grant`/`consent_revoke` + `scope` no evento do gate);
 consent não dispensa o decision record — só a denylist é levantada. Consumidor canônico:
 `/maestro:retro`, que aplica diffs de calibração com aval, examina no eval-on-diff e revoga
-ao final.
+ao final. **S-1006 (2026-08-25):** o escopo `ops` estende o mesmo contrato ao
+pre-bash-guard — infra (sudo/docker/kubectl) rebaixa bloqueio→aviso auditado; qualquer
+categoria de destruição de dados mantém o bloqueio integral mesmo com consent.
 
 ### ADR-008 — Sinal observável de override manual
 **Status:** Aceito (v1.1, review Opus).

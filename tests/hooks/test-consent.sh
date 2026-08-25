@@ -76,6 +76,37 @@ chk "bin/ com consent FORJADO segue bloqueado" "$(probe bin/maestro)" "2"
 chk "src/ com consent FORJADO segue bloqueado" "$(probe src/cli.ts)" "2"
 
 # ---------------------------------------------------------------------------
+echo "-- escopo ops (S-1006): infra libera, destruição de dados NUNCA"
+# ---------------------------------------------------------------------------
+GUARD="$REPO/hooks/pre-bash-guard.sh"
+MAESTRO_HOME="$H" "$BIN" decide --session cons-1 --workflow custom --mode multi --agents dev-pleno,qa >/dev/null 2>&1
+bprobe() { # bprobe <comando bash> → rc do guarda
+  printf '{"session_id":"cons-1","tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" \
+    | MAESTRO_HOME="$H" bash "$GUARD" >/dev/null 2>&1
+  echo "$?"
+}
+chk "multi sem consent: sudo bloqueado" "$(bprobe 'sudo systemctl stop docker')" "2"
+chk "multi sem consent: docker down -v bloqueado" "$(bprobe 'docker compose down -v')" "2"
+out=$(printf '{"session_id":"cons-1","tool_name":"Bash","tool_input":{"command":"sudo docker ps"}}' \
+  | MAESTRO_HOME="$H" bash "$GUARD" 2>&1 >/dev/null)
+grep -q 'consent --grant ops' <<<"$out" \
+  && ok "a mensagem de bloqueio ENSINA o caminho do consent" \
+  || bad "a mensagem de bloqueio ensina o caminho do consent"
+MAESTRO_HOME="$H" "$BIN" consent --grant ops --ttl 5m --session cons-1 >/dev/null
+chk "com ops: sudo passa (vira aviso auditado)" "$(bprobe 'sudo systemctl stop docker')" "0"
+chk "com ops: docker down -v passa" "$(bprobe 'docker compose down -v')" "0"
+chk "com ops: kubectl delete passa" "$(bprobe 'kubectl delete pod x')" "0"
+chk "com ops: sudo rm -rf CONTINUA bloqueado (mistura ops+destruição)" \
+    "$(bprobe 'sudo rm -rf /var/lib/docker')" "2"
+chk "com ops: git push --force CONTINUA bloqueado" "$(bprobe 'git push --force origin main')" "2"
+chk "com ops: DROP TABLE CONTINUA bloqueado" "$(bprobe 'psql -c \"DROP TABLE users\"')" "2"
+grep -qE '"event":"gate_warn".*"scope":"ops"' "$H/logs/routing.jsonl" \
+  && ok "liberação por ops auditada com escopo no evento" \
+  || bad "liberação por ops auditada com escopo"
+MAESTRO_HOME="$H" "$BIN" consent --revoke ops >/dev/null
+chk "ops revogado: sudo volta a bloquear" "$(bprobe 'sudo systemctl stop docker')" "2"
+
+# ---------------------------------------------------------------------------
 echo "-- validação do CLI e auditoria do log"
 # ---------------------------------------------------------------------------
 MAESTRO_HOME="$H" "$BIN" consent --grant routing-table --ttl 5h >/dev/null 2>&1; rc=$?
