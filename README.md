@@ -118,6 +118,7 @@ machine: hooks, CLI, and gate have no consentable scope, by construction
 | `dev-junior` | haiku | mechanical task with closed scope and objective criteria |
 | `dev-pleno` | sonnet | feature/bugfix that requires judgment |
 | `engenheiro` | sonnet | architecture and planning — delivers trade-offs, not code |
+| `arquiteto` | **opus** | critical structural decisions only (cross-system, data migration, concurrency, security) — the description is the cost gate |
 | `revisor` | sonnet | **read-only** review — no Write, Edit, or Bash |
 | `qa` | sonnet | functional testing and evidence — never implements the fix |
 | `golang-pro` · `python-pro` · `typescript-pro` · `postgres-pro` | sonnet | the target's language beats the seniority profile |

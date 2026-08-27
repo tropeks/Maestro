@@ -131,7 +131,7 @@ project: remedix
 languages: [go, python]')" "$ROSTER9"
 got=$(listed)
 [[ "$got" == "dev-junior dev-pleno engenheiro golang-pro postgres-pro python-pro qa revisor typescript-pro " ]] \
-  && chk yes "sem experts: os 9 agentes aparecem" || chk no "sem experts: os 9 agentes aparecem" "veio: '$got'"
+  && chk yes "sem experts: os 9 do fixture aparecem" || chk no "sem experts: os 9 do fixture aparecem" "veio: '$got'"
 [[ "$OUT" != *"de 9)"* ]] \
   && chk yes "sem experts: nenhuma nota de filtro na injeção" || chk no "sem experts: nenhuma nota de filtro na injeção"
 

@@ -127,6 +127,6 @@ execution_heuristics:
   # "entrega plano e trade-offs, não o código final" — rotear um refactor só para ele
   # deixaria a implementação sem dono. Foi a única divergência que os dois juízes
   # cegos apontaram em todas as rodadas de avaliação.
-  - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 (ou dev-pleno) para implementar — engenheiro + especialista em mode: multi"
+  - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 (ou dev-pleno) para implementar — engenheiro + especialista em mode: multi. Decisão ESTRUTURAL CRÍTICA (cross-sistema, migração de dados, concorrência, segurança, cara de reverter) → quem planeja é o arquiteto (opus): tier caro, raro; plano comum segue no engenheiro"
   # Limite conhecido: não há agente de infra/homelab no roster (ADR-004), então
   # tarefa de infra cai em dev-pleno ou custom. Registrado em ROUTING_EVAL R8.

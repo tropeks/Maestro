@@ -119,6 +119,7 @@ máquina: hooks, CLI e gate não têm escopo consentível, por construção
 | `dev-junior` | haiku | tarefa mecânica de escopo fechado e critério objetivo |
 | `dev-pleno` | sonnet | feature/bugfix que exige julgamento |
 | `engenheiro` | sonnet | arquitetura e plano — entrega trade-offs, não código |
+| `arquiteto` | **opus** | só decisão estrutural crítica (cross-sistema, migração de dados, concorrência, segurança) — a description é o gate de custo |
 | `revisor` | sonnet | review **read-only** — sem Write, Edit ou Bash |
 | `qa` | sonnet | teste funcional e evidência — não implementa correção |
 | `golang-pro` · `python-pro` · `typescript-pro` · `postgres-pro` | sonnet | a linguagem do alvo vence o perfil de senioridade |

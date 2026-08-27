@@ -29,6 +29,17 @@ Fundação instalável: sem ela nada existe; com ela já dá pra dogfood.
 - **S-303:** `.maestro.yaml` por projeto filtra o roster ativo. *AC: em repo com `experts: [golang-pro]`, só ele aparece na injeção.*
 - **Dependências:** E2 (injeção).
 
+#### Emenda E3 (2026-08-27, aprovada pelo Capitão) — S-304: `arquiteto` (opus)
+Pergunta do Capitão ("engenheiro em Opus não traria melhorias?") respondida com o tier que
+faltava na escada MoE (haiku → sonnet → opus): `agents/arquiteto.md`, Opus, com a
+description como GATE DE CUSTO — só decisão estrutural crítica (cross-sistema, migração de
+dados, concorrência, segurança, cara de reverter); plano comum segue no engenheiro
+(sonnet), que mantém a escalada por pedido na saída. H4 bifurcado na routing table.
+Primeiro uso REAL do consent E10 (roster + routing-table concedidos, edição pela porta do
+gate, revogados ao final). Sob medição: o retro compara accepted/rework do arquiteto — se
+em ~1 mês não pagar o custo, sai pelo mesmo rito. Roster 9 → 10; injeção 6465B (ratchet
+6500B mantido enxugando o H4, não subindo a régua).
+
 ### E4 — Routing table v1 + curadoria dos packs (P1, M)
 - **S-401:** routing-table.yaml com os 5 workflows (fix, feature, refactor, ship, audit) mapeando steps para superpowers/gstack-prefix/skills próprias. *AC: cada step referencia comando existente no ambiente.*
 - **S-402:** heurísticas de execução escritas e testadas em 10 tarefas reais. *AC: ≥8/10 roteadas sem correção manual (medido no log).*

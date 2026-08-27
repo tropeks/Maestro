@@ -1,5 +1,25 @@
 # Decision log
 
+## 2026-08-27 — S-304: arquiteto (opus) — o teto da escada, com porteiro
+
+- **Origem:** Capitão perguntou duas vezes se um engenheiro em Opus não melhoraria. Resposta
+  justa: melhora SIM em decisão estrutural crítica (e subagente Opus tem contexto limpo,
+  vantagem que a sessão principal não tem); não melhora no plano rotineiro, que é a maioria
+  dos disparos do H4. Forma escolhida: agente NOVO com description-porteiro, não upgrade do
+  engenheiro — upgrade encareceria todo plano trivial e violaria o ADR-004.
+- **Primeiro uso real do consent E10:** roster + routing-table concedidos (TTL 30min),
+  arquiteto.md criado e H4 editado PELA PORTA DO GATE (Write/Edit normais, gate_pass com
+  scope auditado), consents revogados ao final. O fluxo desenhado no domingo funcionou na
+  quarta.
+- **Aprendizados de execução:** (1) mudei asserções de FIXTURE (roster9 hermético) achando
+  que eram do roster real — duas vezes; a suíte hermética existe exatamente para não seguir
+  o disco, e o erro foi meu, não dela. (2) O H4 novo estourou o ratchet da injeção em 2
+  bytes (6502/6500) — enxuguei o texto em vez de subir a régua: 6465B.
+- **Contrato de permanência:** o arquiteto está sob medição — accepted/rework no retro; se
+  não pagar o custo em ~1 mês, sai pelo mesmo rito que entrou.
+- Roster 9 → 10 · doctor 36 checagens · suíte 1248 asserções · eval-on-diff intacto (H4
+  refinou executor, não rota).
+
 ## 2026-08-25 — S-1006: autonomia de infra — consent `ops` + grupo docker + allow do harness
 
 - **Dor do Capitão** ("problema mau"): sessão precisa de `sudo docker`, "ele impede, eu
