@@ -24,6 +24,41 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.5.0] — 2026-08-29
+
+Three additive fronts: infra autonomy under explicit consent, the Opus tier the
+MoE ladder was missing, and a mechanical evidence ledger. Plus the week's most
+valuable test failure.
+
+### Added
+- **`ops` consent scope** (S-1006): with explicit, TTL-bound human consent, the
+  Bash guard downgrades block→audited warn for OPERATIONAL categories only
+  (sudo, docker, kubectl). A single data-destruction category (rm -rf, force
+  push, DROP, dd) keeps the full block even with consent — ops unlocks
+  infrastructure, never wipeouts. The block message teaches the consent path.
+- **`arquiteto` (opus)** (S-304): the top of the tiering ladder, scoped by its
+  description to critical structural decisions only (cross-system, data
+  migration, concurrency, security, expensive-to-revert); routine plans stay on
+  `engenheiro` (sonnet). H4 forked. Under measurement: retro's accepted/rework
+  decides whether the tier pays for itself. First real use of the E10 consent
+  flow (roster + routing-table granted, edited through the gate, revoked).
+- **`maestro evidence`** (E13): execution receipts bound to content — wtree
+  before/after the run, command hash, exit as data, age cap. VALID only for
+  byte-identical content + exit 0 + fresh + still tree; anything else names its
+  reason. `outcome --suite pass` now cites valid evidence or warns "word of
+  honor" (`suite_evidence` on the record); deslop records per-batch evidence;
+  retro reports coverage; doctor validates receipts.
+- **Live-dispatch E2E** (tests/e2e/, manual paid tier): a real `claude -p`
+  session proving whether the injection governs behavior. Its first run failed
+  honestly — one-shot headless sessions skip the decision in warn mode while
+  interactive sessions comply — new concrete evidence for the warn→block
+  promotion, which now additionally requires this E2E to pass in block mode.
+
+### Noted
+- gstack 1.60→1.72 mining triage: evidence ledger and live-proof adopted;
+  egress ledger (no sink by design), tracker trust-envelope (no ingestion),
+  Aside browser and section carves (out of domain) rejected with rationale.
+
 ## [1.4.0] — 2026-08-24
 
 Epic E11: knowledge-graph freshness — structure without re-reading code. The
@@ -183,6 +218,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.5.0]: https://github.com/tropeks/Maestro/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/tropeks/Maestro/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/tropeks/Maestro/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tropeks/Maestro/compare/v1.1.0...v1.2.0
