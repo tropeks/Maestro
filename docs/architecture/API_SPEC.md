@@ -95,6 +95,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
 
+### `maestro evidence` (E13)
+- `--record [--label l] -- <cmd>`: roda o comando no projeto e grava o recibo
+  (DATA_MODEL §8); o exit do CLI espelha o do comando. Leitura (default) imprime
+  VÁLIDA/VENCIDA nomeando o motivo; `--check` sai 1 quando não-válida.
+- Consumidor: `outcome --suite pass` cita evidência válida ou avisa "palavra de honra"
+  (`suite_evidence` no record). Live-dispatch E2E em `tests/e2e/` (tier manual/pago).
+
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
   commit. `--check` sai 1 apenas em STALE (gatilho de `bin/maestro-graph-refresh`, a

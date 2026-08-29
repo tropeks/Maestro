@@ -56,3 +56,13 @@ maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
   printf '%s/briefs/%s-%08x.md' "${MAESTRO_HOME:-$HOME/.maestro}" "${slug:-projeto}" "$h"
 }
 
+
+# ---------------------------------------------------------------------------
+# E13/S-1301 — caminho do recibo de evidência (DATA_MODEL §8). Mesma chave
+# djb2 do brief: evidência é estado DO PROJETO, por rótulo (suite, build…).
+# ---------------------------------------------------------------------------
+maestro_evidence_file() { # <raiz-do-projeto> <rótulo> → caminho no stdout
+  local bf; bf=$(maestro_brief_file "$1")
+  local base="${bf##*/}"; base="${base%.md}"
+  printf '%s/evidence/%s-%s' "${MAESTRO_HOME:-$HOME/.maestro}" "$base" "${2:-suite}"
+}

@@ -304,6 +304,33 @@ frescor. Freshness SEM carimbo novo: mtime do graphify-out/graph.json vs último
   do tribunal.
 - **Dependências:** E8 (padrão ponteiro+freshness), skill graphify instalada (opcional).
 
+### E13 — Evidência mecânica (P1, M) — emenda 2026-08-29, aprovado
+Origem: garimpo do salto gstack 1.60→1.72 a pedido do Capitão; o evidence ledger (1.66.1)
+é o "Contract 1" que a pesquisa RAD deixou pendente. Princípio: "testes passaram" vira
+checagem MECÂNICA (conteúdo + comando + idade), não sistema de honra.
+- **S-1301:** `maestro evidence` — `--record -- <cmd>` grava recibo (wtree ANTES e DEPOIS
+  da corrida, hash do comando, exit, epoch) em `$MAESTRO_HOME/evidence/` (DATA_MODEL §8);
+  leitura dá VÁLIDA só com conteúdo byte-idêntico + exit 0 + idade sob o teto + árvore
+  parada durante a corrida — qualquer outra coisa é VENCIDA nomeando o motivo. Falha
+  também vira recibo (exit é dado). `--check` para scripts. *AC: 24 asserções em
+  test-evidence.sh; nada vaza ao routing.jsonl.* **Entregue 2026-08-29.**
+- **S-1302:** consumidores — `outcome --suite pass` consulta o ledger e CITA evidência
+  válida (ou avisa "palavra de honra"; `suite_evidence` no record); `/maestro:deslop`
+  grava evidência por lote e pula re-execução quando o conteúdo já está provado; retro
+  reporta cobertura do ledger; doctor valida recibos. **Entregue 2026-08-29.**
+- **S-1303:** live-dispatch E2E (`tests/e2e/`, tier MANUAL/PAGO, fora do run-all — padrão
+  gstack gate-tier): sessão `claude -p` real num fixture prova se a injeção governa
+  comportamento. **Primeira execução: FAIL honesto e valioso** — a sessão criou o arquivo
+  SEM registrar decide (hooks rodaram; o modo warn deixou passar). Leitura: sessão
+  interativa obedece (113 decisões de dogfood), one-shot headless escapa — dado NOVO a
+  favor da promoção warn→block, que é o que forçaria o registro onde a instrução sozinha
+  não alcança. O E2E é o pré-requisito declarado da promoção: aperta-se o gate quando este
+  teste passar EM block. **Entregue 2026-08-29** (o teste; o verde dele é meta, não AC).
+- **Rejeitados do garimpo (com porquê):** egress ledger (Maestro não tem sink — sem rede
+  em runtime); issue-guard/trust envelope (Maestro não ingere texto de tracker); Aside
+  browser e section carves (fora de domínio / superfície 20× menor).
+- **Dependências:** E7/S-701 (wtree), E10 (outcome).
+
 ---
 
 ## Grafo de dependências

@@ -40,6 +40,10 @@ Se `--dry`: entregue a tabela com contagens e o plano de lotes, e pare aqui.
 - Entre lotes, **a suíte do projeto é o gate**: rode-a; se quebrar, reverta o
   lote inteiro (`git checkout -- <arquivos>`) e reporte o porquê — lote quebrado
   não se "ajeita" em cima.
+- Rode a suíte VIA ledger: `maestro evidence --record --label suite -- <comando
+  da suíte>` — o recibo amarra o verde ao conteúdo exato. Antes de re-rodar,
+  `maestro evidence --check --label suite`: VÁLIDA = o conteúdo atual JÁ está
+  provado (lote revertido/no-op), pule a re-execução citando o recibo.
 - Fim de cada lote verde: commit do lote (mensagem: `deslop: <classe> — <n>
   achado(s) em <arquivos>`), e `maestro habits --baseline` **no mesmo commit**
   — a catraca desce junto com a dívida.
@@ -47,7 +51,8 @@ Se `--dry`: entregue a tabela com contagens e o plano de lotes, e pare aqui.
 ## 3. Fechamento
 
 1. `maestro habits --all` final: deve sair "dentro da catraca" com o baseline
-   menor que o inicial.
+   menor que o inicial; feche com `maestro outcome --session <id> accepted
+   --suite pass` — ele CITA a evidência do ledger em vez de palavra de honra.
 2. Dispare o **revisor** (read-only) sobre o diff acumulado do sweep; achados
    dele viram um lote extra ou pendência explícita — nunca silêncio.
 3. Reporte: achados iniciais → corrigidos / reconfigurados / restantes (com

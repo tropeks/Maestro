@@ -1,5 +1,25 @@
 # Decision log
 
+## 2026-08-29 — E13: evidência mecânica + o FAIL mais valioso da semana
+
+- **Origem:** Capitão pediu garimpo do salto gstack 1.60→1.72. Triagem: evidence ledger
+  (1.66.1) entrou — era o Contract 1 pendente da pesquisa RAD; live-dispatch proof
+  (1.70.1) entrou como tier manual; egress ledger, issue-guard, Aside e carves rejeitados
+  com registro (sem sink / sem ingestão de tracker / fora de domínio).
+- **`maestro evidence`:** wtree antes E depois da corrida (árvore que mexe durante o teste
+  contamina o recibo), hash do comando, exit como dado (falha também é prova), teto de
+  idade com `>=` (empate no teto invalida — o teste pegou o `0 > 0`). `set -e` quase
+  engoliu o exit do comando de novo — terceira vez do mesmo padrão; anotado.
+- **Dogfood imediato:** a suíte do Maestro (1271 asserções) agora vive no ledger; o
+  outcome desta sessão cita evidência em vez de palavra de honra.
+- **O FAIL que pagou o épico:** primeira execução do live-dispatch E2E reprovou — sessão
+  `claude -p` real criou o arquivo SEM registrar decide (hooks rodaram; warn deixou
+  passar). Não é bug do teste: é o comportamento sendo medido pela primeira vez. Leitura:
+  interativo obedece (113 decisões), one-shot headless escapa — argumento NOVO e concreto
+  para a promoção warn→block, e o critério de promoção ganha um degrau: além do override
+  <20% do retro, o live E2E tem de passar EM block antes de considerarmos a promoção
+  estável. Instrução sozinha não governa sessão apressada; trilho governa.
+
 ## 2026-08-27 — S-304: arquiteto (opus) — o teto da escada, com porteiro
 
 - **Origem:** Capitão perguntou duas vezes se um engenheiro em Opus não melhoraria. Resposta

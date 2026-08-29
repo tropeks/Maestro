@@ -61,6 +61,9 @@ maestro <comando>
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
                   --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
+  evidence        recibo de execução amarrado a conteúdo (E13): --record -- <cmd> grava
+                  wtree antes/depois + hash do comando + exit; leitura dá VÁLIDA/VENCIDA
+                  nomeando o motivo — "testes passaram" vira checagem mecânica
   graph           freshness do grafo graphify (E11): mtime do graphify-out/graph.json vs
                   último commit — --check sai 1 se STALE (para a rotina de refresh)
   consent         consentimento escopado (E10): --grant/--revoke routing-table|roster|ops,
@@ -724,6 +727,26 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   fi
 }
 
+check_evidence() { # E13: ledger de evidência — recibos parseáveis, nunca fingidos
+  local ed="$MAESTRO_HOME/evidence" f bad=() n=0
+  [[ -d "$ed" ]] || { report ok "evidência: ledger vazio (registre com maestro evidence --record)"; return 0; }
+  shopt -s nullglob
+  for f in "$ed"/*; do
+    n=$(( n + 1 ))
+    awk 'NR==1 { exit ($0 == "schema=maestro-evidence-v1") ? 0 : 1 }' "$f" 2>/dev/null \
+      || { bad+=("${f##*/}"); continue; }
+    grep -Eq '^epoch=[0-9]+$' "$f" 2>/dev/null || bad+=("${f##*/}")
+  done
+  shopt -u nullglob
+  if (( n == 0 )); then report ok "evidência: ledger vazio (registre com maestro evidence --record)"
+  elif [[ ${#bad[@]} -gt 0 ]]; then
+    report warn "evidência: $(( n - ${#bad[@]} )) recibo(s) ok, ${#bad[@]} ilegível(is)" \
+      "${bad[*]} — regrave com maestro evidence --record"
+  else
+    report ok "evidência: $n recibo(s) parseável(is) no ledger"
+  fi
+}
+
 check_consents() { # E10: consentimento ativo é estado ELEVADO — sempre visível
   local cdir="$MAESTRO_HOME/consents" f sc exp now active=() n_exp=0
   [[ -d "$cdir" ]] || { report ok "consentimentos: nenhum ativo (denylist integral)"; return 0; }
@@ -1211,6 +1234,7 @@ doctor() {
   check_habit_guides
   check_commands
   check_consents
+  check_evidence
   check_vendor_integrity
   check_plugin_install
   check_session_env
@@ -1234,6 +1258,102 @@ doctor() {
     printf 'doctor: instalação saudável (%s checagens, %s aviso(s))\n' "$N_CHECKS" "$N_WARN"
   fi
   exit 0
+}
+
+# -------------------------------------------------------------- evidence (E13)
+
+cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gstack-evidence)
+  # "Testes passaram" deixa de ser prosa: o recibo grava wtree (S-701) ANTES e
+  # DEPOIS da execução, hash do comando, exit e idade. A leitura só diz VÁLIDA
+  # se o conteúdo de AGORA é byte-idêntico ao provado, o comando é o mesmo, a
+  # idade cabe no teto e nada mexeu na árvore DURANTE a corrida. A IRON LAW
+  # vira checagem mecânica, não sistema de honra. Bash puro; estado local
+  # (classe do brief); nada disto toca o routing.jsonl.
+  local mode="read" label="suite" check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}" maxage="${MAESTRO_EVIDENCE_MAX_AGE:-86400}"
+  local cmd_args=()
+  while (( $# )); do
+    case "$1" in
+      --record)  mode="record" ;;
+      --check)   check=1 ;;
+      --label)   label="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      --)        shift; cmd_args=("$@"); break ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro evidence [--label l] [--check] | --record [--label l] -- <comando...>" 1 ;;
+    esac
+    shift
+  done
+  [[ "$label" =~ ^[a-z][a-z0-9-]{0,23}$ ]] || die validation "rótulo inválido" "minúsculas/dígitos/hífen, ≤24" 1
+  [[ "$maxage" =~ ^[0-9]{1,8}$ ]] || maxage=86400
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local ef; ef=$(maestro_evidence_file "$proj" "$label")
+
+  if [[ "$mode" == "record" ]]; then
+    [[ ${#cmd_args[@]} -gt 0 ]] || die validation "comando ausente" \
+      "maestro evidence --record -- bash tests/run-all.sh" 1
+    local w_before="none" w_after="none" cmd_str cmd_hash rc=0
+    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+      w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"
+    cmd_str="${cmd_args[*]}"
+    cmd_hash=$(printf '%s' "$cmd_str" | sha256sum 2>/dev/null | head -c 16) || cmd_hash="none"
+    # set -e: exit != 0 é DADO (a falha é o que mais precisa de recibo), não
+    # aborto — o || rc=$? blinda a captura.
+    ( cd "$proj" && "${cmd_args[@]}" ) || rc=$?
+    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+      w_after=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_after="none"
+    mkdir -p "${ef%/*}" 2>/dev/null || die env "não consigo criar ${ef%/*}" "cheque MAESTRO_HOME" 2
+    local tmp="$ef.tmp.$$"
+    {
+      printf 'schema=maestro-evidence-v1\n'
+      printf 'label=%s\nts=%s\nepoch=%s\n' "$label" "$(date -Iseconds)" "$(maestro_now_epoch)"
+      printf 'cmd_hash=%s\nexit=%s\n' "$cmd_hash" "$rc"
+      printf 'wtree_before=%s\nwtree_after=%s\n' "$w_before" "$w_after"
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null \
+      || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar recibo" "cheque permissões" 2; }
+    if [[ "$w_before" != "$w_after" ]]; then
+      printf 'evidência gravada: %s — exit %s, mas a árvore MUDOU durante a execução (recibo nasce contaminado)\n' "$label" "$rc"
+    else
+      printf 'evidência gravada: %s — exit %s, conteúdo %s\n' "$label" "$rc" "${w_after:0:12}"
+    fi
+    return "$rc"
+  fi
+
+  # --- leitura: o veredito ---------------------------------------------------
+  if [[ ! -f "$ef" || ! -r "$ef" ]]; then
+    echo "evidência ($label): NENHUMA — registre com: maestro evidence --record --label $label -- <comando>"
+    (( check == 1 )) && return 1 || return 0
+  fi
+  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash=""
+  eval "$(awk -F= 'NR>10 { exit }
+    /^epoch=/        { if ($2 ~ /^[0-9]+$/)          print "e_epoch=" $2 }
+    /^exit=/         { if ($2 ~ /^[0-9]+$/)          print "e_exit="  $2 }
+    /^cmd_hash=/     { if ($2 ~ /^([0-9a-f]{16}|none)$/) print "e_hash=\047" $2 "\047" }
+    /^wtree_before=/ { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wb=\047" $2 "\047" }
+    /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }' \
+    "$ef" 2>/dev/null)" 2>/dev/null || :
+  if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
+    echo "evidência ($label): recibo ilegível — regrave"
+    (( check == 1 )) && return 1 || return 0
+  fi
+  local age=$(( $(maestro_now_epoch) - e_epoch )) reasons=""
+  (( age < 0 )) && age=0
+  [[ "$e_wb" != "$e_wa" ]] && reasons+="${reasons:+; }árvore mudou durante a corrida"
+  (( age >= maxage )) && reasons+="${reasons:+; }idade no teto (${maxage}s)"
+  local w_now="none"
+  [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+    w_now=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_now="none"
+  [[ "$w_now" == "none" || "$e_wa" == "none" ]] && reasons+="${reasons:+; }sem git para comparar conteúdo"
+  [[ "$w_now" != "none" && "$e_wa" != "none" && "$w_now" != "$e_wa" ]] \
+    && reasons+="${reasons:+; }conteúdo mudou desde a prova"
+  [[ "$e_exit" != "0" ]] && reasons+="${reasons:+; }a execução provou FALHA (exit $e_exit)"
+  if [[ -z "$reasons" ]]; then
+    printf 'evidência (%s): VÁLIDA — exit 0 há %smin, conteúdo byte-idêntico ao provado\n' "$label" "$(( age / 60 ))"
+    return 0
+  fi
+  printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave.\n' "$label" "$reasons"
+  (( check == 1 )) && return 1 || return 0
 }
 
 # ----------------------------------------------------------------- graph (E11)
@@ -1393,11 +1513,26 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
     "o desfecho fecha uma decisão existente (maestro decide primeiro)" 1
   local tmp="$rec.tmp.$$"
-  if jq --arg o "$verdict" --arg su "$suite" --arg ts "$(date -Iseconds)" \
-       '.outcome = $o | .outcome_ts = $ts | (if $su != "" then .suite = $su else . end)' \
+  # E13/S-1302: --suite deixa de ser palavra de honra — consulta o ledger.
+  local ev="none"
+  if [[ -n "$suite" ]]; then
+    if cmd_evidence --check --label suite --project "${CLAUDE_PROJECT_DIR:-$PWD}" >/dev/null 2>&1; then
+      ev="cited"
+    fi
+  fi
+  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg ts "$(date -Iseconds)" \
+       '.outcome = $o | .outcome_ts = $ts
+        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)' \
        "$rec" > "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+    if [[ "$suite" == "pass" ]]; then
+      if [[ "$ev" == "cited" ]]; then
+        echo "suíte pass CITANDO evidência válida do ledger (mecânico, não honra)"
+      else
+        echo "aviso: suíte pass SEM evidência no ledger — palavra de honra; registre com: maestro evidence --record -- <suíte>"
+      fi
+    fi
   else
     rm -f "$tmp" 2>/dev/null
     die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
@@ -1473,7 +1608,16 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   ndec=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
   ovr=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
   rate=0; (( ndec + ovr > 0 )) && rate=$(( 100 * ovr / (ndec + ovr) ))
-  printf -- '-- sinais:\n'
+  # E13: cobertura do ledger de evidência (arquivos, não log — estado local)
+  local n_ev=0 n_ev_ok=0 evf
+  shopt -s nullglob
+  for evf in "$MAESTRO_HOME/evidence"/*; do
+    n_ev=$(( n_ev + 1 ))
+    grep -q '^exit=0$' "$evf" 2>/dev/null && n_ev_ok=$(( n_ev_ok + 1 ))
+  done
+  shopt -u nullglob
+  printf -- '-- evidência: %s recibo(s) no ledger, %s de exit 0\n' "$n_ev" "$n_ev_ok"
+  printf -- '-- sinais:\n' 
   (( rate >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$rate"
   if (( days >= 14 && ndec >= 10 && rate < 20 )); then
     printf '   PROMOÇÃO ELEGÍVEL: %sd de janela, %s decisões, override %s%% (<20%%) — proponha gate.mode warn→block (diff na routing-table; exige consentimento ou mão humana)\n' \
@@ -1816,6 +1960,7 @@ case "$cmd" in
   outcome) shift; cmd_outcome "$@" ;;
   retro) shift; cmd_retro "$@" ;;
   graph) shift; cmd_graph "$@" ;;
+  evidence) shift; cmd_evidence "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

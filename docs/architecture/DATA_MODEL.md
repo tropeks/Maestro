@@ -255,6 +255,25 @@ Carimbo ilegível → aviso de regravação, nunca crash. O doctor valida cabeç
 `epoch` de todo brief existente.
 `# classification: confidential` (narrativa livre + paths locais)
 
+### 8. Ledger de evidência — `~/.maestro/evidence/<slug>-<hash8>-<rótulo>` (E13/S-1301)
+
+Recibo de execução amarrado a conteúdo (padrão gstack-evidence, MIT):
+
+```
+schema=maestro-evidence-v1
+label=suite
+ts=… / epoch=…
+cmd_hash=<16 hex do sha256 do comando>
+exit=<código>
+wtree_before=<hash40|none> / wtree_after=<hash40|none>
+```
+
+VÁLIDA exige: wtree atual == wtree_after (conteúdo byte-idêntico ao provado), before ==
+after (árvore parada durante a corrida), exit 0, idade < teto (`MAESTRO_EVIDENCE_MAX_AGE`,
+default 86400s). Falha também é recibo — exit é dado. Estado local (classe do brief),
+jamais no log; consumidores: `outcome --suite` (cita ou avisa), deslop, retro, doctor.
+`# classification: confidential` (paths derivados + hashes locais)
+
 ---
 
 ## Regras de integridade
