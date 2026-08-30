@@ -66,7 +66,10 @@ function close_fn(endline,   fn_len) {
   ind = indent_of(line)
   stripped = line; sub(/^[ \t]+/, "", stripped)
   is_blank   = (stripped == "")
-  is_comment = (stripped ~ /^(#|\/\/|\/\*|\*|--)/)
+  # `--` só é comentário em SQL/Lua; em shell, `--flag)` de case era lido como
+  # comentário-que-parece-código e virava dead-code falso (2026-08-29).
+  is_comment = (stripped ~ /^(#|\/\/|\/\*|\*)/)
+  if (!is_comment && EXT ~ /^(lua|sql)$/ && stripped ~ /^--/) is_comment = 1
 
   # ---- função: início/fim (heurística conservadora por família) -------------
   fn_start = 0
@@ -208,6 +211,10 @@ function close_fn(endline,   fn_len) {
     if (is_comment) {
       body = stripped
       sub(/^(#+|\/\/+|\/\*+|\*+|--+)[ \t]?/, "", body)
+      sub(/^[ \t]+/, "", body)
+      # item de LISTA é prosa, mesmo citando código que termina em `;` — o
+      # rodapé de limitações do pre-bash-guard era falso positivo (2026-08-29)
+      if (body ~ /^[-•*] /) body = ""
       if (body ~ /[;{}]$/ ||
           body ~ /^(if|for|while|return|const|let|var|def|func|fn|import|from|class) / ||
           body ~ /^[A-Za-z_][A-Za-z0-9_]* *=[^=]/)

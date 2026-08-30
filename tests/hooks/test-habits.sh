@@ -145,6 +145,32 @@ grep -q 'empty-impl' <<<"$OUT" && bad "@abstractmethod + pass é contrato, não 
                                || ok "@abstractmethod + pass é contrato, não slop"
 
 # ---------------------------------------------------------------------------
+echo "-- lista em comentário não é código morto (falso positivo do guarda)"
+# ---------------------------------------------------------------------------
+cat > "$PROJ/rodape.sh" <<'FX'
+#   - valor de variável: `X=/; rm -rf $X` é barrado;
+#   - script indireto: `./deploy.sh`, `make clean`, `npm run reset`;
+#   - linguagem hospedeira: `python -c "shutil.rmtree('/')"`;
+#   - codificação: `echo x | base64 -d | sh`;
+echo real
+FX
+out2=$(awk -v EXT=sh -v ENABLED=dead-code -v ISTEST=0 -f "$ENGINE" "$PROJ/rodape.sh")
+[[ -z "$out2" ]] && ok "rodapé de limitações (prosa em lista) não dispara dead-code" \
+                 || bad "rodapé em lista não dispara dead-code ($out2)"
+
+cat > "$PROJ/flags.sh" <<'FX'
+case "$1" in
+  --no-preserve-root) rec=1; unsafe=1; continue ;;
+  --recursive | --dir) rec=1; continue ;;
+  --force) f=1 ;;
+  --dry-run) d=1 ;;
+esac
+FX
+out2=$(awk -v EXT=sh -v ENABLED=dead-code -v ISTEST=0 -f "$ENGINE" "$PROJ/flags.sh")
+[[ -z "$out2" ]] && ok "case arms --flag em shell não são comentário SQL" \
+                 || bad "case arms --flag não são comentário SQL ($out2)"
+
+# ---------------------------------------------------------------------------
 echo "-- one-liner não é função gigante (falso positivo do dogfood da catraca)"
 # ---------------------------------------------------------------------------
 {

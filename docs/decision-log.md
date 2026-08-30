@@ -1,5 +1,25 @@
 # Decision log
 
+## 2026-08-29 — Deslop do próprio Maestro: triagem honesta, 3 falsos positivos estruturais mortos
+
+- **Arco 1, parte 2 (após a promoção).** Triagem dos 30 achados sob catraca, pela tabela
+  do /maestro:deslop: NENHUM era mecânico-corrigível — eram (a) iscas de fixture dos
+  próprios testes de habits (o sensor lendo o próprio bait; aceitas como baseline com
+  este registro), (b) oversized-* nos arquivos do enforcement (hooks/bin/src — protegidos
+  por desenho; dívida aceita e PINADA, não corrigível por agente), e (c) TRÊS classes de
+  falso positivo estrutural do motor, todas mortas com regressão pinada:
+  1. prosa em LISTA dentro de comentário (`#  - exemplo: \`rm -rf $X\`;`) lida como
+     código morto — o rodapé de limitações do pre-bash-guard;
+  2. o strip do marcador deixava a indentação e o check de lista nunca casava (o
+     primeiro patch FALHOU no teste e eu re-pinei a régua PARA CIMA no susto — violação
+     da própria doutrina, revertida no commit seguinte: régua desceu 30 → 28);
+  3. `--flag)` de case em shell lido como comentário SQL — `--` agora só é comentário
+     em .lua/.sql.
+- **Resultado:** 30 → 28 achados, todos conhecidos e com dono (fixtures + dívida pinada
+  de enforcement); motor mais preciso em três dimensões; suíte 1274 asserções via ledger.
+- **Pendência honesta do Arco 1:** o 1º grafo (Vitali/NetForge) exige sessão NO projeto
+  alvo — fica para lá, com a medição do gate já especificada no E11.
+
 ## 2026-08-29 — PROMOÇÃO warn→block: o Arco 1 fecha com prova viva
 
 - **Aval:** "Vai" do Capitão sobre o Arco 1. Dados dos dois lados: retro de 14d (133
