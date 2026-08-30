@@ -374,6 +374,38 @@ DERIVADO, nunca auto-declarado** — o executor não escreve o próprio boletim.
 - **Dependências:** E13 (a prova É o ledger), E14 (orçamento na ordem), E8 (padrão de
   descoberta via injeção).
 
+### E16 — Documentação como contrato (P1, M) — aprovado 2026-08-30, desenho batido em pesquisa
+Ideia do Capitão ("Maestro orientado à documentação de produção; fire and forget") +
+pesquisa dedicada (subagente): validou o esqueleto e corrigiu três palpites — quitação por
+FRONTEIRA em vez de "mesmo commit" (falso positivo estrutural), `reviewed:` como
+provenance stamp (padrão Fiberplane Drift), e reforço TARDIO da regra (decaimento
+intra-sessão de −5,6%/função, arXiv 2605.10039 — posição/tamanho no SessionStart não
+movem aderência). Rejeitados com fonte: Spec Kit inteiro (spec rot, pior aderência em
+teste independente), Tessl (hype), BMAD (burocracia), granularidade de símbolo
+(tree-sitter × hooks bash).
+- **S-1601:** `docs:` no `.maestro.yaml` + frontmatter `covers:` (globs) e `reviewed:
+  <sha>`; `maestro docs` — FRESCO/STALE contando COMMITS (não dias) desde
+  max(último commit no doc, reviewed); acusa doc ausente, sem covers, e fan-out
+  (glob que engole >50% do repo, com guarda anti-ruído para repos <20 arquivos).
+  Gotcha pago: glob `src/**` expande contra o CWD do bash antes do git — `set -f`.
+  **Entregue 2026-08-30.**
+- **S-1602:** catraca `.maestro-docs.tsv` (versionada; brownfield entra sem gritar);
+  `--check` reprova só drift NOVO. **Entregue 2026-08-30.**
+- **S-1603:** a regra em DOIS momentos — injeção (positiva, curta: "todo plano cita
+  doc+seção; sem doc que autorize, emenda no mesmo changeset") + nag TARDIO único por
+  sessão no 1º edit em área governada (sensor `doc-governed` no habit hook, com guia).
+  **Entregue 2026-08-30.**
+- **S-1604:** ordem carrega `--doc` (quem a autoriza); contrato cobra emenda no mesmo
+  changeset; `--status` mostra o frescor do doc. **Entregue 2026-08-30.**
+- **Dogfood na primeira medição:** ARCHITECTURE.md acusou 6 commits de drift real
+  (E14/E15 mexeram no gate sem ADR) — quitado com a Emenda v1.3 do ADR-003 neste mesmo
+  changeset. O sistema cobrou o autor antes de cobrar qualquer outro projeto.
+- **Fase 2 registrada, não construída:** `maestro converge` (reconciliação semântica LLM
+  sob demanda, estilo /speckit.converge) e a derivação doc→ordem do FIRE AND FORGET
+  (delta de doc gera work order proposta → aprovação → despacho headless): escada
+  v1 seguir → v2 propor → v3 despachar, cada degrau com o dado do anterior.
+- **Dependências:** E15 (ordem), E9 (habit hook), pesquisa em background (Agent).
+
 ---
 
 ## Grafo de dependências

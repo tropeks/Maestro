@@ -1,3 +1,8 @@
+---
+covers:
+  - bin/maestro
+  - hooks/*.sh
+---
 # API_SPEC.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
 **Consome:** ARCHITECTURE.md, DATA_MODEL.md | **Consumido por:** security-architect, vibe-code
@@ -94,6 +99,12 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
+
+### `maestro docs` (E16)
+- Veredito por doc canônico: FRESCO ou `STALE — N commit(s)` desde
+  max(último commit no doc, `reviewed:`); quitação por emenda OU re-atestado.
+  `--baseline`/`--check` = catraca (só drift novo reprova). Acusa ausente/sem
+  covers/fan-out. Sensor `doc-governed` no habit hook faz o reforço tardio.
 
 ### `maestro order` (E15)
 - `--create --title t [--branch b] [--frozen "a/ b/"] [--budget-*] [--project d]`

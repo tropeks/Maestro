@@ -237,7 +237,7 @@ parse_routing_table() {
 # 3. Profile do projeto — $CLAUDE_PROJECT_DIR/.maestro.yaml (DATA_MODEL §2).
 # Opcional: ausência não é erro, só significa "defaults globais".
 # ---------------------------------------------------------------------------
-P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_MEMCT=""
+P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_MEMCT=""; P_DOCS=""
 # `experts: []` (lista explicitamente vazia) é diferente de `experts` ausente:
 # a primeira é uma decisão do projeto, a segunda é silêncio. Só o texto bruto
 # distingue as duas, então o flag é levantado aqui, antes da normalização.
@@ -255,6 +255,7 @@ parse_profile() {
                 P_EXPERTS=$(yaml_inline_list "$val" '^[a-z0-9-]{1,40}$') ;;
       NOTES)    P_NOTES="$val" ;;
       MEMCT)    [[ "$val" =~ ^[A-Za-z0-9._-]{1,64}$ ]] && P_MEMCT="$val" ;;
+      DOCS)     P_DOCS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,80}$') ;;
     esac
   done < <(awk '
     function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); return s }
@@ -263,6 +264,7 @@ parse_profile() {
     /^languages:/ { print "LANGS\t"    clean(substr($0, 11)); next }
     /^experts:/   { print "EXPERTS\t"  clean(substr($0, 9));  next }
     /^memory_container:/ { print "MEMCT\t" clean(substr($0, 18)); next }
+    /^docs:/      { print "DOCS\t"     clean(substr($0, 6));  next }
     /^notes:/     { v = substr($0, 7); gsub(/\t/, " ", v); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); print "NOTES\t" v; next }
   ' "$PROFILE_FILE" 2>/dev/null)
 
@@ -566,6 +568,13 @@ build_and_emit() {
     nogit)
       sec_project+="grafo: presente (sem git para conferir frescor) → graphify query com desconfiança"$'\n' ;;
   esac
+  # E16/S-1603 — docs canônicos: contagem + a regra POSITIVA de citação
+  # (pesquisa E16: tamanho/posição não movem aderência; conteúdo positivo move;
+  # o reforço tardio fica no habit hook — decaimento intra-sessão é o efeito real)
+  if [[ -n "$P_DOCS" ]]; then
+    local _dn; _dn=$(grep -c . <<<"${P_DOCS// /$'\n'}" || true)
+    sec_project+="docs canônicos: $_dn (maestro docs) → plano cita doc+seção; contrato mudou? emenda no MESMO changeset"$'\n'  
+  fi
   # E15/S-1503 — ordens de trabalho pendentes: a sessão descobre sozinha
   local _on=0 _ofl
   if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
@@ -577,7 +586,7 @@ build_and_emit() {
   fi
   (( _on > 0 )) && sec_project+="ordens: $_on pendente(s) neste projeto → maestro order --list (contrato, branch e prova exigida em cada uma)"$'\n'
   [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
-  sec_project+="Ao fechar trabalho substancial, atualize o brief: maestro brief --write --session $SESSION_ID (narrativa curta via stdin: o que estava em curso, decisões abertas, próximo passo)"$'\n'
+  sec_project+="Ao fechar trabalho, atualize o brief: maestro brief --write --session $SESSION_ID (em curso · decisões abertas · próximo passo)"$'\n' 
 
   sec_routes=""
   if [[ -n "$ROUTES$WORKFLOWS" ]]; then

@@ -99,6 +99,18 @@ e CI; `habits:` no `.maestro.yaml` ajusta o conjunto por projeto.
 reprova só o slop que EXCEDER o baseline — e o slash command `/maestro:deslop` paga
 a dívida em lotes revisáveis, com suíte como gate e agentes tierizados.
 
+### Docs como contrato — a spec do produto que as sessões seguem de verdade
+
+Declare os docs canônicos no `.maestro.yaml`; o frontmatter de cada doc diz as
+áreas que ele governa (`covers:` em globs). O drift é mecânico e por commit:
+tocar área governada sem emendar o doc conta — quitado por emenda ou pelo
+re-atestado `reviewed: <sha>` (sem edição cosmética), e com catraca: dívida de
+brownfield não grita, drift novo reprova a CI. A regra de citação vive onde a
+pesquisa mostra que funciona: curta e positiva na abertura da sessão, mais um
+único cutucão tardio no primeiro edit em área governada (a aderência a
+instruções decai mensuravelmente dentro da sessão). Work orders nomeiam o doc
+que as autoriza.
+
 ### Work orders — dirigindo trabalho que você não está vendo
 
 Uma **work order** viaja com o repo alvo (`.maestro/orders/NNN.md`): objetivo,

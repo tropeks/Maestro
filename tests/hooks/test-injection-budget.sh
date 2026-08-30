@@ -9,7 +9,11 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=6500   # medido 5895B em 2026-08-18 (S-709); margem p/ variação de config
+RATCHET=6800   # bump deliberado 6500→6800 em 2026-08-30 (E16): a seção ## Projeto
+               # passou a carregar QUATRO subsistemas (brief E8 · grafo E11 · ordens
+               # E15 · docs E16) e o repo real mede 6516B com a prosa já no osso —
+               # apertar mais custaria clareza. Histórico: 5895B (08-18) → 6266B
+               # (E8+) → 6516B (E16). Teto duro segue 8000B.
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOK="$REPO/hooks/session-start.sh"

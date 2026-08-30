@@ -119,6 +119,38 @@ if [[ "$ENABLED" == "all" || ",$ENABLED," == *",test-gap,"* ]]; then
     fi
   fi
 fi
+# E16/S-1603b — reforço TARDIO da regra de citação (o SessionStart decai:
+# −5,6%/função gerada, arXiv 2605.10039). No PRIMEIRO edit da sessão que toca
+# área governada por doc canônico, UMA linha lembra o contrato. Nunca por doc,
+# nunca repetido: é cutucão, não sermão.
+if [[ "$ENABLED" == "all" || ",$ENABLED," == *",doc-governed,"* ]]; then
+  docg="$MAESTRO_SESSIONS_DIR/habits-docg-$SID"
+  if [[ ! -f "$docg" && -f "$PROJECT_DIR/.maestro.yaml" ]]; then
+    _dlist=$(awk '/^docs:/ { sub(/^docs:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
+      "$PROJECT_DIR/.maestro.yaml" 2>/dev/null | tr -d '[]" ' | tr ',' ' ')
+    _hit=""
+    for _dd in $_dlist; do
+      _cov=$(awk 'NR==1 && $0 != "---" { exit } NR>40 { exit }
+        /^---$/ { fm++; next } fm != 1 { next }
+        /^covers:/ { inc=1; next }
+        inc && /^[ \t]*-[ \t]*/ { s=$0; sub(/^[ \t]*-[ \t]*/, "", s); gsub(/["\x27 ]/, "", s); print s; next }
+        inc { inc=0 }' "$PROJECT_DIR/$_dd" 2>/dev/null || true)
+      _rel="${FILE#"$PROJECT_DIR"/}"
+      set -f
+      for _cg in $_cov; do
+        case "$_rel" in
+          ${_cg%\*\*}*|$_cg) _hit="$_dd"; break 2 ;;
+        esac
+      done
+      set +f
+    done
+    set +f
+    if [[ -n "$_hit" ]]; then
+      mkdir -p "$MAESTRO_SESSIONS_DIR" 2>/dev/null && : > "$docg" 2>/dev/null || :
+      findings+="${findings:+$'\n'}doc-governed	0	este arquivo é governado por $_hit — o plano cita doc+seção? mudou contrato? emende no MESMO changeset (maestro docs)"
+    fi
+  fi
+fi
 [[ -n "$findings" ]] || exit 0
 
 # ---------------------------------------------------------------------------

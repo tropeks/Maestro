@@ -1,3 +1,9 @@
+---
+covers:
+  - hooks/**
+  - bin/**
+  - src/**
+---
 # ARCHITECTURE.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
 **Consome:** PROJECT_BRIEF.md | **Consumido por:** security-architect, architect-orchestrator, vibe-code
@@ -53,6 +59,11 @@ consent não dispensa o decision record — só a denylist é levantada. Consumi
 ao final. **S-1006 (2026-08-25):** o escopo `ops` estende o mesmo contrato ao
 pre-bash-guard — infra (sudo/docker/kubectl) rebaixa bloqueio→aviso auditado; qualquer
 categoria de destruição de dados mantém o bloqueio integral mesmo com consent.
+**Emenda v1.3 (E14+E15, 2026-08-30):** o gate ganhou dois trilhos warn-only além do
+decision record: avisos de ORÇAMENTO (caps declarados no record — passo/janela — um aviso
+por cap, nunca bloqueio) e ZONAS CONGELADAS de work orders (compiladas na política pelo
+SessionStart; autônomo bloqueia dentro da zona, humano é avisado — a assimetria do S-502).
+O gate.mode foi promovido a `block` em 2026-08-29 com prova comportamental (live E2E).
 
 ### ADR-008 — Sinal observável de override manual
 **Status:** Aceito (v1.1, review Opus).

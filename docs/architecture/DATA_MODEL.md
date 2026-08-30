@@ -1,3 +1,9 @@
+---
+covers:
+  - config/routing-table.yaml
+  - hooks/lib/common.sh
+  - agents/**
+---
 # DATA_MODEL.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.3 — 2026-08-09 (emenda E4/S-401: `version: 2` + bloco `bindings`)
 **Consome:** PROJECT_BRIEF.md, ARCHITECTURE.md | **Consumido por:** security-architect, vibe-code
@@ -115,6 +121,10 @@ notes: "agente Go é o coração; nunca tocar sem testes"
 `memory_container` (`^[A-Za-z0-9._-]{1,64}$`; malformado é omitido) vira a linha
 `memória:` da seção `## Projeto` da injeção — o recall com a tag certa deixa de
 depender de disciplina.
+`docs` (E16): lista inline dos DOCS CANÔNICOS do projeto. Cada doc declara no
+frontmatter YAML `covers:` (globs git das áreas que governa) e opcionalmente
+`reviewed: <sha>` (re-atesta frescor sem edição). Drift em `.maestro-docs.tsv`
+(versionado, catraca).
 `habits` (E9): lista inline de sensores ativos do habit hook (`[a, b]`; `[]` =
 desligado no projeto; ausente = todos) — vale para o hook pós-edição E para
 `maestro habits`.

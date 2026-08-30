@@ -1,5 +1,31 @@
 # Decision log
 
+## 2026-08-30 — E16: documentação como contrato — pesquisa antes, código depois
+
+- **Fluxo exemplar do que a casa prega:** ideia do Capitão → contraproposta com
+  distinções → "lança um subagente pra pesquisar" → pesquisa VALIDOU o esqueleto e
+  MATOU três palpites meus antes de virarem código: (1) "emenda no mesmo commit" era
+  falso positivo estrutural → quitação por fronteira; (2) faltava o provenance stamp
+  (`reviewed:`, roubado do Fiberplane Drift) — re-atestar sem edição cosmética;
+  (3) instrução só no SessionStart é teatro medido (decaimento de −5,6%/função,
+  estudo fatorial de 1.650 sessões) → reforço tardio no habit hook.
+- **"Fire and forget" do Capitão virou a escada da Fase 2:** v1 sessões seguem o doc
+  (este épico) → v2 delta de doc gera ordem proposta → v3 despacho headless com
+  --accept como único toque humano. Cada degrau sobe com o dado do anterior.
+- **Dogfood acusou dívida real na primeira medição:** ARCHITECTURE.md com 6 commits de
+  drift (E14/E15 mexeram no gate sem ADR). Quitado com emenda REAL (ADR-003 v1.3),
+  não com pin — o sensor nasceu cobrando o autor.
+- **Gotchas pagos:** glob de covers expandindo contra o CWD do bash antes de chegar ao
+  git (`set -f`, mesma defesa do gate); fan-out precisa de guarda anti-ruído em repo
+  pequeno (>20 arquivos).
+- **Ratchet da injeção: bump deliberado 6500 → 6800** (protocolo do S-703: no mesmo
+  commit, com justificativa). A seção ## Projeto carrega agora QUATRO subsistemas e o
+  repo real mede 6516B com a prosa no osso — dois apertos de texto foram feitos antes
+  do bump (paths fora da linha de docs, S-803 enxuto); apertar mais custaria clareza.
+- Suíte 1318 → 1341 asserções via ledger (test-docs.sh, 23). Roster de artefatos por
+  projeto completo: brief (estado) · grafo (estrutura) · ordens (trabalho) · docs
+  (intenção) — a sessão nova nasce sabendo as quatro coisas.
+
 ## 2026-08-30 — E15: work orders — o Arco 3 v1 no mesmo fim de semana
 
 - **Aprovação direta do Capitão** sobre o desenho apresentado. Os três Contracts da

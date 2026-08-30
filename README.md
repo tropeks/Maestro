@@ -98,6 +98,18 @@ for review and CI; `habits:` in `.maestro.yaml` tunes the set per project.
 fails only on slop that EXCEEDS the baseline — and the `/maestro:deslop` slash
 command pays the debt down in reviewable, test-gated batches with tiered agents.
 
+### Docs as contract — the product spec that sessions actually follow
+
+Declare canonical docs in `.maestro.yaml`; each doc's frontmatter states the
+paths it governs (`covers:` globs). Drift is mechanical and commit-based:
+touching a governed area without amending the doc counts — settled by an
+amendment or by re-attesting with `reviewed: <sha>` (no cosmetic edits), and
+ratcheted so brownfield debt doesn't scream while new drift fails CI. The
+citation rule is enforced where research says it works: a short positive rule
+at session start plus a single late nudge on the first edit inside a governed
+area (instruction-following decays measurably within a session). Work orders
+name the doc that authorizes them.
+
 ### Work orders — directing work you're not watching
 
 A **work order** travels with the target repo (`.maestro/orders/NNN.md`):

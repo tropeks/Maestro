@@ -61,6 +61,8 @@ maestro <comando>
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
                   --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
+  docs            docs canônicos como contrato (E16): frescor por covers/reviewed,
+                  drift em commits com quitação por fronteira; --baseline/--check = catraca
   order           work order versionada (E15): --create/--list/--status/--accept — estado
                   DERIVADO de git + evidência + aceite; executor não fecha a própria ordem
   evidence        recibo de execução amarrado a conteúdo (E13): --record -- <cmd> grava
@@ -1266,6 +1268,137 @@ doctor() {
   exit 0
 }
 
+# ------------------------------------------------------------------ docs (E16)
+
+cmd_docs() { # S-1601/S-1602: docs canônicos como CONTRATO — drift mecânico
+  # O doc declara `covers:` (globs) e opcionalmente `reviewed: <sha>` no
+  # frontmatter YAML. Drift por FRONTEIRA COM QUITAÇÃO (pesquisa E16: "mesmo
+  # commit" era falso positivo estrutural): STALE = commits que tocaram os
+  # covers DESDE max(último commit no doc, reviewed) — qualquer toque no doc,
+  # ou re-atestar via reviewed (provenance stamp, padrão Fiberplane Drift),
+  # zera o contador sem edição cosmética. Contamos COMMITS, não dias: tempo
+  # pune projeto parado; commits medem divergência real. Catraca versionada
+  # (.maestro-docs.tsv): brownfield entra sem gritar, crescer trava (--check).
+  local check=0 write_baseline=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  while (( $# )); do
+    case "$1" in
+      --check)    check=1 ;;
+      --baseline) write_baseline=1 ;;
+      --project)  proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" "maestro docs [--check|--baseline] [--project d]" 1 ;;
+    esac
+    shift
+  done
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+
+  local yaml="$proj/.maestro.yaml" dlist=""
+  if [[ -f "$yaml" ]]; then
+    dlist=$(awk '/^docs:/ { sub(/^docs:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' "$yaml" 2>/dev/null | tr -d '[]" ' | tr ',' ' ')
+  fi
+  if [[ -z "${dlist// /}" ]]; then
+    echo "docs canônicos: nenhum declarado (.maestro.yaml → docs: [a.md, b.md])"
+    return 0
+  fi
+  git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 \
+    || die env "docs exige git (drift é medido em commits)" "" 2
+
+  local total_repo
+  total_repo=$(git -C "$proj" ls-files 2>/dev/null | grep -c . || true)
+  local bfile="$proj/.maestro-docs.tsv"
+  declare -A base=()
+  if [[ -f "$bfile" ]]; then
+    local _d _n
+    while IFS=$'\t' read -r _d _n; do
+      [[ "$_d" == \#* || -z "$_d" ]] && continue
+      [[ "$_n" =~ ^[0-9]+$ ]] && base["$_d"]=$_n
+    done < "$bfile"
+  fi
+
+  local d exceeded=() out_lines=() new_baseline="" total_stale=0
+  for d in $dlist; do
+    local df="$proj/$d"
+    if [[ ! -f "$df" ]]; then
+      out_lines+=("$d: AUSENTE — declarado no .maestro.yaml e não existe")
+      exceeded+=("$d (ausente)")
+      continue
+    fi
+    # frontmatter: covers (lista) + reviewed (sha) — só as primeiras 40 linhas
+    local covers reviewed
+    covers=$(awk 'NR==1 && $0 != "---" { exit } NR>40 { exit }
+      /^---$/ { fm++; next } fm != 1 { next }
+      /^covers:/ { inc=1; next }
+      inc && /^[ \t]*-[ \t]*/ { s=$0; sub(/^[ \t]*-[ \t]*/, "", s); gsub(/["\x27 ]/, "", s); print s; next }
+      inc { inc=0 }' "$df" 2>/dev/null | grep -E '^[A-Za-z0-9._*/-]+$' || true)
+    reviewed=$(awk 'NR>40 { exit } /^---$/ { fm++; next } fm != 1 { next }
+      /^reviewed:[ \t]*[0-9a-f]{7,40}[ \t]*$/ { sub(/^reviewed:[ \t]*/, ""); print; exit }' "$df" 2>/dev/null || true)
+    if [[ -z "$covers" ]]; then
+      out_lines+=("$d: sem covers: no frontmatter — doc canônico sem área governada é só prosa")
+      continue
+    fi
+    # fronteira = mais NOVO entre último commit do doc e reviewed
+    local b_doc b_rev="" boundary
+    b_doc=$(git -C "$proj" log -1 --format=%H -- "$d" 2>/dev/null || true)
+    if [[ -n "$reviewed" ]] && git -C "$proj" cat-file -e "$reviewed^{commit}" 2>/dev/null; then
+      b_rev="$reviewed"
+    fi
+    boundary="$b_doc"
+    if [[ -n "$b_rev" ]]; then
+      if [[ -z "$boundary" ]] || git -C "$proj" merge-base --is-ancestor "$boundary" "$b_rev" 2>/dev/null; then
+        boundary="$b_rev"
+      fi
+    fi
+    # pathspecs dos covers + fan-out. set -f: sem ele, `src/**` expande contra
+    # o CWD do bash antes de chegar ao git (mordeu no smoke — glob é do git).
+    local spec=() g fan=0
+    set -f
+    for g in $covers; do spec+=(":(glob)$g"); done
+    set +f
+    fan=$(git -C "$proj" ls-files -- "${spec[@]}" 2>/dev/null | grep -c . || true)
+    local fanwarn=""
+    if [[ "$total_repo" -gt 20 && "$fan" -gt $(( total_repo / 2 )) ]]; then
+      fanwarn=" · covers engole ${fan}/${total_repo} arquivos — glob largo demais vira ruído"
+    fi
+    local n=0
+    if [[ -z "$boundary" ]]; then
+      out_lines+=("$d: NÃO VERSIONADO (commite o doc para o drift existir)$fanwarn")
+      new_baseline+="$d	0"$'\n'
+      continue
+    fi
+    n=$(git -C "$proj" rev-list --count "$boundary..HEAD" -- "${spec[@]}" 2>/dev/null || echo 0)
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    total_stale=$(( total_stale + n ))
+    if (( n == 0 )); then
+      out_lines+=("$d: FRESCO (nenhum commit nos covers desde o doc/reviewed)$fanwarn")
+    else
+      out_lines+=("$d: STALE — $n commit(s) na área governada sem emenda (quite: emende, ou reviewed: $(git -C "$proj" rev-parse --short=7 HEAD))$fanwarn")
+    fi
+    new_baseline+="$d	$n"$'\n'
+    local bl="${base[$d]:-0}"
+    (( check == 1 )) && (( n > bl )) && exceeded+=("$d: $n > baseline $bl")
+  done
+
+  printf '%s\n' "${out_lines[@]}"
+
+  if (( write_baseline == 1 )); then
+    { printf '# maestro docs baseline (E16/S-1602) — catraca de drift: só desce.\n'
+      printf '%s' "$new_baseline"
+    } > "$bfile.tmp.$$" && mv -f "$bfile.tmp.$$" "$bfile" \
+      || { rm -f "$bfile.tmp.$$"; die env "falha ao gravar $bfile" "" 2; }
+    printf -- '---\nbaseline gravado: %s (%s doc(s))\n' "${bfile##*/}" "$(wc -w <<<"$dlist" | tr -d ' ')"
+    return 0
+  fi
+  if (( check == 1 )); then
+    if [[ ${#exceeded[@]} -gt 0 ]]; then
+      printf -- '---\nCATRACA DE DOCS: drift novo acima do baseline — %s\n' "$(join_semi "${exceeded[@]}")"
+      printf 'Emende o doc no mesmo changeset, ou re-ateste com reviewed: — a régua não sobe.\n'
+      return 1
+    fi
+    printf -- '---\ndentro da catraca de docs\n'
+  fi
+  return 0
+}
+
 # ----------------------------------------------------------------- order (E15)
 
 cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
@@ -1280,7 +1413,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
   #                  que a suíte passou exatamente naquele conteúdo — S-701)
   #   aceita       → aceite explícito do diretor (--accept, auditado)
   # Executor não escreve o próprio boletim; o diretor assina o aceite.
-  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid=""
+  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
   local b_steps="" b_min="" b_cents=""
   while (( $# )); do
     case "$1" in
@@ -1294,6 +1427,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       --budget-steps) b_steps="${2:-}"; shift ;;
       --budget-min)   b_min="${2:-}"; shift ;;
       --budget-cents) b_cents="${2:-}"; shift ;;
+      --doc)     odoc="${2:-}"; shift ;;
       --session) sid="${2:-}"; shift ;;
       --project) proj="${2:-}"; shift ;;
       *) die validation "flag desconhecida '$1'" \
@@ -1339,6 +1473,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       [[ -n "$b_steps" ]] && printf 'budget_steps: %s\n' "$b_steps"
       [[ -n "$b_min" ]]   && printf 'budget_min: %s\n' "$b_min"
       [[ -n "$b_cents" ]] && printf 'budget_cents: %s\n' "$b_cents"
+      [[ -n "$odoc" ]] && printf 'doc: %s\n' "$odoc"
       printf 'author_session: %s\n' "${sid:-desconhecido}"
       printf -- '-->\n'
       printf '# Ordem %s — %s\n\n' "$oid" "$title"
@@ -1347,6 +1482,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
       [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
       printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$oid"
+      [[ -n "$odoc" ]] && printf -- '- Esta ordem é autorizada por `%s` — siga-o; se a entrega mudar o contrato, EMENDE o doc no mesmo changeset (o aceite confere o frescor).\n' "$odoc"
       printf -- '- Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.\n'
       printf -- '- O aceite é do diretor: `maestro order --accept %s` (você não fecha a própria ordem).\n' "$oid"
     } > "$of.tmp.$$" && mv -f "$of.tmp.$$" "$of" \
@@ -1408,6 +1544,11 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       || printf ' (não existe)\n'
     printf '  prova   : ' 
     "$REPO_DIR/bin/maestro" evidence --label "order-$((10#$oid))" --project "$proj" 2>/dev/null | head -1 || echo "?"
+    local _od; _od=$(_order_field "$of" doc)
+    if [[ -n "$_od" ]]; then
+      printf '  doc     : %s — ' "$_od"
+      cmd_docs --project "$proj" 2>/dev/null | grep -m1 "^$_od:" | sed "s|^$_od: ||" || echo "?"
+    fi
     case "$st" in
       provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
       aceita)  echo '  encerrada.' ;;
@@ -2136,6 +2277,7 @@ case "$cmd" in
   graph) shift; cmd_graph "$@" ;;
   evidence) shift; cmd_evidence "$@" ;;
   order) shift; cmd_order "$@" ;;
+  docs) shift; cmd_docs "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac
