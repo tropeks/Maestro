@@ -24,6 +24,33 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.6.0] — 2026-08-30
+
+The gate goes hard, and decisions learn to declare their budget.
+
+### Changed
+- **`gate.mode: block` promoted** — with proof, not faith: a 14-day retro (133
+  decisions, 13% override) plus a live `claude -p` E2E showing warn let
+  one-shot sessions edit without a decision. Every code edit on the machine now
+  requires a registered decision; reversal is one line with human approval.
+  The stability criterion is codified: the live E2E must pass in block mode —
+  and it does.
+- The first block-mode E2E run failed with gold and both finds are fixed: the
+  gate's block message taught the E1-era hyphenated command name, and headless
+  sessions deadlocked on a permission prompt when registering the decision
+  (fixed via a scoped harness allow rule for the maestro CLI).
+
+### Added
+- **Declared budget** (E14): `maestro decide --max-steps N --max-min N
+  --max-cents N` — integer caps, AND-of-caps, warn-only. The gate warns ONCE
+  per exceeded cap (steps via per-session counter, minutes via the record
+  timestamp) and never blocks; cents is declarative for retro's cost × outcome
+  correlation. Record schema v1.6 validates budgets and rejects floats.
+- Live-dispatch E2E hardened into the promotion workflow; habit-sensor engine
+  killed three structural false-positive classes (list prose in comments,
+  marker-strip indentation, shell `--flag)` arms read as SQL comments), ruler
+  down 30 → 28.
+
 ## [1.5.0] — 2026-08-29
 
 Three additive fronts: infra autonomy under explicit consent, the Opus tier the
@@ -218,6 +245,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.6.0]: https://github.com/tropeks/Maestro/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/tropeks/Maestro/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/tropeks/Maestro/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/tropeks/Maestro/compare/v1.2.0...v1.3.0
