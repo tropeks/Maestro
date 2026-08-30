@@ -70,7 +70,7 @@ reset_log
 run edit-go.json
 check "editar .go sem decisão → exit 0 (warn)" "$RC" "0"
 check "editar .go sem decisão → evento gate_warn" "$(last_event)" "gate_warn"
-if [[ "$OUT_ERR" == *"maestro-decide"* ]]; then
+if [[ "$OUT_ERR" == *"maestro decide"* ]]; then
   ok "warn traz mensagem instrutiva no stderr"
 else
   bad "warn sem mensagem instrutiva (stderr='$OUT_ERR')"
@@ -312,6 +312,10 @@ IHOME="$TMP/integra"; mkdir -p "$IHOME"
 MAESTRO_HOME="$IHOME" CLAUDE_PROJECT_DIR="$REPO" CLAUDE_PLUGIN_ROOT="$REPO" \
   "$REPO/hooks/session-start.sh" >/dev/null 2>&1 || true
 if [[ -s "$IHOME/gate-policy.sh" ]]; then
+  # gate.mode: block (promoção 2026-08-29): as sondas de "não é denylist" exigem
+  # decision record válido — sem ele, TUDO que é código bloqueia por desenho.
+  MAESTRO_HOME="$IHOME" "$REPO/bin/maestro" decide --session sess-abc123 \
+    --workflow fix --mode direct >/dev/null 2>&1 || true
   # Configuração REAL: o plugin fica instalado fora do projeto do usuário
   # (~/.claude/plugins/...), então a denylist relativa é o que atua no projeto.
   igate() { # $1 = caminho absoluto, $2 = raiz do projeto → RC
@@ -337,7 +341,12 @@ if [[ -s "$IHOME/gate-policy.sh" ]]; then
   igate "$PROJ/README.md" "$PROJ"
   check "política real: README.md → exit 0" "$RC" "0"
   igate "$PROJ/src/algo.ts" "$PROJ"
-  check "política real: src/algo.ts sem decisão → exit 0 (warn)" "$RC" "0"
+  check "política real: src/algo.ts COM decisão → exit 0" "$RC" "0"
+  # block promovido: SEM record, código bloqueia — a fresta do one-shot fechou
+  RC=0
+  jq -n --arg p "$PROJ/src/app.go" '{session_id:"sess-sem-record",tool_name:"Edit",tool_input:{file_path:$p}}' \
+    | MAESTRO_HOME="$IHOME" CLAUDE_PROJECT_DIR="$PROJ" "$GATE" >/dev/null 2>&1 || RC=$?
+  check "política real: código SEM decisão → exit 2 (block promovido)" "$RC" "2"
   # Dogfood (projeto == repo do plugin): a autoproteção cobre o caminho de
   # enforcement, NÃO a árvore inteira. Fechar o repo todo — inclusive README e
   # docs — inviabilizaria desenvolver o Maestro com agente, e o ADR-003 v1.1

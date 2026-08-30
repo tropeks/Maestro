@@ -22,6 +22,9 @@ H="$tmp/home"
 printf '{"session_id":"cons-1"}' | MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$REPO" \
   bash "$REPO/hooks/session-start.sh" >/dev/null 2>&1
 [[ -f "$H/gate-policy.sh" ]] && ok "política compilada (pré-condição)" || bad "política compilada"
+# gate.mode block (2026-08-29): consent levanta a DENYLIST, não o decision record —
+# as sondas de edição precisam de record válido para isolar a pergunta do escopo.
+MAESTRO_HOME="$H" "$BIN" decide --session cons-1 --workflow custom --mode direct >/dev/null 2>&1
 
 probe() { # probe <caminho-relativo-ao-repo> → rc do gate
   printf '{"session_id":"cons-1","tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$REPO/$1" \

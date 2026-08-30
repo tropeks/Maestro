@@ -375,7 +375,7 @@ if [[ "$GATE_MODE" == "block" ]]; then
 maestro: edição bloqueada — nenhuma decisão de roteamento registrada para esta
 sessão (ou a decisão expirou; TTL 4h).
 Registre antes de editar código:
-  maestro-decide --session <session_id> --workflow <fix|feature|refactor|ship|audit|custom> \
+  maestro decide --session <session_id> --workflow <fix|feature|refactor|ship|audit|custom> \
                  --mode <direct|subagent|multi> [--agents a,b] [--reason "..."]
 O <session_id> foi injetado no bloco <maestro-routing> no início da sessão.
 EOF
@@ -387,7 +387,7 @@ cat >&2 <<'EOF'
 maestro: aviso — editando código sem decisão de roteamento registrada
 (modo warn: a edição segue, o evento fica no log).
 Registre a decisão:
-  maestro-decide --session <session_id> --workflow <fix|feature|refactor|ship|audit|custom> \
+  maestro decide --session <session_id> --workflow <fix|feature|refactor|ship|audit|custom> \
                  --mode <direct|subagent|multi> [--agents a,b] [--reason "..."]
 EOF
 log_event gate_warn "${LOG_ARGS[@]}" "gate_mode=warn"

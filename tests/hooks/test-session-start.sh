@@ -113,7 +113,8 @@ if [[ -f "$POL" ]]; then
   ( set -euo pipefail
     # shellcheck disable=SC1090
     source "$POL"
-    [[ "$MAESTRO_GATE_MODE" == "warn" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
+    # promovido a block em 2026-08-29 (retro 14d + live E2E) — acompanhar a tabela
+    [[ "$MAESTRO_GATE_MODE" == "block" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_EXT" == ".md .txt" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_PATHS" == ".maestro/ docs/" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS" >&2; exit 1; }
     # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)

@@ -1,5 +1,26 @@
 # Decision log
 
+## 2026-08-29 — PROMOÇÃO warn→block: o Arco 1 fecha com prova viva
+
+- **Aval:** "Vai" do Capitão sobre o Arco 1. Dados dos dois lados: retro de 14d (133
+  decisões, override 13% < 20%) + live E2E provando que warn deixava one-shot editar sem
+  decide. `gate.mode: block` aplicado via consent routing-table (2º uso real do fluxo).
+- **A promoção quebrou 8 asserções que assumiam warn implicitamente** — todas corrigidas
+  pela semântica nova, incluindo a âncora de mutação do test-doctor que ficou CEGA quando
+  `mode: warn` sumiu do YAML (o próprio teste documentava esse risco; provou-se).
+- **O primeiro E2E em block reprovou com OURO:** a sessão ficou em deadlock — (1) o Bash
+  do `maestro decide` caía em prompt de permissão que headless não responde; (2) a
+  mensagem de bloqueio do gate instruía `maestro-decide` (nome hifenizado da era E1),
+  divergindo da injeção — o próprio modelo reportou a divergência. Fixes: allow
+  `Bash(maestro *)` no settings (registrar decisão não pode depender de prompt — trilho
+  sem fricção) e mensagem do gate unificada. Docs históricos (ADRs) mantêm o nome antigo
+  como registro de época; o gate, que é VIVO, foi corrigido.
+- **Tentativa 2: PASS** — sessão real registrou decide(feature/direct) ANTES da primeira
+  edição e entregou o arquivo. Critério de estabilidade do EPICS cumprido: block está
+  promovido COM prova comportamental, não por fé.
+- Suíte 1272 asserções via ledger. O gate agora BLOQUEIA edição sem decisão em toda
+  sessão desta máquina — reversão é uma linha (mode: warn) com aval humano.
+
 ## 2026-08-29 — E13: evidência mecânica + o FAIL mais valioso da semana
 
 - **Origem:** Capitão pediu garimpo do salto gstack 1.60→1.72. Triagem: evidence ledger

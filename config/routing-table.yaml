@@ -1,6 +1,10 @@
 version: 2   # v2 = bloco `bindings` (S-401). Emenda v1.3 do DATA_MODEL §1.
 gate:
-  mode: warn            # warn | block — promoção a block só com dados (roadmap Fase 1b)
+  mode: block           # promovido warn→block em 2026-08-29 COM dados: retro de 14d
+                        # (133 decisões, override 13% < 20%) + live E2E provando que warn
+                        # deixa sessão one-shot editar sem decide. Critério de estabilidade:
+                        # tests/e2e/test-live-dispatch.sh PASS em block (EPICS E13).
+                        # Reversão = esta linha de volta a warn (aval humano).
   allowlist:            # não-código de verdade: passa sem decision record
     extensions: [.md, .txt]
     paths: [.maestro/, docs/]

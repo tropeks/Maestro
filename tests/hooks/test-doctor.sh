@@ -97,7 +97,7 @@ Y
 expect_break "YAML sintaticamente inválido" "$d" 1 'FAIL routing-table.yaml: schema válido'
 
 d="$(fresh yaml-mode)"
-sed -i 's/^  mode: warn/  mode: yolo/' "$d/config/routing-table.yaml"
+sed -i 's/^  mode: block/  mode: yolo/' "$d/config/routing-table.yaml"
 expect_break "gate.mode fora de {warn,block}" "$d" 1 'gate.mode deve ser warn\|block'
 
 d="$(fresh yaml-sem-chaves)"
