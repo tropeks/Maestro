@@ -24,6 +24,40 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.8.0] — 2026-08-30
+
+Epic E16: documentation as contract — the product spec sessions actually
+follow. Designed research-first: a dedicated subagent surveyed spec-driven
+tooling and adherence studies before any code, killing three initial guesses.
+
+### Added
+- **`maestro docs`**: canonical docs declared in `.maestro.yaml`; each doc's
+  frontmatter states the areas it governs (`covers:` globs) and optionally
+  `reviewed: <sha>` (re-attest freshness without cosmetic edits — the
+  provenance-stamp pattern). Verdicts count COMMITS since
+  max(last doc commit, reviewed): boundary settlement, not same-commit
+  strictness. Flags absent docs, prose-only docs, and glob fan-out.
+- **Docs ratchet** (`.maestro-docs.tsv`, versioned): brownfield debt enters
+  without screaming; `--check` fails only NEW drift.
+- **Citation rule where research says it works**: short positive rule in the
+  session injection plus a single LATE nudge on the first edit inside a
+  governed area (`doc-governed` habit sensor) — instruction adherence decays
+  measurably within a session; session-start-only rules are theater.
+- **Orders name their authorizing doc** (`--doc`): the execution contract
+  demands the amendment in the same changeset; `--status` shows doc freshness.
+
+### Changed
+- Injection ratchet: first deliberate bump (6500 → 6800B, rationale in the
+  test) — the `## Projeto` section now carries four subsystems (brief, graph,
+  orders, docs); two prose squeezes preceded the bump.
+
+### Noted
+- Dogfood bit the author first: ARCHITECTURE.md measured 6 commits stale on
+  first run — settled with a real ADR amendment, not a pin.
+- Phase 2 recorded, not built: `maestro converge` (on-demand LLM
+  reconciliation) and the fire-and-forget ladder (doc delta → proposed order
+  → approved headless dispatch).
+
 ## [1.7.0] — 2026-08-30
 
 Epic E15: work orders — Maestro starts directing work it isn't watching. The
@@ -270,6 +304,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.8.0]: https://github.com/tropeks/Maestro/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/tropeks/Maestro/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/tropeks/Maestro/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/tropeks/Maestro/compare/v1.4.0...v1.5.0
