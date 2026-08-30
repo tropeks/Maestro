@@ -23,7 +23,11 @@ workflows:
   # `gstack-ship`/`gstack-cso` — o nome da ferramenta vazava para dentro do
   # fluxo e trocar de ferramenta obrigaria a reescrever o workflow.
   fix:      {steps: [investigate, implement, review], gate: none}
-  feature:  {steps: [plan, implement, review, qa], gate: plan}
+  # interrogate primeiro (diretriz do Capitão, 2026-08-30): office-hours desafia
+  # a premissa da mudança ANTES do plano; o que sobrevive vira a emenda ao doc
+  # canônico (E16) que o plano cita. Mudança de produto sem interrogação era o
+  # buraco entre "construir certo" e "construir o certo".
+  feature:  {steps: [interrogate, plan, implement, review, qa], gate: plan}
   refactor: {steps: [plan, implement, review], gate: plan}
   ship:     {steps: [ship], gate: ship}
   audit:    {steps: [audit], gate: none}
@@ -68,6 +72,11 @@ bindings:
   # terreno e perde pela regra de curadoria. Sem `agent:` de propósito: quem
   # investiga um bug em Go é o golang-pro, e isso é decisão da heurística.
   investigate: skill:systematic-debugging
+  # office-hours no modo product-interrogation: pergunta "por que isto, por que
+  # agora, o que NÃO construir" antes de qualquer plano de feature. O achado
+  # que sobrevive vira emenda ao doc canônico (E16) — interrogação sem registro
+  # é opinião que evapora.
+  interrogate: skill:gstack-office-hours
   # o gate humano `plan` (S-501) É o plan mode nativo: aprovação de um toque na
   # UI, que é o que torna o gate aprovável do telefone (brief §3.4). Preterido
   # skill:writing-plans — ele produz plano em arquivo para sobreviver a várias

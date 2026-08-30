@@ -28,7 +28,7 @@ command -v jq  >/dev/null || { echo "FAIL jq ausente (dependência declarada)"; 
 command -v cmp >/dev/null || { echo "FAIL cmp ausente (diffutils)"; exit 1; }
 
 FX="$tmp/skills"; mkdir -p "$FX"
-for s in systematic-debugging requesting-code-review gstack-qa gstack-ship gstack-cso; do
+for s in systematic-debugging requesting-code-review gstack-qa gstack-ship gstack-cso gstack-office-hours; do
   mkdir -p "$FX/$s"; echo 'v1' > "$FX/$s/SKILL.md"
 done
 

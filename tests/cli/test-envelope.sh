@@ -22,7 +22,7 @@ command -v sha256sum >/dev/null || { echo "FAIL sha256sum ausente (coreutils)"; 
 # fixture de skills: uma pasta por skill: citada nos bindings (padrão do
 # test-routing-table.sh — hermético, CI sem packs continua verde)
 FX="$tmp/skills"; mkdir -p "$FX"
-for s in systematic-debugging requesting-code-review gstack-qa gstack-ship gstack-cso; do
+for s in systematic-debugging requesting-code-review gstack-qa gstack-ship gstack-cso gstack-office-hours; do
   mkdir -p "$FX/$s"; echo 'v1' > "$FX/$s/SKILL.md"
 done
 

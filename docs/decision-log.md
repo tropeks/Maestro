@@ -1,5 +1,22 @@
 # Decision log
 
+## 2026-08-30 — Diretriz do Capitão: office-hours FORÇADO no workflow feature
+
+- **Ordem direta:** "o maestro deve forçar office-hours pra mudanças". Implementação: o
+  workflow `feature` ganha o step `interrogate` ANTES do plan, com binding
+  `skill:gstack-office-hours` (modo product-interrogation) — mudança de produto sem
+  interrogação era o buraco entre "construir certo" e "construir O certo".
+- **Sinergia com o E16 de propósito:** o comentário do binding diz — o achado que
+  sobrevive à interrogação vira EMENDA ao doc canônico que o plano cita; interrogação
+  sem registro é opinião que evapora. office-hours → doc → plano → código, cada elo
+  com dono.
+- **Aplicado pelo rito:** consent routing-table (3º uso real), eval-on-diff intacto
+  (rotas não mudaram — mudou a composição de steps), doctor 10 alvos resolvendo,
+  fixtures herméticos ganharam o skill novo. Escopo deliberado: SÓ feature — fix e
+  refactor não são mudança de produto; se o dogfood mostrar interrogação valendo em
+  refactor amplo, sobe por emenda.
+- Suíte 1342 asserções via ledger. Injeção 6573B (ratchet 6800).
+
 ## 2026-08-30 — E16: documentação como contrato — pesquisa antes, código depois
 
 - **Fluxo exemplar do que a casa prega:** ideia do Capitão → contraproposta com
