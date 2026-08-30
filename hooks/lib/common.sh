@@ -112,7 +112,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|budget_warn) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -136,6 +136,7 @@ _maestro_set_key_regex() {
     scope)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;
     outcome)    _maestro_re='^(accepted|rework|reverted)$' ;;
     suite)      _maestro_re='^(pass|fail)$' ;;
+    cap)        _maestro_re='^(steps|minutes)$' ;;
     n)          _maestro_re='^[0-9]{1,9}$' ;;
     *)          _maestro_re=""; return 1 ;;
   esac

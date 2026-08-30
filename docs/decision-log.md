@@ -1,5 +1,22 @@
 # Decision log
 
+## 2026-08-30 — E14: orçamento declarado — o Arco 2 abre e fecha na mesma noite
+
+- **"Segue" do Capitão** sobre a sequência dos arcos. Contract 2 da pesquisa RAD
+  implementado: caps INTEIROS no decision record (steps/minutes/cents), AND-of-caps,
+  warn-only. Roteávamos por complexidade; agora declaramos por orçamento — e o retro
+  correlaciona custo × desfecho quando os cents entram.
+- **Decisões de desenho:** steps por CONTADOR por sessão (ler o routing.jsonl no hot path
+  do gate estouraria o NFR de 50ms); aviso ÚNICO por cap (ruído ensina a ignorar — lição
+  do E9); cents é DECLARATIVO com honestidade documentada (nenhum hook enxerga custo
+  real); estouro NUNCA bloqueia — orçamento convive com gate.mode block sem virar segundo
+  bloqueio, é sinal de deriva para o humano, não trava.
+- **O schema do doctor pegou o próprio épico:** records com `budget` reprovavam no §3
+  ("sem campos extras") — a suíte acusou via um vazamento de fixture antes de qualquer
+  uso real. Schema v1.6 aceita budget íntegro e REPROVA float (a regra da casa virou
+  validação); suite_evidence do E13 entrou no mesmo passe (estava fora do allowlist).
+- Suíte 1294 asserções via ledger. test-budget.sh com 25 asserções.
+
 ## 2026-08-29 — Deslop do próprio Maestro: triagem honesta, 3 falsos positivos estruturais mortos
 
 - **Arco 1, parte 2 (após a promoção).** Triagem dos 30 achados sob catraca, pela tabela

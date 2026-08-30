@@ -431,6 +431,10 @@ interface DecisionRecord {
   agents?: string[];
   reason?: string;
   wtree?: string;
+  // E14/S-1401 — orçamento declarado (Contract 2 da pesquisa RAD): caps
+  // INTEIROS, AND-of-caps, warn-only. steps/minutes são medidos pelo gate;
+  // cents é DECLARATIVO (nenhum hook enxerga custo real) — o retro correlaciona.
+  budget?: { steps?: number; minutes?: number; cents?: number };
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -447,7 +451,10 @@ function readRecord(sessionId: string): DecisionRecord | null {
 // ---------------------------------------------------------------- comando: decide
 
 function cmdDecide(args: Args): number {
-  rejectUnknown(args, ["session", "workflow", "mode", "agents", "reason"]);
+  rejectUnknown(args, [
+    "session", "workflow", "mode", "agents", "reason",
+    "max-steps", "max-min", "max-cents", // E14: orçamento declarado
+  ]);
 
   // --session (obrigatório)
   const session = requireValue(args, "session");
@@ -580,6 +587,26 @@ function cmdDecide(args: Args): number {
     }
   }
 
+  // ---- E14: orçamento declarado (inteiros; float em custo é proibido — CLAUDE.md)
+  const budget: { steps?: number; minutes?: number; cents?: number } = {};
+  for (const [flag, key, max] of [
+    ["max-steps", "steps", 500],
+    ["max-min", "minutes", 1440],
+    ["max-cents", "cents", 100000],
+  ] as const) {
+    const raw = requireValue(args, flag);
+    if (raw === null) continue;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > max) {
+      throw invalid(
+        `--${flag} exige inteiro entre 1 e ${max}`,
+        "o orçamento é declarado em inteiros: passos, minutos, centavos",
+      );
+    }
+    budget[key] = n;
+  }
+  const hasBudget = Object.keys(budget).length > 0;
+
   // ---- gravação
   ensureDirs();
 
@@ -597,6 +624,7 @@ function cmdDecide(args: Args): number {
     ...(agents ? { agents } : {}),
     ...(reason ? { reason } : {}),
     ...(wtree ? { wtree } : {}),
+    ...(hasBudget ? { budget } : {}),
   };
 
   const target = recordPath(session);
@@ -756,6 +784,14 @@ function cmdStatus(args: Args): number {
             ? `  validade  : válida por mais ${humanDuration(deltaSec)} (expira ${rec.expires_at})`
             : `  validade  : EXPIRADA há ${humanDuration(deltaSec)} — registre uma nova decisão`,
         );
+      }
+      if (rec.budget) {
+        const b = rec.budget;
+        const parts: string[] = [];
+        if (b.steps) parts.push(`${b.steps} passo(s)`);
+        if (b.minutes) parts.push(`${b.minutes}min`);
+        if (b.cents) parts.push(`${b.cents} centavo(s) [declarativo]`);
+        out.push(`  orçamento : ${parts.join(" · ")} (AND-of-caps, warn-only)`);
       }
       if (rec.reason) out.push(`  motivo    : ${rec.reason}`);
       // E7/S-701: freshness de conteúdo — comparação feita AQUI (CLI, sem NFR

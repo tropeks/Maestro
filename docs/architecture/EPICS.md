@@ -331,6 +331,21 @@ checagem MECÂNICA (conteúdo + comando + idade), não sistema de honra.
   browser e section carves (fora de domínio / superfície 20× menor).
 - **Dependências:** E7/S-701 (wtree), E10 (outcome).
 
+### E14 — Orçamento declarado (P1, S) — Arco 2, aprovado 2026-08-29 ("Segue")
+Contract 2 da pesquisa RAD, o último P1: roteamos por complexidade, faltava rotear por
+ORÇAMENTO. Caps inteiros, AND-of-caps, warn-only — orçamento é sinal de deriva, não trava.
+- **S-1401:** `decide --max-steps/--max-min/--max-cents` → `budget` no record (§3 v1.6;
+  inteiros ≥1, float rejeitado — regra da casa); `status` exibe; schema do doctor valida
+  (record com float reprova). **Entregue 2026-08-30.**
+- **S-1402:** gate mede `steps` (contador por sessão — ler o log no hot path estouraria o
+  NFR) e `minutes` (ts do record); aviso ÚNICO por cap, instruindo reportar ao humano;
+  `budget_warn` no vocabulário com `cap`; `cents` declarativo para o retro correlacionar
+  custo × desfecho. Estouro NUNCA bloqueia — convive com gate.mode block sem virar segundo
+  bloqueio. *AC: 25 asserções em test-budget.sh — aviso único, warn-only, malformado
+  degrada, retro conta.* **Entregue 2026-08-30.**
+- **Dependências:** E10 (retro/outcome), promoção block (o orçamento nasceu já convivendo
+  com o gate duro).
+
 ---
 
 ## Grafo de dependências

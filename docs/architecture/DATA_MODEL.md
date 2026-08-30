@@ -159,6 +159,12 @@ exatamente o record de quem fechou o loop. Estão dentro agora, e **validados**:
 os dois enums são fechados e `outcome_ts`/`suite` só existem com `outcome`
 presente — desfecho órfão é erro de schema, não campo opcional.
 
+#### Emenda v1.6 (E14/S-1401) — orçamento declarado no record
+`budget: {steps?, minutes?, cents?}` — caps INTEIROS ≥1 (float em custo é proibido),
+AND-of-caps, todos opcionais. `steps` e `minutes` são medidos pelo gate (aviso ÚNICO por
+cap, warn-only — orçamento é sinal de deriva, nunca trava); `cents` é declarativo (nenhum
+hook enxerga custo real) e existe para o retro correlacionar custo × desfecho.
+
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
 Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).
@@ -179,6 +185,9 @@ do log são um **conjunto fechado e tipado**, validado em `common.sh::log_event`
 Nenhuma chave aceita `/` — garantia estrutural contra vazamento de caminho. `reason` vive
 só no decision record (§3), nunca no log.
 Rotação: por tamanho (10MB) ou mensal, arquivo `routing-YYYY-MM.jsonl`.
+
+**Emenda E14:** evento `budget_warn` com chave `cap` (`steps|minutes`) — um por cap
+por sessão, nunca por edição.
 
 **Emenda E10:** eventos `consent_grant`/`consent_revoke`/`outcome` no vocabulário,
 com chaves `scope` (`^[a-z][a-z-]{2,23}$`), `outcome` (enum) e `suite` (enum);

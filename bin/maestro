@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit)
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget'
 
 usage() {
   cat <<'U'
@@ -1098,6 +1098,10 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
     and (if has("outcome_ts") then (.outcome_ts | type == "string") else true end)
     and (if has("suite") then (.suite as $s | ["pass","fail"] | index($s) != null) else true end)
     and (if (has("outcome_ts") or has("suite")) then has("outcome") else true end)
+    and (if has("budget") then (.budget | type == "object"
+      and ((keys - ["steps","minutes","cents"]) | length == 0)
+      and (all(.[]; type == "number" and . == floor and . >= 1))) else true end)
+    and (if has("suite_evidence") then (.suite_evidence as $e | ["cited","none"] | index($e) != null) else true end)
   ' "$f" >/dev/null 2>&1
 }
 
@@ -1608,6 +1612,10 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   ndec=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
   ovr=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
   rate=0; (( ndec + ovr > 0 )) && rate=$(( 100 * ovr / (ndec + ovr) ))
+  # E14: orçamento — quantas decisões declararam caps e quantos estouros houve
+  local n_bw
+  n_bw=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "budget_warn" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+  printf -- '-- orçamento: %s estouro(s) de cap na janela (budget_warn)\n' "$n_bw"
   # E13: cobertura do ledger de evidência (arquivos, não log — estado local)
   local n_ev=0 n_ev_ok=0 evf
   shopt -s nullglob

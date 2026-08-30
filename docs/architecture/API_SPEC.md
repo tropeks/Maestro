@@ -95,6 +95,12 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
 
+### `maestro decide` — flags de orçamento (E14)
+- `--max-steps N` (1–500) · `--max-min N` (1–1440) · `--max-cents N` (1–100000): caps
+  inteiros gravados em `budget` (DATA_MODEL §3 v1.6). O gate avisa UMA vez por cap
+  estourado (steps por contador próprio; minutes pelo ts do record) e NUNCA bloqueia;
+  `status` exibe; `retro` conta `budget_warn` na janela.
+
 ### `maestro evidence` (E13)
 - `--record [--label l] -- <cmd>`: roda o comando no projeto e grava o recibo
   (DATA_MODEL §8); o exit do CLI espelha o do comando. Leitura (default) imprime

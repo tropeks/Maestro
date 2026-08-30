@@ -365,6 +365,48 @@ fi
 
 # ── 5. decision record válido e não expirado (TTL 4h) ──────────────────────
 if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
+  # ── E14/S-1402: orçamento declarado — AND-of-caps, WARN-ONLY, 1 aviso/cap ──
+  # steps = gate_pass acumulado (contador próprio; ler o log no hot path
+  # estouraria o NFR); minutes = agora - ts do record. cents é declarativo (o
+  # hook não enxerga custo) — vive no record para o retro correlacionar.
+  # Estouro NUNCA bloqueia: orçamento é sinal de deriva, não trava (pesquisa
+  # RAD, Contract 2). Falha de qualquer parte degrada em silêncio.
+  _b_rec="$MAESTRO_SESSIONS_DIR/$SID.json"
+  _b_json=""
+  IFS= read -r -d '' -n 4096 _b_json < "$_b_rec" 2>/dev/null || true
+  if [[ "$_b_json" == *'"budget"'* ]]; then
+    _b_steps=""; _b_min=""
+    [[ "$_b_json" =~ \"steps\":([0-9]{1,4}) ]] && _b_steps="${BASH_REMATCH[1]}"
+    [[ "$_b_json" =~ \"minutes\":([0-9]{1,4}) ]] && _b_min="${BASH_REMATCH[1]}"
+    _b_cnt_f="$MAESTRO_SESSIONS_DIR/budget-$SID"
+    _b_cnt=0; _b_warned=""
+    if [[ -f "$_b_cnt_f" ]]; then
+      IFS=$'\t' read -r _b_cnt _b_warned < "$_b_cnt_f" 2>/dev/null || true
+      [[ "$_b_cnt" =~ ^[0-9]+$ ]] || _b_cnt=0
+    fi
+    _b_cnt=$(( _b_cnt + 1 ))
+    if [[ -n "$_b_steps" && $_b_cnt -gt $_b_steps && "$_b_warned" != *s* ]]; then
+      _b_warned+="s"
+      printf 'maestro: orçamento — passo %s de %s declarados: a sessão passou do plano. Continue se fizer sentido, mas diga ao humano que estourou.\n' \
+        "$_b_cnt" "$_b_steps" >&2
+      log_event budget_warn "${LOG_ARGS[@]}" "cap=steps"
+    fi
+    if [[ -n "$_b_min" && "$_b_warned" != *m* ]]; then
+      _b_ts=""
+      [[ "$_b_json" =~ \"ts\":\"([0-9T:+-]{19,25})\" ]] && _b_ts="${BASH_REMATCH[1]}"
+      if [[ -n "$_b_ts" ]]; then
+        _b_start=$(date -d "$_b_ts" +%s 2>/dev/null) || _b_start=""
+        if [[ "$_b_start" =~ ^[0-9]+$ ]] && \
+           (( ( $(maestro_now_epoch) - _b_start ) / 60 > _b_min )); then
+          _b_warned+="m"
+          printf 'maestro: orçamento — janela de %smin declarada estourou. Continue se fizer sentido, mas diga ao humano.\n' "$_b_min" >&2
+          log_event budget_warn "${LOG_ARGS[@]}" "cap=minutes"
+        fi
+      fi
+    fi
+    printf '%s\t%s\n' "$_b_cnt" "$_b_warned" > "$_b_cnt_f.tmp.$$" 2>/dev/null \
+      && mv -f "$_b_cnt_f.tmp.$$" "$_b_cnt_f" 2>/dev/null || rm -f "$_b_cnt_f.tmp.$$" 2>/dev/null || :
+  fi
   log_event gate_pass "${LOG_ARGS[@]}"
   exit 0
 fi
