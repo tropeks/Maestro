@@ -346,6 +346,34 @@ ORÇAMENTO. Caps inteiros, AND-of-caps, warn-only — orçamento é sinal de der
 - **Dependências:** E10 (retro/outcome), promoção block (o orçamento nasceu já convivendo
   com o gate duro).
 
+### E15 — Work orders: do roteador ao diretor (P1, M) — Arco 3 v1, aprovado 2026-08-30
+Contract 3 da pesquisa RAD, o último dos três. A ordem viaja com o repo
+(`.maestro/orders/NNN.md`) e carrega o contrato: objetivo, critérios, frozen zones
+(BMAD), Ask-First, orçamento (E14), branch esperado. Princípio central: **estado
+DERIVADO, nunca auto-declarado** — o executor não escreve o próprio boletim.
+- **S-1501:** `maestro order --create/--list/--status/--accept` — carimbo v1, id
+  sequencial, slug/branch derivados; corpo via stdin; contrato de execução gerado no
+  próprio arquivo (branch próprio, prova via ledger, Ask-First, quem aceita).
+  **Entregue 2026-08-30.**
+- **S-1502:** derivação — aberta (nada) → em_execucao (branch existe) → provada
+  (recibo `order-N` exit 0 cujo wtree_after == ÁRVORE DO TIP do branch: prova mecânica
+  S-701 de que a suíte passou naquele conteúdo exato; commit posterior REBAIXA para
+  em_execucao) → aceita (`--accept` do diretor, que EXIGE estado provada e carimba
+  auditável). **Entregue 2026-08-30.**
+- **S-1503:** injeção — `ordens: N pendente(s) → maestro order --list` na seção
+  `## Projeto`; sessão nova no projeto descobre o trabalho sozinha (mesmo padrão do
+  brief). **Entregue 2026-08-30.**
+- **S-1504:** frozen zones no gate — session-start COMPILA as zonas das ordens
+  não-aceitas na política (`MAESTRO_GATE_ORDER_FROZEN`; hot path não lê ordens);
+  edição na zona: autônomo (subagent/multi) BLOQUEIA, humano no volante avisa e passa
+  (assimetria do S-502); aceite descongela na recompilação. `order_create`/
+  `order_accept` no vocabulário; `cmd=frozen_zone` audita. *AC: 27 asserções em
+  test-order.sh.* **Entregue 2026-08-30.**
+- **Fora do v1, com registro:** frota multi-máquina (Legatus bridge — Fase 2 do arco,
+  depois do dado do v1) e despacho automático de sessões (criar ordem ≠ executá-la).
+- **Dependências:** E13 (a prova É o ledger), E14 (orçamento na ordem), E8 (padrão de
+  descoberta via injeção).
+
 ---
 
 ## Grafo de dependências

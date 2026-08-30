@@ -24,6 +24,31 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.7.0] — 2026-08-30
+
+Epic E15: work orders — Maestro starts directing work it isn't watching. The
+third and last contract from the RAD research is implemented; all three now
+ship (evidence, budget, work order).
+
+### Added
+- **`maestro order`**: versioned work orders in the target repo
+  (`.maestro/orders/NNN.md`) carrying objective, acceptance criteria, frozen
+  zones, Ask-First triggers, declared budget, and the expected branch — plus a
+  generated execution contract (own branch, proof via the ledger, who accepts).
+- **Derived state, never self-declared**: open → executing (branch exists) →
+  proven (evidence receipt whose wtree matches the branch tip tree — a commit
+  after the proof demotes the order automatically) → accepted (director's
+  explicit `--accept`, refused without proof, stamped and audited).
+- **Frozen zones in the gate**: compiled into the policy at session start;
+  autonomous sessions are blocked inside a pending order's frozen zone, humans
+  are warned (the S-502 asymmetry); acceptance thaws on recompile.
+- Injection: pending orders surface in the `## Projeto` section, so any new
+  session in the project discovers the work by itself.
+
+### Noted
+- Out of v1 by design: multi-machine fleet (Legatus bridge — the arc's phase
+  2) and automatic session dispatch (creating an order ≠ executing it).
+
 ## [1.6.0] — 2026-08-30
 
 The gate goes hard, and decisions learn to declare their budget.
@@ -245,6 +270,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.7.0]: https://github.com/tropeks/Maestro/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/tropeks/Maestro/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/tropeks/Maestro/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/tropeks/Maestro/compare/v1.3.0...v1.4.0

@@ -1,5 +1,26 @@
 # Decision log
 
+## 2026-08-30 — E15: work orders — o Arco 3 v1 no mesmo fim de semana
+
+- **Aprovação direta do Capitão** sobre o desenho apresentado. Os três Contracts da
+  pesquisa RAD estão agora TODOS implementados (evidência E13, orçamento E14, work
+  order E15) — a pesquisa de 17/08 foi integralmente paga em 13 dias.
+- **A decisão de desenho que carrega o épico:** estado DERIVADO. A ordem nunca diz o
+  próprio estado — branch existir é git, provada é recibo do ledger cujo wtree_after
+  bate com a ÁRVORE DO TIP do branch (o fingerprint S-701 fechando o ciclo: para
+  working tree limpo no tip, wtree == tree hash do commit — prova mecânica de "a suíte
+  passou NESTE conteúdo"), e commit posterior REBAIXA a ordem para em_execucao sozinho.
+  Aceite é ato do diretor, exige provada, e fica carimbado auditável.
+- **Frozen zones com a assimetria do S-502:** autônomo bloqueia, humano avisa —
+  compiladas na política pelo session-start (hot path do gate não lê ordens).
+- **set -e + pipefail pela QUARTA vez** (ls de glob inexistente matando atribuição).
+  O padrão está catalogado nos gotchas; a partir de agora, toda substituição de
+  comando em bin/hooks nasce com `|| true` quando o vazio é resposta válida.
+- **Fixture de git do teste tropeçou no próprio derivado** (arquivo da ordem sujo
+  bloqueando checkout) — lembrete de que ordem também é conteúdo versionado.
+- Suíte 1294 → 1318 asserções via ledger (test-order.sh, 27). Política do gate: 7
+  variáveis (ORDER_FROZEN).
+
 ## 2026-08-30 — E14: orçamento declarado — o Arco 2 abre e fecha na mesma noite
 
 - **"Segue" do Capitão** sobre a sequência dos arcos. Contract 2 da pesquisa RAD

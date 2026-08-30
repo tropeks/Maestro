@@ -397,6 +397,20 @@ write_gate_policy() {
     printf 'MAESTRO_GATE_ALLOW_PATHS="%s"\n' "$ALLOW_PATHS"
     printf 'MAESTRO_GATE_DENY_PATHS="%s"\n'  "$deny"
     printf 'MAESTRO_GATE_DENY_SELF="%s"\n'   "$self"
+    # E15/S-1504 — frozen zones das work orders NÃO-aceitas do projeto (BMAD).
+    # Compiladas AQUI (start, barato) para o gate não ler ordens no hot path.
+    local _ofz="" _of
+    if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
+      shopt -s nullglob
+      for _of in "$PROJECT_DIR/.maestro/orders"/*.md; do
+        grep -q '^accepted_at: ' "$_of" 2>/dev/null && continue
+        _fz=$(awk -F': ' 'NR>14 { exit } $1 == "frozen" { print substr($0, 9); exit }' "$_of" 2>/dev/null)
+        [[ -n "$_fz" ]] && _ofz+="${_ofz:+ }$_fz"
+      done
+      shopt -u nullglob
+    fi
+    _ofz="${_ofz//[^A-Za-z0-9._\/ -]/}"
+    printf 'MAESTRO_GATE_ORDER_FROZEN="%s"\n' "$_ofz"
     printf 'MAESTRO_PLUGIN_ROOT="%s"\n'      "$REPO_DIR"
   } >"$tmp" 2>/dev/null || {
     rm -f "$tmp" 2>/dev/null || :
@@ -552,6 +566,16 @@ build_and_emit() {
     nogit)
       sec_project+="grafo: presente (sem git para conferir frescor) → graphify query com desconfiança"$'\n' ;;
   esac
+  # E15/S-1503 — ordens de trabalho pendentes: a sessão descobre sozinha
+  local _on=0 _ofl
+  if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
+    shopt -s nullglob
+    for _ofl in "$PROJECT_DIR/.maestro/orders"/*.md; do
+      grep -q '^accepted_at: ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
+    done
+    shopt -u nullglob
+  fi
+  (( _on > 0 )) && sec_project+="ordens: $_on pendente(s) neste projeto → maestro order --list (contrato, branch e prova exigida em cada uma)"$'\n'
   [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
   sec_project+="Ao fechar trabalho substancial, atualize o brief: maestro brief --write --session $SESSION_ID (narrativa curta via stdin: o que estava em curso, decisões abertas, próximo passo)"$'\n'
 

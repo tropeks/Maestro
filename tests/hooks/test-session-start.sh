@@ -108,7 +108,8 @@ if [[ -f "$POL" ]]; then
   head -1 "$POL" | grep -qF '# gerado por maestro session-start — nao editar' \
     && ok "cabeçalho no formato do contrato" || bad "cabeçalho no formato do contrato"
   n=$(grep -c '^MAESTRO_' "$POL")
-  [[ "$n" -eq 6 ]] && ok "exatamente 6 variáveis" || bad "exatamente 6 variáveis (achou $n)"
+  # 7ª variável: MAESTRO_GATE_ORDER_FROZEN (E15/S-1504)
+  [[ "$n" -eq 7 ]] && ok "exatamente 7 variáveis" || bad "exatamente 7 variáveis (achou $n)"
   # sourceável pelo GATE, sem efeito colateral
   ( set -euo pipefail
     # shellcheck disable=SC1090
@@ -123,7 +124,8 @@ if [[ -f "$POL" ]]; then
     [[ "$MAESTRO_GATE_DENY_SELF" == "agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/" ]] \
       || { echo "self=$MAESTRO_GATE_DENY_SELF" >&2; exit 1; }
     [[ "$MAESTRO_PLUGIN_ROOT" == "$REPO" ]] || { echo "root=$MAESTRO_PLUGIN_ROOT" >&2; exit 1; }
-  ) && ok "6 valores batem com config/routing-table.yaml" || bad "6 valores batem com config/routing-table.yaml"
+    [[ "${MAESTRO_GATE_ORDER_FROZEN-unset}" == "" ]] || { echo "frozen=$MAESTRO_GATE_ORDER_FROZEN" >&2; exit 1; }
+  ) && ok "7 valores batem com config/routing-table.yaml" || bad "7 valores batem com config/routing-table.yaml"
 else
   bad "gate-policy.sh gerado"
 fi

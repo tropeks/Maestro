@@ -95,6 +95,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
 
+### `maestro order` (E15)
+- `--create --title t [--branch b] [--frozen "a/ b/"] [--budget-*] [--project d]`
+  (corpo via stdin) · `--list` · `--status N` · `--accept N`. Estado derivado de
+  git + ledger (§8) + aceite; `--accept` exige `provada` (exit 1 sem prova). O
+  session-start compila frozen zones de ordens pendentes na política do gate:
+  autônomo bloqueia na zona, direto avisa; aceite descongela.
+
 ### `maestro decide` — flags de orçamento (E14)
 - `--max-steps N` (1–500) · `--max-min N` (1–1440) · `--max-cents N` (1–100000): caps
   inteiros gravados em `budget` (DATA_MODEL §3 v1.6). O gate avisa UMA vez por cap

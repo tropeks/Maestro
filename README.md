@@ -98,6 +98,18 @@ for review and CI; `habits:` in `.maestro.yaml` tunes the set per project.
 fails only on slop that EXCEEDS the baseline — and the `/maestro:deslop` slash
 command pays the debt down in reviewable, test-gated batches with tiered agents.
 
+### Work orders — directing work you're not watching
+
+A **work order** travels with the target repo (`.maestro/orders/NNN.md`):
+objective, acceptance criteria, frozen zones (paths the executor must not
+touch — autonomous sessions get blocked there, humans get warned), Ask-First
+triggers, a declared budget, and the expected branch. Its state is **derived,
+never self-declared**: open → executing (the branch exists) → proven (an
+evidence receipt whose content fingerprint matches the branch tip — a commit
+after the proof demotes it automatically) → accepted (the director's explicit
+sign-off, which requires proof). New sessions in the project discover pending
+orders through the injection. The executor never closes its own order.
+
 ### The learning loop — batch, never at runtime
 
 Maestro never self-tunes at runtime (rails stay deterministic); it learns in

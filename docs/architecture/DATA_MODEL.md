@@ -186,6 +186,10 @@ Nenhuma chave aceita `/` — garantia estrutural contra vazamento de caminho. `r
 só no decision record (§3), nunca no log.
 Rotação: por tamanho (10MB) ou mensal, arquivo `routing-YYYY-MM.jsonl`.
 
+**Emenda E15:** eventos `order_create`/`order_accept` (chave `n` = id); gate_block/
+warn de zona congelada carrega `cmd=frozen_zone`; a política compilada ganha
+`MAESTRO_GATE_ORDER_FROZEN` (7ª variável).
+
 **Emenda E14:** evento `budget_warn` com chave `cap` (`steps|minutes`) — um por cap
 por sessão, nunca por edição.
 
@@ -282,6 +286,17 @@ after (árvore parada durante a corrida), exit 0, idade < teto (`MAESTRO_EVIDENC
 default 86400s). Falha também é recibo — exit é dado. Estado local (classe do brief),
 jamais no log; consumidores: `outcome --suite` (cita ou avisa), deslop, retro, doctor.
 `# classification: confidential` (paths derivados + hashes locais)
+
+### 9. Work order — `<projeto>/.maestro/orders/NNN-slug.md` (E15, VERSIONADO)
+
+Único artefato do Maestro que vive NO repo do projeto de propósito: a ordem atravessa
+clone e máquina via git. Carimbo `<!-- maestro-order v1 -->` com id/ts/epoch/head/
+branch/frozen/budget_*/author_session; corpo markdown livre (objetivo, critérios,
+Ask-First) + contrato de execução gerado. Estado NUNCA gravado — derivado: branch
+existe (git) · provada (recibo §8 com wtree_after == árvore do tip do branch) ·
+aceita (`accepted_at` anexado pelo diretor via --accept, que exige provada). Log:
+`order_create`/`order_accept` com `n` (id) — nunca título/caminho.
+`# classification: public` (a ordem é conteúdo do repo do usuário)
 
 ---
 

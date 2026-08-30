@@ -61,6 +61,8 @@ maestro <comando>
                   sensores anti-slop do hook pós-edição, com os guias — 0 limpo · 1 achados
                   --baseline grava a catraca (.maestro-habits.tsv, versionada); com ela
                   presente, --all reprova SÓ o que exceder o baseline (S-905)
+  order           work order versionada (E15): --create/--list/--status/--accept — estado
+                  DERIVADO de git + evidência + aceite; executor não fecha a própria ordem
   evidence        recibo de execução amarrado a conteúdo (E13): --record -- <cmd> grava
                   wtree antes/depois + hash do comando + exit; leitura dá VÁLIDA/VENCIDA
                   nomeando o motivo — "testes passaram" vira checagem mecânica
@@ -1264,6 +1266,170 @@ doctor() {
   exit 0
 }
 
+# ----------------------------------------------------------------- order (E15)
+
+cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
+  # A ordem viaja com o repo (.maestro/orders/NNN.md — sobrevive a clone e
+  # atravessa máquina via git) e carrega o contrato: objetivo, critérios,
+  # frozen zones (BMAD), Ask-First, orçamento (E14) e o branch esperado.
+  # O estado NUNCA é auto-declarado: deriva de git + evidence ledger + aceite —
+  #   aberta       → nada aconteceu
+  #   em_execucao  → o branch declarado existe
+  #   provada      → recibo de evidência (label order-NNN) com exit 0 cujo
+  #                  wtree_after == árvore do TIP do branch (prova mecânica de
+  #                  que a suíte passou exatamente naquele conteúdo — S-701)
+  #   aceita       → aceite explícito do diretor (--accept, auditado)
+  # Executor não escreve o próprio boletim; o diretor assina o aceite.
+  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid=""
+  local b_steps="" b_min="" b_cents=""
+  while (( $# )); do
+    case "$1" in
+      --create)  action="create" ;;
+      --list)    action="list" ;;
+      --status)  action="status"; oid="${2:-}"; shift ;;
+      --accept)  action="accept"; oid="${2:-}"; shift ;;
+      --title)   title="${2:-}"; shift ;;
+      --branch)  branch="${2:-}"; shift ;;
+      --frozen)  frozen="${2:-}"; shift ;;
+      --budget-steps) b_steps="${2:-}"; shift ;;
+      --budget-min)   b_min="${2:-}"; shift ;;
+      --budget-cents) b_cents="${2:-}"; shift ;;
+      --session) sid="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N" 1 ;;
+    esac
+    shift
+  done
+  [[ -n "$action" ]] || action="list"
+  local odir="$proj/.maestro/orders"
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+
+  if [[ "$action" == "create" ]]; then
+    [[ -n "$title" ]] || die validation "--title obrigatório" "o título é o contrato em uma linha" 1
+    [[ -t 0 ]] && die validation "corpo ausente" \
+      "passe objetivo/critérios/Ask-First via stdin (heredoc)" 1
+    for v in "$b_steps" "$b_min" "$b_cents"; do
+      [[ -z "$v" || "$v" =~ ^[0-9]{1,6}$ ]] || die validation "orçamento exige inteiros" "E14: passos/min/centavos" 1
+    done
+    local slug n next
+    slug=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | tr -s '-' | head -c 32)
+    slug="${slug%-}"; slug="${slug#-}"
+    mkdir -p "$odir" 2>/dev/null || die env "não consigo criar $odir" "cheque permissões" 2
+    next=1
+    shopt -s nullglob
+    for f in "$odir"/[0-9][0-9][0-9]-*.md "$odir"/[0-9][0-9][0-9].md; do
+      n="${f##*/}"; n="${n%%[-.]*}"; n=$((10#$n))
+      (( n >= next )) && next=$(( n + 1 ))
+    done
+    shopt -u nullglob
+    oid=$(printf '%03d' "$next")
+    [[ -n "$branch" ]] || branch="order/$oid-$slug"
+    [[ "$branch" =~ ^[A-Za-z0-9/_-]{1,80}$ ]] || die validation "branch inválido" "" 1
+    local of="$odir/$oid-$slug.md" head_sha
+    head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
+    local body; body=$(head -c 16384)
+    {
+      printf '<!-- maestro-order v1\n'
+      printf 'id: %s\nts: %s\nepoch: %s\nhead: %s\n' "$oid" "$(date -Iseconds)" "$(maestro_now_epoch)" "$head_sha"
+      printf 'branch: %s\n' "$branch"
+      [[ -n "$frozen" ]]  && printf 'frozen: %s\n' "$frozen"
+      [[ -n "$b_steps" ]] && printf 'budget_steps: %s\n' "$b_steps"
+      [[ -n "$b_min" ]]   && printf 'budget_min: %s\n' "$b_min"
+      [[ -n "$b_cents" ]] && printf 'budget_cents: %s\n' "$b_cents"
+      printf 'author_session: %s\n' "${sid:-desconhecido}"
+      printf -- '-->\n'
+      printf '# Ordem %s — %s\n\n' "$oid" "$title"
+      printf '%s\n' "$body"
+      printf '\n## Contrato de execução\n'
+      printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
+      [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
+      printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$oid"
+      printf -- '- Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.\n'
+      printf -- '- O aceite é do diretor: `maestro order --accept %s` (você não fecha a própria ordem).\n' "$oid"
+    } > "$of.tmp.$$" && mv -f "$of.tmp.$$" "$of" \
+      || { rm -f "$of.tmp.$$" 2>/dev/null; die env "falha ao gravar $of" "" 2; }
+    log_event order_create ${sid:+session_id="$sid"} n="$((10#$oid))"
+    printf 'ordem %s criada: %s\n  branch: %s\n  status: aberta (derivado — nada executado ainda)\n' "$oid" "$of" "$branch"
+    return 0
+  fi
+
+  # helpers de derivação -----------------------------------------------------
+  _order_field() { awk -F': ' -v k="$2" 'NR>14 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null; }
+  _order_status() { # <arquivo> → status derivado no stdout
+    local f="$1" br ev_f ev_w tip_tree
+    grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
+    br=$(_order_field "$f" branch)
+    if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+      printf 'aberta'; return 0
+    fi
+    local o; o=$(_order_field "$f" id)
+    ev_f=$(maestro_evidence_file "$proj" "order-$((10#$o))" 2>/dev/null)
+    if [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null; then
+      ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
+      tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null)
+      if [[ -n "$ev_w" && "$ev_w" == "$tip_tree" ]]; then
+        printf 'provada'; return 0
+      fi
+    fi
+    printf 'em_execucao'
+    return 0
+  }
+
+  if [[ "$action" == "list" ]]; then
+    [[ -d "$odir" ]] || { echo "nenhuma ordem em $odir (crie: maestro order --create)"; return 0; }
+    local f any=0
+    shopt -s nullglob
+    for f in "$odir"/*.md; do
+      any=1
+      printf '%s  [%s]  %s\n' "$(_order_field "$f" id)" "$(_order_status "$f")" \
+        "$(grep -m1 '^# ' "$f" | sed 's/^# //')"
+    done
+    shopt -u nullglob
+    (( any == 0 )) && echo "nenhuma ordem em $odir"
+    return 0
+  fi
+
+  [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
+  oid=$(printf '%03d' "$((10#$oid))")
+  local of
+  # set -e + pipefail: ls de glob inexistente sai 2 e mataria a atribuição
+  of=$(ls "$odir/$oid"-*.md "$odir/$oid.md" 2>/dev/null | head -1 || true)
+  [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
+
+  if [[ "$action" == "status" ]]; then
+    local st br; st=$(_order_status "$of"); br=$(_order_field "$of" branch)
+    printf 'ordem %s: %s\n' "$oid" "$st"
+    printf '  arquivo : %s\n  branch  : %s' "$of" "${br:-?}"
+    git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 \
+      && printf ' (existe, tip %s)\n' "$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)" \
+      || printf ' (não existe)\n'
+    printf '  prova   : ' 
+    "$REPO_DIR/bin/maestro" evidence --label "order-$((10#$oid))" --project "$proj" 2>/dev/null | head -1 || echo "?"
+    case "$st" in
+      provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
+      aceita)  echo '  encerrada.' ;;
+      *)       echo '  próximo : executor abre o branch, entrega e prova via ledger' ;;
+    esac
+    return 0
+  fi
+
+  if [[ "$action" == "accept" ]]; then
+    local st; st=$(_order_status "$of")
+    [[ "$st" == "aceita" ]] && { echo "ordem $oid já aceita"; return 0; }
+    if [[ "$st" != "provada" ]]; then
+      die validation "ordem $oid está '$st', não 'provada'" \
+        "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
+    fi
+    printf 'accepted_at: %s\naccepted_session: %s\n' "$(date -Iseconds)" "${sid:-desconhecido}" >> "$of"
+    log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
+    printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
+    return 0
+  fi
+}
+
 # -------------------------------------------------------------- evidence (E13)
 
 cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gstack-evidence)
@@ -1969,6 +2135,7 @@ case "$cmd" in
   retro) shift; cmd_retro "$@" ;;
   graph) shift; cmd_graph "$@" ;;
   evidence) shift; cmd_evidence "$@" ;;
+  order) shift; cmd_order "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

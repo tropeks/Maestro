@@ -146,6 +146,7 @@ ALLOW_PATHS="${MAESTRO_GATE_ALLOW_PATHS-}"
 # Defaults conservadores para o caso de a policy não ter sido compilada ainda.
 # paths = universais (qualquer projeto); self = só ancorados no plugin root.
 DENY_PATHS="${MAESTRO_GATE_DENY_PATHS-.claude/ .github/workflows/}"
+ORDER_FROZEN="${MAESTRO_GATE_ORDER_FROZEN-}"
 DENY_SELF="${MAESTRO_GATE_DENY_SELF-agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/}"
 PLUGIN_ROOT="${MAESTRO_PLUGIN_ROOT-}"
 # A autoproteção só age ancorada na raiz do plugin. Se a política não foi
@@ -353,6 +354,32 @@ Se a alteração é intencional, peça ao humano responsável para aplicá-la.
 EOF
   log_event gate_block "${LOG_ARGS[@]}" "gate_mode=$GATE_MODE"
   exit 2
+fi
+
+# ── 3c. frozen zones de work orders (E15/S-1504, padrão BMAD) ──────────────
+# Zona congelada por ordem NÃO-aceita: em fluxo AUTÔNOMO (subagent/multi)
+# bloqueia — o executor da ordem não pode tocar o que a ordem congelou, e
+# outro agente também não sem coordenação; com humano no volante (direct/sem
+# record), avisa e deixa passar (mesma assimetria do guarda destrutivo S-502).
+if [[ -n "$ORDER_FROZEN" ]] && _gate_prefix_match "$REL" "$ORDER_FROZEN"; then
+  _fz_mode=""
+  if [[ -n "$SID" ]]; then
+    _fz_rec="$MAESTRO_SESSIONS_DIR/$SID.json"
+    _fz_json=""
+    IFS= read -r -d '' -n 4096 _fz_json < "$_fz_rec" 2>/dev/null || true
+    [[ "$_fz_json" =~ \"mode\":\"(subagent|multi)\" ]] && _fz_mode="${BASH_REMATCH[1]}"
+  fi
+  if [[ -n "$_fz_mode" ]]; then
+    printf '%s\n' >&2 \
+      "maestro: edição bloqueada — este caminho está em ZONA CONGELADA por uma" \
+      "work order pendente deste projeto (maestro order --list). Zonas congeladas" \
+      "existem para o trabalho paralelo não pisar no contrato da ordem. Termine a" \
+      "ordem, ou peça ao humano para editar a ordem e descongelar a zona."
+    log_event gate_block "${LOG_ARGS[@]}" "cmd=frozen_zone" "gate_mode=block"
+    exit 2
+  fi
+  printf 'maestro: aviso — editando ZONA CONGELADA por work order pendente (maestro order --list); com humano no volante segue, mas coordene com a ordem.\n' >&2
+  log_event gate_warn "${LOG_ARGS[@]}" "cmd=frozen_zone" "gate_mode=warn"
 fi
 
 # ── 4. allowlist de não-código → passa sem exigir decisão ──────────────────

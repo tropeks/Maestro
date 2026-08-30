@@ -99,6 +99,18 @@ e CI; `habits:` no `.maestro.yaml` ajusta o conjunto por projeto.
 reprova só o slop que EXCEDER o baseline — e o slash command `/maestro:deslop` paga
 a dívida em lotes revisáveis, com suíte como gate e agentes tierizados.
 
+### Work orders — dirigindo trabalho que você não está vendo
+
+Uma **work order** viaja com o repo alvo (`.maestro/orders/NNN.md`): objetivo,
+critérios de aceite, zonas congeladas (caminhos que o executor não toca —
+sessão autônoma é bloqueada ali, humano é avisado), gatilhos Ask-First,
+orçamento declarado e o branch esperado. O estado é **derivado, nunca
+auto-declarado**: aberta → em execução (branch existe) → provada (recibo de
+evidência cujo fingerprint bate com o tip do branch — commit depois da prova
+rebaixa sozinho) → aceita (assinatura explícita do diretor, que exige prova).
+Sessões novas no projeto descobrem ordens pendentes pela injeção. O executor
+nunca fecha a própria ordem.
+
 ### O loop de aprendizado — em lote, nunca em runtime
 
 O Maestro não se auto-ajusta em runtime (os trilhos são determinísticos);
