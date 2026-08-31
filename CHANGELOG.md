@@ -24,6 +24,50 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.9.0] — 2026-08-31
+
+Epic E17: conducting — every human contact translated (essence · impact ·
+approach, score on demand), declared plan depth, and a formal dissent channel
+for agents. Abstracted from the Captain's architecture-skill suite into
+existing mechanisms; design survived a cross-model challenge and three rounds
+of adversarial review before any code.
+
+### Added
+- **Conducted approval**: `maestro decide` gains `--brief` with three literal
+  markers (`essencia:`/`impacto:`/`approach:`, caps 200/700); workflows with
+  `gate: plan` (feature AND refactor) refuse a record without it. `approach:
+  pendente` is valid and closed later.
+- **Declared depth**: `--depth standard|deep|day-zero` on the record;
+  `--profile prototipo|piloto|produto` required iff day-zero. Day zero NEVER
+  fires automatically (S-1602 silent-brownfield preserved) — heuristic H7
+  guides the director's judgment.
+- **`maestro conduct`**: mutates the record — typed dissent flags
+  (`sev|decisao|tradeoff|mitigacao`, each ≤120, sev closed enum) and
+  `--approach` closing the pending brief; `conduct` event in the closed log
+  vocabulary (counts only, never content). Doctor validates the schema and
+  warns on outcome with a pending approach.
+- **Regência late nag**: habit sensor at edit tiers 15/40 reinforcing the
+  conducted format end-of-session (S-1603 research: injection decays, late
+  reinforcement works); S-1603b doc-governed sensor finally has test coverage.
+- **Roster**: `seguranca` and `ux` (both opus — deliberate ADR-004 exception,
+  recorded in ADR-009: design responsibility + lean subagent context).
+- **EPICS.md governed**: roadmap under E16 drift watch (covers
+  `docs/architecture/**`, doc-level granularity to stay clear of the fan-out
+  guard).
+- Injection: H7 + conducted-approval bullet; ratchet 6800 → 6930, measured.
+
+### Changed
+- Docs amended in the same changeset (contract rule): ADR-009, DATA_MODEL
+  Emenda v1.7 (brief/flags are the director's synthesis — the anti-prompt-leak
+  rule stands, now with explicit caps), API_SPEC for decide/conduct.
+- `outcome`/`conduct` record mutations now preserve mode 0600.
+- Doctor's habit-guide pairing now sees session sensors (`doc-governed`,
+  `regencia`), making the orphan-guide guarantee real.
+
+### Routing
+- feature workflow: office-hours interrogation forced before every plan
+  (shipped in e0cc4f8, released here).
+
 ## [1.8.0] — 2026-08-30
 
 Epic E16: documentation as contract — the product spec sessions actually
@@ -304,6 +348,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.9.0]: https://github.com/tropeks/Maestro/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/tropeks/Maestro/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/tropeks/Maestro/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/tropeks/Maestro/compare/v1.5.0...v1.6.0
