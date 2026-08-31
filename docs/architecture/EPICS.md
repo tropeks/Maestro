@@ -1,3 +1,7 @@
+---
+covers:
+  - docs/architecture/**
+---
 # EPICS.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
 **Consome:** PROJECT_BRIEF.md, ARCHITECTURE.md | **Consumido por:** architect-orchestrator, sessões de vibe-code
@@ -405,6 +409,110 @@ teste independente), Tessl (hype), BMAD (burocracia), granularidade de símbolo
   (delta de doc gera work order proposta → aprovação → despacho headless): escada
   v1 seguir → v2 propor → v3 despachar, cada degrau com o dado do anterior.
 - **Dependências:** E15 (ordem), E9 (habit hook), pesquisa em background (Agent).
+
+### E17 — Maestro conduz a orquestra (P0, L) — design doc aprovado 2026-08-31, office-hours D1-D11 + Codex + 3 rodadas de review
+Origem: três ideias ditadas pelo Capitão — regência (todo contato com o aprovador chega
+como partitura crua, pressupondo que ele conhece o código), trilhos (execução até o fim
+exige docs vivos e roadmap explícito) e compilador de intenção (ditado → interrogatório →
+spec → roadmap → plano regido → execução) — mais a absorção conceitual da suíte
+architect-orchestrator/system-architect/security-architect/ux-architect (nascida para
+gerar a documentação de partida de um projeto). Decisão de escopo: **abstrair e condensar
+os conceitos nos mecanismos que o Maestro já tem, nunca importar as skills** (Approach C —
+partitura como artefato próprio em `~/.maestro/scores/` — rejeitado por violar a Premissa
+4: nenhuma classe de artefato nova). Princípio (Approach B, escolhido): **trilho onde o
+trilho alcança** — 3 pontos de enforcement MECÂNICO (brief regido exigido pelo gate no
+decide, flags tipadas como campo validado do record, EPICS.md governado pelo E16) + 1
+reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTIDO (injeção
++ julgamento do diretor), nunca fingido de mecânico.
+- **S-1701:** `maestro decide` ganha `--depth standard|deep|day-zero` (semântica: standard
+  = plano ≤10 linhas; deep = plano + atualização dos docs canônicos das fronteiras
+  tocadas + roadmap no EPICS quando multi-fase; day-zero = pacote completo na profundidade
+  do `--profile`) e `--profile prototipo|piloto|produto` (obrigatório SSE `--depth
+  day-zero`; perfil `prototipo` gera docs enxutos com declaração escrita de que não cobrem
+  produção). Ganha também `--brief` com os três marcadores obrigatórios
+  `essencia:`/`impacto:`/`approach:` (cada ≤200 chars, total ≤700; `approach: pendente` é
+  valor válido no decide — o approach nasce completo só quando o plano existe, atualizado
+  depois por `maestro conduct`, S-1702). Ponto de enforcement: **decide-time** — o CLI
+  recusa gravar record de workflow **plan-gated** (`gate: plan` na routing table:
+  `feature`, `refactor`) sem os 3 marcadores no formato mínimo (cli.ts já parseia `gate`
+  da routing table; o pre-tool-gate continua workflow-agnóstico, preservando o NFR de
+  latência <50ms). Verificação declaradamente um teto: presença + formato greppável prova
+  que o brief existe, não que é bom — qualidade é responsabilidade do diretor. Limitação
+  honesta: a allowlist do gate (`.md`, `docs/`) segue passando sem decision record
+  (decisão existente do ADR-003, mantida) — sessão doc-only, inclusive day-zero, NÃO é
+  bloqueada por falta de brief; comportamento coberto por teste, não corrigido. *AC: gate
+  exige os 3 marcadores em workflow plan-gated; caps de tamanho aplicados com truncamento
+  avisado (precedente `reason` ≤120); `--profile` exigido sse `day-zero`, rejeitado nos
+  demais; doc-only passa sem record (teste documenta o comportamento, não o bloqueia).*
+- **S-1702:** verbo de mutação `maestro conduct --session <id>` (precedente: muta o record
+  como `maestro outcome`, pós-decide). `--flag "sev|decisao|tradeoff|mitigacao"` repetível
+  (append em `flags[]` do record; cada campo ≤120 chars, `sev ∈
+  {critical|high|medium|low}`) e `--approach "..."` (≤200 chars, substitui o `approach:
+  pendente` do brief). Evento `conduct` entra no vocabulário fechado do log (chave
+  `session_id`, nunca o texto da flag). `maestro doctor` valida o schema de `flags[]`
+  (severidade fechada, campos truncados/avisados) e emite **WARN** quando um record tem
+  `outcome` (S-1001) registrado com `approach:` ainda `pendente` — desfecho fechado sem
+  approach preenchido é sinal de partitura incompleta. Regra de soberania explícita: flag
+  que contesta decisão já coberta por ADR é fechada pelo diretor CITANDO O ADR — não sobe
+  ao humano, não reabre a decisão. Só `critical`/`high` sobem ao humano regidas (essência/
+  impacto/approach, não a flag crua). *AC: schema de flags validado pelo doctor; approach
+  pendente + outcome presente → warn nomeado; sev fora do enum reprova; evento `conduct`
+  no vocabulário sem texto livre.*
+- **S-1703:** `H7` em `execution_heuristics` — profundidade é julgamento do diretor
+  (`standard` default; `deep` quando a mudança toca fronteira de docs canônicos ou é
+  multi-fase; `day-zero` NUNCA automático, só por comando confirmado explícito do humano,
+  nunca inferido de projeto vazio — preserva o brownfield silencioso do S-1602). Bullet
+  novo no pedido de aprovação REGIDO em `sec_gate` (seção `## Gates humanos` do
+  SessionStart, `hooks/session-start.sh`): o gate plan/ship passa a instruir "apresente
+  essência/impacto/approach primeiro; 'mostra a partitura' abre o técnico sob demanda" —
+  substitui o formato técnico cru hoje injetado. Bump deliberado do RATCHET de injeção
+  (hoje 6800B, `tests/hooks/test-injection-budget.sh`): número final MEDIDO pelo doctor no
+  plan de implementação (mesmo protocolo do S-703) — só a heurística curta e a linha de
+  regência entram na injeção; o formato detalhado do brief/flags vive no habit hook
+  (S-1704), não na injeção (Orçamento de injeção, item 9 do design). *AC: H7 presente e
+  testado; linha de regência em `sec_gate`; RATCHET bumpado e medido no mesmo commit;
+  ausência de `sec_gate`/heurísticas degrada sem quebrar a injeção.*
+- **S-1704:** sensor `regencia` no motor de habit hooks (`hooks/lib/habit-sensors.awk`),
+  contador de sessão nos degraus **15/40** (padrão do motor S-901/test-gap — dispara tarde
+  o bastante para não virar ruído no 1º edit, diferente do S-1603b que dispara no 1º edit
+  para área governada por doc). Limitação honesta e DECLARADA: PostToolUse de
+  Edit/Write/MultiEdit **aproxima** os contatos de fim de sessão (dispara no enésimo
+  edit), **não os intercepta** — contato sem edit subsequente não recebe nag;
+  interceptação real via hook Stop/SessionEnd (hoje inexistente em `hooks.json`) fica
+  registrada como **fora do E17** (ver "Fora do v1" abaixo). `config/habit-guides/
+  regencia.md` pareado (padrão S-902: todo sensor tem guia, ou o doctor reprova). Quita a
+  dívida de teste **S-1603b** deixada em aberto pelo E16 (nag tardio de doc-governed sem
+  cobertura própria) no mesmo lote de testes. *AC: nag no degrau 15 e reforço no 40, não
+  antes; guia presente (doctor reprova sensor órfão); dívida S-1603b com teste próprio;
+  kill-switch e degradações herdam o padrão do motor.*
+- **S-1705:** `agents/seguranca.md` e `agents/ux.md`, roster novo em **opus** — exceção
+  CONSCIENTE ao tiering por custo do ADR-004 (ver ADR-009): responsabilidade de design
+  (superfície de segurança e de UX erram caro) + contexto ENXUTO do subagente preserva o
+  contexto do diretor — a causa nº 1 de falha de sistemas multi-agente apontada pela
+  literatura de 2026, citada no design doc. Contrato de output com `flags[]` (S-1702).
+  Destilados das personas `security-architect`/`ux-architect` da suíte já existente,
+  filtrados por `.maestro.yaml::experts` como qualquer outro especialista — o Maestro não
+  os ativa por conta própria; entram no roteamento quando o projeto os lista. Carona sem
+  AC própria (corte primeiro se apertar): `arquiteto.md` absorve vocabulário do
+  `system-architect`. *AC: frontmatter `model: opus` + `tools` mínimas; description como
+  gate de custo (padrão `arquiteto.md`); sem colisão de gatilho com o roster existente;
+  ausente do `experts:` não aparece na injeção.*
+- **S-1706:** `EPICS.md` (este arquivo) governado pelo E16 — frontmatter `covers:
+  docs/architecture/**` (granularidade de DOCUMENTO, não de linha, evitando o fan-out do
+  S-1601: covers amplo dispararia a guarda anti-fan-out). **Entregue 2026-08-31.**
+- **S-1707:** estas emendas — ADR-009 em `ARCHITECTURE.md`, Emenda v1.7 em
+  `DATA_MODEL.md`, blocos `maestro decide`/`maestro conduct` em `API_SPEC.md`, e este
+  épico em `EPICS.md`, todos no mesmo changeset (regra do contrato de docs, E16).
+- **Fora do v1, com registro:** interceptação REAL dos contatos de fim de sessão via hook
+  Stop/SessionEnd (hoje inexistente em `hooks.json` — questão aberta do design, épico
+  próprio); day-zero bootstrap ASSISTIDO além da convenção manual (o valor `day-zero` do
+  `--depth` e o `--profile` ficam usáveis por convenção; o fluxo guiado de proposta fica
+  para depois, corte já previsto na "ordem de corte" do design); nag de regência não
+  intercepta contatos sem edit posterior (limitação estrutural do PostToolUse, não bug);
+  detecção de marcador do brief por substring sem âncora — texto livre contendo
+  "approach:" dentro de outro marcador pode fatiar/substituir errado sem erro (P3 do
+  review 2026-08-31); fix real exige parsing ancorado nos 3 marcadores.
+- **Dependências:** E16 (docs), E13 (evidence), E10 (consent/outcome).
 
 ---
 

@@ -146,6 +146,65 @@ tem componente de memória — a memória é do ambiente do Romulo, e o Maestro 
 
 **Consequência:** claude-mem não é ruim — é incompatível com uma camada cujo valor é trilho determinístico imperceptível. Reverter é um edit aqui e `npx claude-mem install`.
 
+### ADR-009 — Regência e profundidade declarada (E17)
+**Status:** Aceito (design doc aprovado 2026-08-31, office-hours D1-D11 + leitura fria do
+Codex + 3 rodadas de review).
+**Contexto:** todo ponto de contato com o aprovador (gate plan, gate ship, resultado de
+review, relatório de QA, fechamento) chegava como **partitura crua** — passos técnicos que
+pressupõem que o autorizador conhece o código, quando ele precisa de essência, impacto e
+base para julgar o approach. Ao mesmo tempo, "quão fundo cavar" (plano de 10 linhas vs.
+pacote de docs canônicos completo, dia zero de projeto vs. feature em produção viva) nunca
+foi uma decisão registrada — vivia só na cabeça de quem executava.
+**Decisão:** **decisões = todo contato humano em essência/impacto/approach**, com a
+partitura técnica disponível **sob demanda** ("mostra a partitura"), nunca como formato
+default. Isso vira sistema, não boa vontade, por dois campos novos no decision record
+(DATA_MODEL §3, Emenda v1.7): **`depth`** (`standard|deep|day-zero` — profundidade do
+pacote entregue) e **`brief`** (os três marcadores `essencia:`/`impacto:`/`approach:`).
+Enforcement é **honesto sobre onde o trilho alcança**, na mesma lógica do ADR-003 (gate
+best-effort): MECÂNICO onde o hook/CLI intercepta antes do fato consumado — decide-time
+recusa workflow plan-gated sem os 3 marcadores do brief (S-1701); `maestro doctor` valida
+o schema de `flags[]` e de `depth`/`profile` (S-1702); `EPICS.md` entra sob a vigilância
+de drift do E16 via `covers: docs/architecture/**` (S-1706). Onde o hook NÃO alcança —
+regência nos contatos de fim de sessão (gate ship, review, QA, fechamento) e a
+consolidação de flags do verdict de um agente para o record — o enforcement é
+**compliance ASSISTIDO, declarado como tal**: injeção de 1 linha de regência em `sec_gate`
++ nag tardio nos degraus 15/40 do sensor `regencia` (S-1703, S-1704), reusando o motor de
+habit hooks do E9 em vez de inventar interceptação nova. Nenhuma classe de artefato nasce
+(Premissa 4 do design): brief e flags são CAMPOS do decision record que já existe, nunca
+um arquivo próprio — a alternativa cotada (partitura como arquivo em
+`~/.maestro/scores/`) foi rejeitada por violar essa premissa.
+**Day-zero:** dia zero (docs canônicos completos + roadmap desde o commit 1) segue por
+**comando confirmado do humano**, nunca automático — preserva a decisão do S-1602 de que
+projeto brownfield sem docs baseline entra em silêncio, sem gritar. O gatilho é o diretor
+propor `maestro decide --depth day-zero --profile <prototipo|piloto|produto>` quando o
+interrogatório revela projeto nascente; o perfil persiste no record e escala a
+profundidade dos docs gerados (protótipo declara por escrito que não cobre produção).
+**Exceção consciente ao ADR-004 — `seguranca`/`ux` nascem em Opus (S-1705):** o
+tiering por custo do ADR-004 reserva Opus para decisão estrutural crítica rara
+(`arquiteto`). `seguranca.md` e `ux.md` quebram esse default deliberadamente, por dois
+motivos que o Capitão articulou e o design doc registra: (1) **responsabilidade de
+design** — falha de superfície de segurança ou de UX custa caro o bastante para justificar
+o tier mais caro por padrão, não sob demanda como o `arquiteto`; (2) **contexto enxuto do
+subagente preserva o contexto do diretor** — a literatura de 2026 aponta inconsistência de
+contexto entre agentes como a causa nº 1 de falha de sistemas multi-agente em produção;
+delegar cedo e delegar caro para esses dois papéis é comprar de volta o contexto do
+diretor, não uma vaidade de modelo. Os dois agentes são filtrados por
+`.maestro.yaml::experts` como qualquer especialista — o Maestro não os ativa sozinho; o
+custo só é pago em projeto que os lista.
+**Alternativas:** Approach A — só injeção de texto, sem nenhum ponto mecânico (rejeitado:
+nenhum conceito ganha verificação, viraria disciplina sem trilho); Approach C — partitura
+como artefato próprio (rejeitado: viola Premissa 4, duplica o que o decision record já
+faz).
+**Consequências:** overhead de 3 flags a mais no `decide` para workflow plan-gated;
+verificação mecânica prova só **presença + formato**, nunca qualidade do brief — a
+qualidade segue sendo responsabilidade do diretor; nag de regência **aproxima** contatos
+de fim de sessão (dispara no enésimo edit via PostToolUse), não os **intercepta** —
+contato sem edit subsequente não recebe nag, limitação estrutural registrada, não bug;
+interceptação real via hook Stop/SessionEnd fica como questão aberta para épico futuro
+(hoje `hooks.json` não registra nenhum dos dois eventos); RATCHET de injeção (6800B) sobe
+com bump deliberado e medido no mesmo commit da implementação — só a heurística curta e a
+linha de regência entram na injeção, o formato detalhado vive no habit hook.
+
 ---
 
 ## Componentes

@@ -55,10 +55,32 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
                --workflow <fix|feature|refactor|ship|audit|custom>
                --mode <direct|subagent|multi>
                [--agents a,b,c] [--reason "..."]
+               [--depth standard|deep|day-zero] [--profile prototipo|piloto|produto]
+               [--brief "essencia: ...\nimpacto: ...\napproach: ..."]
 ```
 - Valida contra `routing-table.yaml` (workflow precisa existir; `mode≠direct` exige `--agents`; agentes precisam existir no roster). `--reason` truncado em **120 caracteres** com aviso (mitigação de vazamento de prompt).
+- **E17/S-1701 — regência:** `--depth` default `standard`; `--profile` **obrigatório
+  SSE `--depth day-zero`** (presente com outro `depth` é erro de validação). `--brief`
+  exige os três marcadores `essencia:`/`impacto:`/`approach:` — cada um ≤200 chars
+  (truncado com aviso, precedente `--reason`), soma ≤700; `approach: pendente` é aceito
+  (o approach real chega depois via `maestro conduct`). **Recusa decide-time (exit 1):**
+  quando o `--workflow` resolve para `gate: plan` na routing table (`feature`,
+  `refactor`) e `--brief` está ausente ou incompleto — o CLI já parseia `gate` da
+  routing table para esta checagem; o pre-tool-gate permanece workflow-agnóstico (NFR
+  <50ms preservado, nenhuma leitura de routing table no hot path do gate). Verificação é
+  **presença + formato**, nunca qualidade — greppável, não julgada. Limitação declarada:
+  a allowlist do gate (`.md`, `docs/`) segue liberando edição sem decision record — sessão
+  doc-only, inclusive `--depth day-zero`, não é bloqueada por brief ausente (DATA_MODEL §3
+  v1.7).
+  ```
+  $ maestro-decide --session abc123 --workflow feature --mode subagent --agents dev-pleno
+  maestro: validation: workflow 'feature' (gate: plan) exige --brief com essencia:/impacto:/approach: (fix: adicione --brief ou use --workflow fix/custom)
+  $ maestro-decide --session abc123 --workflow feature --mode subagent --agents dev-pleno \
+      --depth deep --brief $'essencia: gate de regência no decide\nimpacto: aprovador le 3 linhas, nao o diff\napproach: pendente'
+  ok: record gravado (depth=deep, brief=3/3 marcadores, approach=pendente)
+  ```
 - Grava decision record (com `expires_at` = ts+4h) + linha `decision` no JSONL via `JSON.stringify` (nunca concatenação manual). Idempotente por sessão.
-- **Exit codes:** 0 ok · 1 validação (mensagem clara no stderr) · 2 ambiente quebrado (instrui `maestro doctor`).
+- **Exit codes:** 0 ok · 1 validação (mensagem clara no stderr, inclui a recusa de brief plan-gated) · 2 ambiente quebrado (instrui `maestro doctor`).
 
 ### `maestro status`
 - Mostra: decisão da sessão corrente, kill-switch, últimos 5 eventos do log.
@@ -118,6 +140,41 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   inteiros gravados em `budget` (DATA_MODEL §3 v1.6). O gate avisa UMA vez por cap
   estourado (steps por contador próprio; minutes pelo ts do record) e NUNCA bloqueia;
   `status` exibe; `retro` conta `budget_warn` na janela.
+
+### `maestro conduct` (E17/S-1702)
+```
+maestro conduct --session <session_id>
+                [--flag "sev|decisao|tradeoff|mitigacao"]...   # repetível, append
+                [--approach "..."]
+```
+- Verbo de MUTAÇÃO do decision record (precedente: mesmo padrão de `maestro outcome`,
+  roda pós-decide). Exige record existente para a sessão — sem record, exit 1.
+- `--flag`: quatro campos separados por `|`, na ordem `sev|decisao|tradeoff|mitigacao`.
+  `sev ∈ {critical|high|medium|low}` (fora do enum → exit 1); `decisao`/`tradeoff`/
+  `mitigacao` truncados em **120 caracteres** com aviso (mesmo teto do `reason`). Cada
+  `--flag` é um append em `flags[]` (DATA_MODEL §3 v1.7) — nunca substitui as anteriores.
+- `--approach`: substitui `brief.approach` do record (≤200 chars, truncado com aviso).
+  É o único jeito de sair de `approach: pendente` — o `decide` não reescreve brief depois
+  de gravado.
+- **Regra de soberania:** flag que contesta decisão já coberta por um ADR existente é
+  responsabilidade do DIRETOR fechar citando o ADR (`--flag "medium|...|...|fechado por
+  ADR-003"`, por exemplo) — o CLI não interpreta o conteúdo da flag, só valida forma;
+  a sessão nunca reabre uma decisão de ADR sozinha.
+- Grava evento `conduct` no vocabulário fechado do log (chave `session_id`, jamais o
+  texto de `--flag`/`--approach` — mesma fronteira do `reason` no §4 do DATA_MODEL).
+- `maestro doctor` valida o schema de `flags[]` a cada rodada (sev fechado, campos sob
+  teto) e emite **WARN** (nunca reprova) quando um record tem `outcome` (S-1001)
+  registrado com `brief.approach` ainda `"pendente"` — desfecho fechado sem approach é
+  partitura incompleta, não erro estrutural.
+  ```
+  $ maestro conduct --session abc123 --flag "high|cache local sem TTL|pode servir dado velho|TTL de 5min adicionado" --approach "cache com TTL curto; revisitar se latência subir"
+  ok: 1 flag registrada (sev=high); approach atualizado
+  $ maestro doctor
+  ...
+  warn: record abc123 tem outcome=accepted com brief.approach=pendente
+  ```
+- **Exit codes:** 0 ok · 1 validação (record ausente, sev fora do enum, sem `--flag`/
+  `--approach`) · 2 ambiente quebrado.
 
 ### `maestro evidence` (E13)
 - `--record [--label l] -- <cmd>`: roda o comando no projeto e grava o recibo

@@ -175,9 +175,54 @@ AND-of-caps, todos opcionais. `steps` e `minutes` são medidos pelo gate (aviso 
 cap, warn-only — orçamento é sinal de deriva, nunca trava); `cents` é declarativo (nenhum
 hook enxerga custo real) e existe para o retro correlacionar custo × desfecho.
 
+#### Emenda v1.7 (E17/S-1701..S-1702) — regência no record
+
+Quatro campos novos, todos escritos por `maestro decide` (os três primeiros) ou por
+`maestro conduct` (`flags[]` e a atualização do `approach:` de `brief`):
+
+```json
+{
+  "depth": "deep",
+  "profile": "piloto",
+  "brief": "essencia: <o que é>; impacto: <o que representa>; approach: pendente",
+  "flags": [
+    {"sev": "high", "decisao": "...", "tradeoff": "...", "mitigacao": "..."}
+  ]
+}
+```
+
+| campo | tipo | validação |
+|---|---|---|
+| `depth` | enum | `standard \| deep \| day-zero`; opcional, default `standard` |
+| `profile` | enum | `prototipo \| piloto \| produto`; **obrigatório SSE `depth == day-zero`**, rejeitado (erro de schema) se presente com outro `depth` |
+| `brief` | string | contém 3 marcadores: `essencia: ...` (≤200 chars), `impacto: ...` (≤200 chars), `approach: ...` (≤200 chars, ou `"pendente"` no `decide` — só passa a exigir preenchido quando `outcome` é gravado; doctor emite WARN nomeando o record, nunca reprova) |
+| `brief` (total) | — | soma dos 3 marcadores ≤700 chars; **obrigatório** (os 3 marcadores presentes) quando o workflow do record é `gate: plan` na routing table (`feature`, `refactor`) — recusado em decide-time, não em warn |
+| `flags[].sev` | enum | `critical \| high \| medium \| low` |
+| `flags[].decisao` \| `.tradeoff` \| `.mitigacao` | string | ≤120 chars cada (precedente `reason` ≤120, §3) |
+
+Cross-rules validadas pelo doctor: `profile` sem `depth: day-zero` é erro de schema (o
+inverso — `day-zero` sem `profile` — já é recusado no `decide`, decide-time, antes de
+chegar ao doctor); `flags[]` vazio é válido (nenhuma flag levantada); severidade fora do
+enum reprova nomeando o índice do array. `brief`/`flags` nunca aparecem no `~/.maestro/
+logs/routing.jsonl` (§4 intocado) — vivem só no record, mesma fronteira do `wtree` (v1.4)
+e do `reason`.
+
+**Atualização explícita da política de conteúdo (o record continua `confidential` e a
+proibição de texto do prompt do usuário PERMANECE — v1.4 não é revogada por esta
+emenda).** `brief` e `flags` são a única exceção declarada e DELIMITADA a essa proibição:
+não são colagem do prompt, são **síntese escrita pelo diretor** — a mesma relação que já
+existe entre a sessão e o `reason` ≤120 (§3), agora com forma tripartida e caps maiores
+porque o conteúdo é regência, não metadado de roteamento. O teto continua sendo o guardião
+mecânico contra vazamento de contexto bruto: quem tenta colar um parágrafo de prompt no
+`--brief` esbarra no corte de 200/700 chars antes de qualquer revisão humana. Truncamento
+segue o precedente do `reason`: corta e avisa, nunca falha silenciosamente.
+`# classification: confidential` — a exceção NÃO reclassifica o record; síntese do diretor
+continua confidencial pelo mesmo motivo do resto do arquivo (revela estrutura de decisão
+do projeto).
+
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
-Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).
+Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `conduct`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).
 
 ```json
 {"ts":"...","event":"decision","session_id":"abc123","workflow":"fix","mode":"subagent","agents":["golang-pro"],"project":"remedix"}
@@ -212,6 +257,8 @@ estado local, jamais no log além dos eventos.
 **Emenda E9:** evento `habit_warn` entra no vocabulário fechado, com a chave
 `smell` (`^[a-z][a-z-]{2,23}$` — categoria, nunca caminho/linha) e `n`
 (contagem de achados). Um evento por emissão do hook, nunca por achado.
+
+**Emenda E17 (S-1702):** evento novo `conduct` — chaves `session_id`, `flags_n` (inteiro) e `approach` (yes|no). O conteúdo de brief/flags JAMAIS entra no log (só contagens e metadados, como todo o vocabulário).
 
 ### 5. Roster — `agents/*.md` (repo do plugin)
 

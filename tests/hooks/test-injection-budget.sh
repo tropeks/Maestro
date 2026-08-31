@@ -9,11 +9,13 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=6800   # bump deliberado 6500→6800 em 2026-08-30 (E16): a seção ## Projeto
-               # passou a carregar QUATRO subsistemas (brief E8 · grafo E11 · ordens
-               # E15 · docs E16) e o repo real mede 6516B com a prosa já no osso —
-               # apertar mais custaria clareza. Histórico: 5895B (08-18) → 6266B
-               # (E8+) → 6516B (E16). Teto duro segue 8000B.
+RATCHET=6930   # bump deliberado 6800→6930 em 2026-08-31 (E17/S-1703): cenário medido
+               # = baseline do plugin com projeto vazio (CLAUDE_PROJECT_DIR sem .maestro.yaml;
+               # roster inteiro, sem filtro experts; sem seções de projeto). Sessão real neste
+               # repo mede mais (~6940B com .maestro.yaml vivo, medida pelo doctor) e é
+               # governada pelo warn 7200/teto 8000 do doctor, não por este ratchet.
+               # Histórico: 5895B (08-18) → 6266B (E8+) → 6516B (E16) → 6930B (E17).
+               # Teto duro segue 8000B.
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOK="$REPO/hooks/session-start.sh"

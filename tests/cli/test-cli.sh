@@ -82,11 +82,14 @@ rm -rf "$sem_roster"
 # ---------------------------------------------------------------------------
 echo "-- decide: idempotência por sessão"
 # ---------------------------------------------------------------------------
-run decide --session sess-A --workflow refactor --mode direct
+# workflow=audit (gate:none) e não refactor: E17/S-1701 deu gate:plan também a
+# refactor, que passaria a exigir --brief — fora do que este bloco testa
+# (schema puro de mode=direct sem agents/reason).
+run decide --session sess-A --workflow audit --mode direct
 chk "segunda decisão para a mesma sessão sai 0" "$rc" "0"
 chk "continua havendo 1 record por sessão" \
     "$(ls "$MAESTRO_HOME/sessions" | wc -l)" "1"
-chk "record sobrescrito (workflow atualizado)" "$(jq -r .workflow "$REC")" "refactor"
+chk "record sobrescrito (workflow atualizado)" "$(jq -r .workflow "$REC")" "audit"
 chk "record de mode=direct não tem agents" "$(jq -r 'has("agents")' "$REC")" "false"
 chk "record de mode=direct sem reason quando não informado" "$(jq -r 'has("reason")' "$REC")" "false"
 chk "campos de mode=direct" "$(jq -c 'keys_unsorted' "$REC")" \
@@ -145,6 +148,57 @@ expect_err "sem subcomando → 1/validation"           1 validation --
 chk "nenhum record criado por comando inválido" \
     "$(ls "$MAESTRO_HOME/sessions" | grep -c '^s9' || true)" "0"
 
+# ---------------------------------------------------------------------------
+echo "-- decide: E17/S-1701 depth/profile/brief"
+# ---------------------------------------------------------------------------
+# fix tem gate:none em config/routing-table.yaml — usado para os casos que não
+# precisam do enforcement de --brief; feature tem gate:plan — usado para
+# exercitar o enforcement em si.
+
+run decide --session sess-depth --workflow fix --mode direct --depth deep
+chk "(a) --depth deep sai 0" "$rc" "0"
+chk "(a) depth gravado" \
+    "$(jq -r .depth "$MAESTRO_HOME/sessions/sess-depth.json")" "deep"
+
+expect_err "(b) --depth inválido → 1/validation" 1 validation -- \
+    decide --session s9 --workflow fix --mode direct --depth turbo
+
+expect_err "(c) --depth day-zero sem --profile → 1/validation" 1 validation -- \
+    decide --session s9 --workflow fix --mode direct --depth day-zero
+
+expect_err "(d) --profile sem --depth day-zero → 1/validation" 1 validation -- \
+    decide --session s9 --workflow fix --mode direct --profile piloto
+
+run decide --session sess-dayzero --workflow fix --mode direct \
+    --depth day-zero --profile piloto
+chk "day-zero com --profile sai 0" "$rc" "0"
+DZREC="$MAESTRO_HOME/sessions/sess-dayzero.json"
+chk "depth day-zero gravado" "$(jq -r .depth "$DZREC")" "day-zero"
+chk "profile gravado"        "$(jq -r .profile "$DZREC")" "piloto"
+
+expect_err "(e) --brief sem marcador impacto: → 1/validation" 1 validation -- \
+    decide --session s9 --workflow fix --mode direct \
+    --brief "essencia: x; approach: pendente"
+
+toolong=$(printf 'y%.0s' $(seq 1 201))
+expect_err "(f) --brief marcador >200 chars → 1/validation" 1 validation -- \
+    decide --session s9 --workflow fix --mode direct \
+    --brief "essencia: $toolong; impacto: y; approach: pendente"
+
+run decide --session sess-fix-nobrief --workflow fix --mode direct
+chk "fix (gate none) sem --brief sai 0" "$rc" "0"
+
+expect_err "(g) feature (gate plan) sem --brief → 1/validation" 1 validation -- \
+    decide --session s9 --workflow feature --mode direct
+chk_grep "(g) envelope de erro cita --brief" "$ERR" 'exige --brief'
+
+run decide --session sess-feature-brief --workflow feature --mode direct \
+    --brief "essencia: normaliza X; impacto: usuario ve Y; approach: pendente"
+chk "(h) feature com --brief válido sai 0" "$rc" "0"
+BRIEF_REC="$MAESTRO_HOME/sessions/sess-feature-brief.json"
+chk_grep "(h) brief gravado com os 3 marcadores" "$BRIEF_REC" \
+    '"brief":"essencia:.*impacto:.*approach:'
+
 echo "-- decide: ambiente quebrado → 2"
 empty=$(mktemp -d)
 MAESTRO_PLUGIN_ROOT="$empty" run decide --session s9 --workflow fix --mode direct
@@ -161,7 +215,7 @@ echo "-- status"
 run status --session sess-A
 chk "status sai 0" "$rc" "0"
 chk_grep "status mostra kill-switch"    "$OUT" 'kill-switch : inativo'
-chk_grep "status mostra a decisão"      "$OUT" 'workflow  : refactor'
+chk_grep "status mostra a decisão"      "$OUT" 'workflow  : audit'
 chk_grep "status mostra validade"       "$OUT" 'válida por mais'
 chk_grep "status mostra últimos eventos" "$OUT" 'Últimos 5 eventos'
 

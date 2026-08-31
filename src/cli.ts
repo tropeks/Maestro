@@ -39,6 +39,13 @@ const REASON_MAX = 120;
 const DEFAULT_TTL_SECONDS = 14400; // 4h — ADR-003 v1.1
 const LOG_TAIL_DEFAULT = 20;
 
+// E17/S-1701 — profundidade/perfil/brief regido do decision record.
+const DEPTH_VALUES = ["standard", "deep", "day-zero"] as const;
+const PROFILE_VALUES = ["prototipo", "piloto", "produto"] as const;
+const BRIEF_MARKERS = ["essencia:", "impacto:", "approach:"] as const;
+const BRIEF_MARKER_MAX = 200;
+const BRIEF_TOTAL_MAX = 700;
+
 /** Vocabulário fechado de eventos (DATA_MODEL §4). */
 const EVENTS = [
   "decision",
@@ -48,6 +55,7 @@ const EVENTS = [
   "override_manual",
   "killswitch",
   "session_end",
+  "conduct", // E17/S-1701 — verbo bash de mutação do record (flags/approach)
 ] as const;
 
 // -------------------------------------------------------------------- erros
@@ -155,6 +163,9 @@ function ensureDirs(): void {
 interface RoutingTable {
   workflows: string[];
   gateMode: string | null;
+  // E17/S-1701 — gate DECLARADO por workflow (workflows.<nome>.gate), usado
+  // pelo enforcement plan-gated do --brief. Ausente na entry = "none".
+  gates: Record<string, string>;
 }
 
 function loadRoutingTable(): RoutingTable {
@@ -191,7 +202,8 @@ function loadRoutingTable(): RoutingTable {
       "rode `maestro doctor`",
     );
   }
-  const workflows = Object.keys(workflowsRaw as Record<string, unknown>);
+  const workflowsMap = workflowsRaw as Record<string, unknown>;
+  const workflows = Object.keys(workflowsMap);
   if (workflows.length === 0) {
     throw configErr(
       "routing-table.yaml não declara nenhum workflow",
@@ -199,11 +211,24 @@ function loadRoutingTable(): RoutingTable {
     );
   }
 
+  // E17/S-1701 — gate por workflow (workflows.<nome>.gate). Entry malformada
+  // ou sem `gate` string degrada para "none": o enforcement do --brief só age
+  // quando o YAML declara "plan" explicitamente.
+  const gates: Record<string, string> = {};
+  for (const name of workflows) {
+    const entry = workflowsMap[name];
+    const g =
+      entry && typeof entry === "object" && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>).gate
+        : undefined;
+    gates[name] = typeof g === "string" ? g : "none";
+  }
+
   const gate = table?.gate as Record<string, unknown> | undefined;
   const gateMode =
     gate && typeof gate.mode === "string" ? (gate.mode as string) : null;
 
-  return { workflows, gateMode };
+  return { workflows, gateMode, gates };
 }
 
 // -------------------------------------------------------------------- roster
@@ -435,6 +460,10 @@ interface DecisionRecord {
   // INTEIROS, AND-of-caps, warn-only. steps/minutes são medidos pelo gate;
   // cents é DECLARATIVO (nenhum hook enxerga custo real) — o retro correlaciona.
   budget?: { steps?: number; minutes?: number; cents?: number };
+  // E17/S-1701 — profundidade/perfil/brief regido (compilador de intenção).
+  depth?: string;
+  profile?: string;
+  brief?: string;
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -454,6 +483,7 @@ function cmdDecide(args: Args): number {
   rejectUnknown(args, [
     "session", "workflow", "mode", "agents", "reason",
     "max-steps", "max-min", "max-cents", // E14: orçamento declarado
+    "depth", "profile", "brief", // E17/S-1701: compilador de intenção
   ]);
 
   // --session (obrigatório)
@@ -607,6 +637,101 @@ function cmdDecide(args: Args): number {
   }
   const hasBudget = Object.keys(budget).length > 0;
 
+  // ---- E17/S-1701: --depth (heurística de profundidade)
+  let depth: string | undefined;
+  const depthRaw = requireValue(args, "depth");
+  if (depthRaw !== null) {
+    if (!(DEPTH_VALUES as readonly string[]).includes(depthRaw)) {
+      throw invalid(
+        `--depth '${depthRaw}' inválido`,
+        `escolha um de: ${DEPTH_VALUES.join(", ")}`,
+      );
+    }
+    depth = depthRaw;
+  }
+  // ausência de --depth NÃO grava campo: standard é o default semântico, não
+  // um valor gravado — só valores explícitos entram no record.
+
+  // ---- E17/S-1701: --profile (obrigatório SSE depth=day-zero)
+  let profile: string | undefined;
+  const profileRaw = requireValue(args, "profile");
+  if (profileRaw !== null) {
+    if (!(PROFILE_VALUES as readonly string[]).includes(profileRaw)) {
+      throw invalid(
+        `--profile '${profileRaw}' inválido`,
+        `escolha um de: ${PROFILE_VALUES.join(", ")}`,
+      );
+    }
+    profile = profileRaw;
+  }
+  if (depth === "day-zero" && !profile) {
+    throw invalid(
+      "--depth day-zero exige --profile",
+      `escolha um de: ${PROFILE_VALUES.join(", ")}`,
+    );
+  }
+  if (profile !== undefined && depth !== "day-zero") {
+    throw invalid(
+      "--profile só se aplica a --depth day-zero",
+      "remova --profile ou use --depth day-zero",
+    );
+  }
+
+  // ---- E17/S-1701: --brief (essencia:/impacto:/approach: — plano regido)
+  // Único texto livre extra além de --reason; mesma normalização (sem
+  // controles/quebras de linha) e mesmo espírito de cap — aqui em 3
+  // marcadores fixos, cada um ≤200 chars, total ≤700. `approach: pendente` é
+  // aceito: o approach nasce pendente no decide e é atualizado depois (verbo
+  // de mutação do record, fora deste comando).
+  let brief: string | undefined;
+  const briefRaw = requireValue(args, "brief");
+  if (briefRaw !== null) {
+    const clean = briefRaw
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (clean.length > BRIEF_TOTAL_MAX) {
+      throw invalid(
+        `--brief excede ${BRIEF_TOTAL_MAX} caracteres no total (tinha ${clean.length})`,
+        `resuma o brief para caber em ${BRIEF_TOTAL_MAX} chars: "essencia: ...; impacto: ...; approach: ..."`,
+      );
+    }
+    const found = BRIEF_MARKERS.map((marker) => ({
+      marker,
+      idx: clean.indexOf(marker),
+    }));
+    const missing = found.filter((f) => f.idx === -1).map((f) => f.marker);
+    if (missing.length > 0) {
+      throw invalid(
+        `--brief sem o(s) marcador(es): ${missing.join(", ")}`,
+        `use --brief "essencia: ...; impacto: ...; approach: ..." com os 3 marcadores`,
+      );
+    }
+    const ordered = found.slice().sort((a, b) => a.idx - b.idx);
+    for (let i = 0; i < ordered.length; i++) {
+      const cur = ordered[i]!;
+      const start = cur.idx + cur.marker.length;
+      const end = i + 1 < ordered.length ? ordered[i + 1]!.idx : clean.length;
+      const content = clean.slice(start, end).replace(/^[\s;]+|[\s;]+$/g, "");
+      if (content.length > BRIEF_MARKER_MAX) {
+        throw invalid(
+          `--brief: marcador '${cur.marker}' excede ${BRIEF_MARKER_MAX} chars (tinha ${content.length})`,
+          `resuma o conteúdo de '${cur.marker}' para caber em ${BRIEF_MARKER_MAX} chars`,
+        );
+      }
+    }
+    brief = clean;
+  }
+
+  // ---- E17/S-1701: enforcement plan-gated — workflow com gate:plan exige brief
+  if (table.gates[workflow] === "plan" && brief === undefined) {
+    throw invalid(
+      `workflow '${workflow}' tem gate plan e exige --brief`,
+      'workflow com gate plan exige --brief "essencia: ...; impacto: ...; approach: ..." ' +
+        "(approach: pendente é aceito; atualize depois com maestro conduct --approach)",
+    );
+  }
+
   // ---- gravação
   ensureDirs();
 
@@ -625,6 +750,9 @@ function cmdDecide(args: Args): number {
     ...(reason ? { reason } : {}),
     ...(wtree ? { wtree } : {}),
     ...(hasBudget ? { budget } : {}),
+    ...(depth ? { depth } : {}),
+    ...(profile ? { profile } : {}),
+    ...(brief ? { brief } : {}),
   };
 
   const target = recordPath(session);
@@ -1024,7 +1152,7 @@ function cmdLog(args: Args): number {
     }
   }
 
-  const others = (["killswitch", "session_end"] as const)
+  const others = (["killswitch", "session_end", "conduct"] as const)
     .map((k) => `${k}=${g(k)}`)
     .join("  ");
   out.push("");
@@ -1039,6 +1167,10 @@ function cmdLog(args: Args): number {
 const USAGE = `maestro <comando>
   decide --session <id> --workflow <w> --mode <direct|subagent|multi>
          [--agents a,b,c] [--reason "..."]     registra a decisão de roteamento
+         [--depth standard|deep|day-zero] [--profile prototipo|piloto|produto]
+                                                 profundidade do plano (E17); profile obrigatório em day-zero
+         [--brief "essencia: ...; impacto: ...; approach: ..."]
+                                                 brief regido; exigido quando o workflow tem gate:plan
   status [--session <id>]                      decisão corrente, kill-switch, últimos eventos
   log    [--summary] [--limit N]               eventos do routing.jsonl (--summary = painel)
 opções globais: --debug (mostra stack trace)

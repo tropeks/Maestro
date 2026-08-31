@@ -306,6 +306,10 @@ GATE_HDR='## Gates humanos — PARE, pergunte e espere resposta explícita.'
 [[ "$(cat "$FULL")" == *"$BIND_HDR"* && "$(cat "$FULL")" == *"$GATE_HDR"* ]] \
   && ok "referência sem pressão traz bindings e gates humanos" \
   || bad "referência sem pressão traz bindings e gates humanos"
+# S-1703: bullet REGIDO (essencia/impacto/approach) faz parte do gate de aprovação.
+[[ "$(cat "$FULL")" == *"pedido de aprovação REGIDO"* ]] \
+  && ok "gate de aprovação traz o bullet REGIDO (essencia/impacto/approach)" \
+  || bad "gate de aprovação traz o bullet REGIDO (essencia/impacto/approach)"
 B_C=$(( S_FULL - S_STYLE - S_ETHOS - S_HEUR - S_ROSTER + 10 ))
 H7c=$(new_home); P7c=$(new_proj)
 run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_C"

@@ -4,4 +4,4 @@
 # entra pelo src/; go/postgres/python ficam fora da injeção.
 experts: [dev-junior, dev-pleno, engenheiro, typescript-pro, qa, revisor]
 memory_container: sm_project_Maestro
-docs: [docs/architecture/ARCHITECTURE.md, docs/architecture/DATA_MODEL.md, docs/architecture/API_SPEC.md]
+docs: [docs/architecture/ARCHITECTURE.md, docs/architecture/DATA_MODEL.md, docs/architecture/API_SPEC.md, docs/architecture/EPICS.md]

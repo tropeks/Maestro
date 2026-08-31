@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit)
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags'
 
 usage() {
   cat <<'U'
@@ -74,6 +74,9 @@ maestro <comando>
                   TTL 1min–4h — dados na denylist ou infra no guarda; nunca hooks/bin/src,
                   nunca destruição de dados (ops não cobre rm -rf/force push/DROP)
   outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
+  conduct         regência (E17): muta o decision record existente — --flag
+                  "sev|decisao|tradeoff|mitigacao" (repetível, acumula em .flags) e/ou
+                  --approach "texto" (fecha o approach: pendente do brief); pelo menos um
   retro           relatório de calibração (E10): agrega o log da janela (--days N) —
                   override rate, gates, smells, desfechos, critério de promoção
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
@@ -799,7 +802,7 @@ check_habit_guides() { # E9: todo sensor com guia — sensor sem guia é métric
   [[ -f "$eng" ]] || { report skip "habit guides" "motor de sensores ausente"; return 0; }
   local smells missing=() sm
   smells=$(grep -oE 'emit\("[a-z-]+"' "$eng" 2>/dev/null | sed 's/emit("//; s/"//' | awk '!seen[$0]++')
-  smells+=$'\n'"test-gap"   # sensor de sessão: vive no hook, não no awk
+  smells+=$'\n'"test-gap"$'\n'"doc-governed"$'\n'"regencia"   # sensores de sessão: vivem no hook, não no awk
   while IFS= read -r sm; do
     [[ -n "$sm" ]] || continue
     [[ -s "$gd/$sm.md" ]] || missing+=("$sm")
@@ -1106,6 +1109,17 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
       and ((keys - ["steps","minutes","cents"]) | length == 0)
       and (all(.[]; type == "number" and . == floor and . >= 1))) else true end)
     and (if has("suite_evidence") then (.suite_evidence as $e | ["cited","none"] | index($e) != null) else true end)
+    and (if has("depth") then (.depth as $d | ["standard","deep","day-zero"] | index($d) != null) else true end)
+    and (if has("profile") then (.profile as $p | ["prototipo","piloto","produto"] | index($p) != null) else true end)
+    and (has("profile") == ((.depth // "") == "day-zero"))
+    and (if has("brief") then (.brief | type == "string" and length <= 700
+      and test("essencia:") and test("impacto:") and test("approach:")) else true end)
+    and (if has("flags") then (.flags | type == "array"
+      and all(.[]; type == "object"
+        and ((keys - ["sev","decisao","tradeoff","mitigacao"]) | length == 0)
+        and (all(.[]; type == "string" and length <= 120))
+        and (if has("sev") then (.sev as $s | ["critical","high","medium","low"] | index($s) != null) else true end)))
+      else true end)
   ' "$f" >/dev/null 2>&1
 }
 
@@ -1126,7 +1140,7 @@ check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e li
     report skip "decision records: schema DATA_MODEL §3" "requer jq (${#files[@]} record(s) não verificados)"
     return
   fi
-  local kept=0 removed=0 bad=() f
+  local kept=0 removed=0 bad=() pending=() f sid
   for f in "${files[@]}"; do
     if record_expired "$f"; then
       rm -f "$f" && removed=$((removed + 1))
@@ -1134,6 +1148,12 @@ check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e li
     fi
     if record_schema_ok "$f"; then
       kept=$((kept + 1))
+      # E17/S-1702: outcome fechado com o approach do brief ainda pendente é
+      # sinal de regência incompleta — nunca falha o doctor, só avisa.
+      if jq -e '(has("outcome")) and ((.brief // "") | contains("approach: pendente"))' \
+           "$f" >/dev/null 2>&1; then
+        pending+=("$(basename -- "$f")")
+      fi
     else
       bad+=("$(basename -- "$f")")
     fi
@@ -1144,6 +1164,10 @@ check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e li
   else
     report ok "decision records: $kept válido(s), $removed expirado(s) removido(s)"
   fi
+  for f in "${pending[@]}"; do
+    sid="${f%.json}"
+    report warn "record $sid: outcome registrado com approach pendente (rode maestro conduct --approach)"
+  done
 }
 
 # ----------------------------------------------------------------------- doctor
@@ -1834,7 +1858,7 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg ts "$(date -Iseconds)" \
        '.outcome = $o | .outcome_ts = $ts
         | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)' \
-       "$rec" > "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
+       "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
     if [[ "$suite" == "pass" ]]; then
@@ -1844,6 +1868,88 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
         echo "aviso: suíte pass SEM evidência no ledger — palavra de honra; registre com: maestro evidence --record -- <suíte>"
       fi
     fi
+  else
+    rm -f "$tmp" 2>/dev/null
+    die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------- conduct (E17)
+
+cmd_conduct() { # S-1702: regência — mutação genérica do decision record
+  # decide grava a APOSTA (workflow/mode/agents/depth/profile/brief); conduct
+  # MUTA o record já existente, mesmo precedente de escrita de `outcome`:
+  # (i) acumula flags[] tipadas (sev|decisao|tradeoff|mitigacao) consolidadas
+  # pelo diretor a partir dos veredicts dos agentes; (ii) fecha o `approach:`
+  # pendente do brief quando o plano nasce. Verbo genérico: cobre os dois
+  # pontos de enforcement do item 4 do design com um único subcomando.
+  local sid="" approach="" flags=()
+  while (( $# )); do
+    case "$1" in
+      --session)  sid="${2:-}"; shift ;;
+      --flag)     flags+=("${2:-}"); shift ;;
+      --approach) approach="${2:-}"; shift ;;
+      *) die validation "argumento desconhecido '$1'" \
+           "maestro conduct --session <id> [--flag \"sev|decisao|tradeoff|mitigacao\"]... [--approach texto]" 1 ;;
+    esac
+    shift
+  done
+  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+    "maestro conduct --session <id> [--flag ...] [--approach ...]" 1
+  if [[ ${#flags[@]} -eq 0 && -z "$approach" ]]; then
+    die validation "nada a registrar" "informe pelo menos um --flag ou --approach" 1
+  fi
+  [[ -z "$approach" || "${#approach}" -le 200 ]] || die validation "--approach excede 200 chars" "" 1
+  has jq || die env "conduct exige jq" "instale jq (dependência declarada)" 2
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local rec="$MAESTRO_SESSIONS_DIR/$sid.json"
+  [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
+    "conduct muta uma decisão existente (maestro decide primeiro)" 1
+
+  # --flag "sev|decisao|tradeoff|mitigacao": exatamente 4 campos (3 '|'),
+  # sev no enum fechado, cada campo <=120 chars, sem tab.
+  local flag_objs=() f sev decisao tradeoff mitigacao pipes part
+  for f in "${flags[@]}"; do
+    [[ "$f" != *$'\t'* ]] || die validation "--flag não pode conter tab" "$f" 1
+    pipes="${f//[^|]/}"
+    [[ ${#pipes} -eq 3 ]] || die validation \
+      "--flag exige exatamente 4 campos 'sev|decisao|tradeoff|mitigacao'" "$f" 1
+    IFS='|' read -r sev decisao tradeoff mitigacao <<<"$f"
+    [[ "$sev" =~ ^(critical|high|medium|low)$ ]] || die validation "sev fora do enum" \
+      "critical|high|medium|low (recebido '$sev')" 1
+    for part in "$sev" "$decisao" "$tradeoff" "$mitigacao"; do
+      [[ "${#part}" -le 120 ]] || die validation "--flag com campo acima de 120 chars" "$f" 1
+    done
+    flag_objs+=("$(jq -nc --arg s "$sev" --arg d "$decisao" --arg t "$tradeoff" --arg m "$mitigacao" \
+      '{sev:$s, decisao:$d, tradeoff:$t, mitigacao:$m}')")
+  done
+  local n_flags=${#flag_objs[@]}
+  local new_flags_json='[]'
+  if [[ $n_flags -gt 0 ]]; then
+    new_flags_json=$(printf '%s\n' "${flag_objs[@]}" | jq -sc '.')
+  fi
+
+  local approach_flag="no"
+  if [[ -n "$approach" ]]; then
+    jq -e 'has("brief")' "$rec" >/dev/null 2>&1 || die validation "record sem brief" \
+      "approach exige brief no record (maestro decide --brief \"essencia: ... impacto: ... approach: pendente\")" 1
+    approach_flag="yes"
+  fi
+
+  local tmp="$rec.tmp.$$"
+  if jq --argjson new_flags "$new_flags_json" --arg appr "$approach" --arg has_appr "$approach_flag" '
+       (if ($new_flags | length) > 0 then .flags = ((.flags // []) + $new_flags) else . end)
+       | (if $has_appr == "yes"
+          then .brief = (.brief | sub("approach:.*$"; "approach: " + $appr))
+          else . end)
+     ' "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
+    log_event conduct session_id="$sid" flags_n="$n_flags" approach="$approach_flag"
+    local appr_note=""
+    if [[ "$approach_flag" == "yes" ]]; then appr_note=" · approach atualizado"; fi
+    printf 'record %s mutado: %s flag(s)%s\n' "$sid" "$n_flags" "$appr_note"
   else
     rm -f "$tmp" 2>/dev/null
     die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
@@ -2273,6 +2379,7 @@ case "$cmd" in
   habits) shift; cmd_habits "$@" ;;
   consent) shift; cmd_consent "$@" ;;
   outcome) shift; cmd_outcome "$@" ;;
+  conduct) shift; cmd_conduct "$@" ;;
   retro) shift; cmd_retro "$@" ;;
   graph) shift; cmd_graph "$@" ;;
   evidence) shift; cmd_evidence "$@" ;;

@@ -151,6 +151,23 @@ if [[ "$ENABLED" == "all" || ",$ENABLED," == *",doc-governed,"* ]]; then
     fi
   fi
 fi
+# S-1704 — sensor de regência: lembra, nos degraus 15 e 40, que o contato com
+# o Capitão segue o formato REGIDO (essencia · impacto · approach) — a
+# partitura técnica só entra sob demanda. Contador de sessão, mesma forma do
+# test-gap (S-901), mas sobre TODO edit elegível (src ou teste).
+if [[ "$ENABLED" == "all" || ",$ENABLED," == *",regencia,"* ]]; then
+  regf="$MAESTRO_SESSIONS_DIR/habits-regencia-$SID"
+  if mkdir -p "$MAESTRO_SESSIONS_DIR" 2>/dev/null; then
+    reg_n=0
+    [[ -f "$regf" ]] && read -r reg_n < "$regf" 2>/dev/null || :
+    [[ "$reg_n" =~ ^[0-9]+$ ]] || reg_n=0
+    reg_n=$(( reg_n + 1 ))
+    printf '%s\n' "$reg_n" > "$regf" 2>/dev/null || :
+    if (( reg_n == 15 )) || (( reg_n == 40 )); then
+      findings+="${findings:+$'\n'}regencia	0	$reg_n edições nesta sessão — contato com o Capitão é REGIDO: essencia · impacto · approach; partitura técnica só sob demanda; flags Critical/High sobem, o resto o diretor consolida"
+    fi
+  fi
+fi
 [[ -n "$findings" ]] || exit 0
 
 # ---------------------------------------------------------------------------

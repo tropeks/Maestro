@@ -285,6 +285,9 @@ done
 [[ $OUTBYTES -le 8000 ]] && ok "injeção: $OUTBYTES B dentro do teto de 8000" \
   || bad "injeção: estourou o teto ($OUTBYTES B)"
 echo "     (orçamento: $OUTBYTES B de 8000 — folga de $(( 8000 - OUTBYTES )) B)"
+[[ "$OUT" == *"## Heurísticas de execução"* && "$OUT" == *"H7 a PROFUNDIDADE do plano"* ]] \
+  && ok "injeção: heurística H7 (--depth) presente na seção de heurísticas" \
+  || bad "injeção: heurística H7 (--depth) presente na seção de heurísticas"
 
 # o gate é DERIVADO: sem `gate: plan`/`gate: ship` no YAML, a seção some
 Y1="$SB/sem-gate.yaml"

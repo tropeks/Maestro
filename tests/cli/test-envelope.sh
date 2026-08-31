@@ -42,7 +42,7 @@ chk "runtime.bun.present=true (bun está no PATH da suíte)" \
     "$(jq -r .runtime.bun.present "$CAP")" "true"
 chk "bindings.resolved é inteiro > 0" \
     "$(jq -r '.bindings.resolved > 0' "$CAP")" "true"
-chk "roster.agents = 10" "$(jq -r .roster.agents "$CAP")" "10"
+chk "roster.agents = 12" "$(jq -r .roster.agents "$CAP")" "12"
 grep -q 'ok   capabilities.json' "$tmp/out" \
   && ok "doctor reporta a gravação do envelope" || bad "doctor reporta a gravação do envelope"
 

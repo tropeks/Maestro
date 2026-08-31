@@ -480,6 +480,7 @@ build_and_emit() {
   if [[ -n "$GATE_PLAN_WFS$GATE_SHIP_WFS" ]]; then
     sec_gate=$'\n'"## Gates humanos — PARE, pergunte e espere resposta explícita."$'\n'
     [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo."$'\n'
+    sec_gate+="- pedido de aprovação REGIDO: essencia (o que é) · impacto (o que representa) · approach (como) — partitura técnica só sob demanda; registre com maestro decide --brief \"essencia: ...; impacto: ...; approach: ...\" (pendente vale; atualize com maestro conduct --approach)."$'\n'
     [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
     # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
     # catastrófico/quase irreversível; RAD privado verificado flui sem pergunta.

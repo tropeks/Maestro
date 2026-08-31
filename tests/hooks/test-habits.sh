@@ -273,4 +273,58 @@ n_guias=$(grep -cE '^\*\*[a-z-]+\*\*' <<<"$OUT" || true)
 grep -q '(+.*achado' <<<"$OUT" && ok "excedente é anunciado, não escondido" \
                                || bad "excedente é anunciado, não escondido"
 
+# ---------------------------------------------------------------------------
+echo "-- regencia: contato REGIDO com o Capitão, degraus 15/40 (S-1704)"
+# ---------------------------------------------------------------------------
+cat > "$PROJ/regfile.py" <<'FX'
+def soma(a, b):
+    return a + b
+FX
+for i in $(seq 1 14); do
+  MAESTRO_HABITS=regencia run_hook "$PROJ/regfile.py" Edit reg-sess
+done
+chk "14 edições → silêncio no 14º" "$RC" "0"
+MAESTRO_HABITS=regencia run_hook "$PROJ/regfile.py" Edit reg-sess
+chk "15ª edição → RC 2 (degrau)" "$RC" "2"
+grep -q 'regencia' <<<"$OUT" && ok "bloco contém regencia no degrau 15" || bad "bloco contém regencia no degrau 15"
+MAESTRO_HABITS=regencia run_hook "$PROJ/regfile.py" Edit reg-sess
+chk "16ª edição → silêncio" "$RC" "0"
+cat > "$PROJ/regfile2.py" <<'FX'
+def sub(a, b):
+    return a - b
+FX
+for i in $(seq 1 15); do
+  MAESTRO_HABITS=debug-leftover run_hook "$PROJ/regfile2.py" Edit reg-off
+done
+chk "sensor desligado via MAESTRO_HABITS (sem regencia) → silêncio no degrau 15" "$RC" "0"
+
+# ---------------------------------------------------------------------------
+echo "-- doc-governed: dívida S-1603b — cobertura em test-habits.sh"
+# ---------------------------------------------------------------------------
+mkdir -p "$PROJ/docs" "$PROJ/src" "$PROJ/other"
+cat > "$PROJ/docs/A.md" <<'FX'
+---
+covers:
+  - src/**
+---
+# A
+FX
+printf 'version: 1\ndocs: [docs/A.md]\n' > "$PROJ/.maestro.yaml"
+cat > "$PROJ/src/x.py" <<'FX'
+def f():
+    return 1
+FX
+MAESTRO_HABITS=doc-governed run_hook "$PROJ/src/x.py" Edit docg-1
+chk "1º edit em área governada → RC 2" "$RC" "2"
+grep -q 'doc-governed' <<<"$OUT" && ok "bloco contém doc-governed" || bad "bloco contém doc-governed"
+MAESTRO_HABITS=doc-governed run_hook "$PROJ/src/x.py" Edit docg-1
+chk "2º edit, mesma sessão → silêncio (once-per-session)" "$RC" "0"
+cat > "$PROJ/other/y.py" <<'FX'
+def g():
+    return 2
+FX
+MAESTRO_HABITS=doc-governed run_hook "$PROJ/other/y.py" Edit docg-2
+chk "edit FORA do covers → silêncio" "$RC" "0"
+rm -f "$PROJ/.maestro.yaml"
+
 exit $fail
