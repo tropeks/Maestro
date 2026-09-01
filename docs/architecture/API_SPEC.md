@@ -121,6 +121,12 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
+  **Emenda E18/S-1801 (2026-09-01):** a linha de decisões sai como `override
+  roteável: M · não-roteável: K`; a taxa, o sinal ≥20% e a promoção warn→block
+  usam só M (comandos que casam com alvo `skill:` de binding ou nome de workflow,
+  derivados da routing table; tabela ilegível degrada para a contagem antiga com
+  aviso).
+
 
 ### `maestro docs` (E16)
 - Veredito por doc canônico: FRESCO ou `STALE — N commit(s)` desde
