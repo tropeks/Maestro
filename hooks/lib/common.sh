@@ -143,6 +143,8 @@ _maestro_set_key_regex() {
     from)       _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;   # E19: versão do plugin
     to)         _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;
     via)        _maestro_re='^(auto|manual|rollback)$' ;;
+    decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
+    settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
     *)          _maestro_re=""; return 1 ;;
   esac
   return 0

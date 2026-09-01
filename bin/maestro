@@ -44,7 +44,7 @@ MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
 MAESTRO_HOME_DEFAULT="$HOME/.maestro"
 MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
-EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit)
+EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd)   # S-1811: 5º evento
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
 RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags'
 
@@ -206,17 +206,17 @@ check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
     report ok "hooks.json é JSON válido"
   fi
 
-  # 1) os 4 eventos esperados existem
+  # 1) os 5 eventos esperados existem (S-1811: SessionEnd)
   local events missing=() ev
   events=$(hooks_json_events "$f" || true)
   for ev in "${EXPECTED_EVENTS[@]}"; do
     printf '%s\n' "$events" | grep -qx "$ev" || missing+=("$ev")
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
-    report fail_val "hooks.json registra os 4 eventos esperados" \
+    report fail_val "hooks.json registra os 5 eventos esperados" \
       "faltando: ${missing[*]} (plugin instalado com hook não registrado)"
   else
-    report ok "hooks.json registra os 4 eventos esperados"
+    report ok "hooks.json registra os 5 eventos esperados"
   fi
 
   # 2) matcher do PreToolUse cobre Edit|Write|MultiEdit
@@ -2246,6 +2246,7 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
       "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
       "-- habit_warn: \($w | map(select(.event == "habit_warn")) | group_by(.smell) | sort_by(-length) | map("\(.[0].smell // "?"): \(length)") | join(" · ") | if . == "" then "nenhum" else . end)",
       "-- desfechos: \($w | map(select(.event == "outcome")) | group_by(.outcome) | map("\(.[0].outcome // "?"): \(length)") | join(" · ") | if . == "" then "NENHUM registrado — sem desfecho não há aprendizado (maestro outcome)" else . end)",
+      "-- sessões encerradas: \($w | map(select(.event == "session_end")) | length) · sem decisão: \($w | map(select(.event == "session_end" and .decided == "no")) | length) · decididas sem desfecho: \($w | map(select(.event == "session_end" and .decided == "yes" and .settled == "no")) | length)",
       "-- consentimentos: grant \($w | map(select(.event == "consent_grant")) | length) · revoke \($w | map(select(.event == "consent_revoke")) | length)"
     ] | .[]
   ' "${logs[@]}" 2>/dev/null || { echo "retro: log ilegível"; return 0; }

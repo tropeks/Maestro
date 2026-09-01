@@ -111,7 +111,7 @@ expect_break "routing-table.yaml apagado" "$d" 2 'FAIL routing-table.yaml presen
 # --- AC da S-103, caso B: hook não registrado -------------------------------
 d="$(fresh hooks-vazio)"
 printf '{"hooks":{}}\n' >"$d/hooks/hooks.json"
-expect_break "hooks.json = {\"hooks\":{}}" "$d" 1 'FAIL hooks.json registra os 4 eventos'
+expect_break "hooks.json = {\"hooks\":{}}" "$d" 1 'FAIL hooks.json registra os 5 eventos'
 
 d="$(fresh hooks-sem-pretooluse)"
 if command -v jq >/dev/null 2>&1; then
@@ -370,7 +370,7 @@ d="$(fresh sem-jq-hooks-vazio)"
 printf '{"hooks":{}}\n' >"$d/hooks/hooks.json"
 P="$(shim_path "$TMPROOT/path-sem-jq" jq)"
 out="$(PATH="$P" MAESTRO_HOME="$d/.state" NO_COLOR=1 "$d/bin/maestro" doctor 2>&1)"; rc=$?
-if [[ $rc -eq 2 ]] && printf '%s\n' "$out" | grep -q 'FAIL hooks.json registra os 4 eventos'; then
+if [[ $rc -eq 2 ]] && printf '%s\n' "$out" | grep -q 'FAIL hooks.json registra os 5 eventos'; then
   ok "sem jq, hook desregistrado continua sendo detectado (modo degradado)"
   matrix_add "hooks vazio (sem jq no PATH)" "2" "$rc" "REPROVOU"
 else

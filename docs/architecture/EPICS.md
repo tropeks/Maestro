@@ -526,6 +526,15 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
   leitor; leitor avalia os dois candidatos (canônico e acolchoado) até um
   PROVAR — recibo velho canônico não sombreia recibo fresco acolchoado;
   comentário do código conta a verdade. **Entregue 2026-09-01.**
+- **S-1811 — `session_end` emitido (v1.11.1, 2026-09-01):** o evento existia no vocabulário
+  desde o E2 e nada o emitia; sessão que acabava sem `outcome` era invisível ao retro.
+  `hooks/session-end.sh` (bash puro, sem jq) loga `decided`/`settled` por presença no
+  record — nada do conteúdo. Doctor passa a esperar 5 eventos; retro imprime `sessões
+  encerradas · sem decisão · decididas sem desfecho`. **Entregue 2026-09-01.**
+- **S-1810 — fast path da checagem de update (v1.11.1):** a medição completa custava
+  ~150ms por sessão mesmo sem fetch (NFR: <100ms por hook). Dentro do intervalo, com
+  HEAD e `origin/main` iguais aos SHAs gravados, dois `rev-parse` decidem; leitura de
+  estado/config sem `sed`. Medido: ~50ms sobre a sessão sem checagem. **Entregue 2026-09-01.**
 - **Fase 2 registrada, não construída:** calibração de ROTA alimentada por override roteável real (quando existir volume: qual intent falhou, qual frase faltava na tabela); eval blind-judge re-rodado sobre casos vindos de produção.
 - **Dependências:** E17 (telemetria de conduct/flags), ADR-008 (sensor).
 

@@ -71,7 +71,32 @@ UPD_REMOTE_SHA=""; UPD_LOCAL_SHA=""; UPD_SNOOZE_HUMAN=""
 
 _upd_has() { command -v "$1" >/dev/null 2>&1; }
 _upd_git() { git -C "$UPD_REPO" "$@"; }
-_upd_now() { date +%s 2>/dev/null || echo 0; }
+_upd_now() { # epoch sem fork quando o bash sabe (≥4.2); `date` só como fallback
+  local t=""
+  printf -v t '%(%s)T' -1 2>/dev/null || t=""
+  [[ "$t" =~ ^[0-9]+$ ]] && { printf '%s' "$t"; return 0; }
+  date +%s 2>/dev/null || echo 0
+}
+
+# Leitura de `chave=valor` / `chave: valor` SEM fork: o hook roda a cada sessão
+# e a NFR é <100ms — cada `sed` custava ~4ms; eram ~25 por checagem (S-1810).
+_upd_kv_lookup() { # _upd_kv_lookup <arquivo> <chave> <separador '=' ou ':'>
+  local f="$1" key="$2" sep="$3" k v line
+  [[ -f "$f" && -r "$f" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" == "$key$sep"* ]] || continue
+    v="${line#"$key$sep"}"
+    if [[ "$sep" == ":" ]]; then
+      v="${v#"${v%%[![:space:]]*}"}"      # trim à esquerda
+      v="${v%%[[:space:]]#*}"; v="${v%%#*}"  # comentário de fim de linha
+      v="${v%"${v##*[![:space:]]}"}"       # trim à direita
+      [[ "$v" =~ ^[A-Za-z0-9_.-]*$ ]] || v=""
+    fi
+    printf '%s' "$v"
+    return 0
+  done < "$f"
+  return 0
+}
 _upd_git_path() { # <nome> → caminho ABSOLUTO em $GIT_DIR (vale em worktree vinculado, onde .git é arquivo)
   local p; p=$(_upd_git rev-parse --git-path "$1" 2>/dev/null) || p=""
   [[ -n "$p" ]] || { printf '%s' "$UPD_REPO/.git/$1"; return 0; }
@@ -85,10 +110,7 @@ _upd_git_path() { # <nome> → caminho ABSOLUTO em $GIT_DIR (vale em worktree vi
 # ---------------------------------------------------------------------------
 maestro_update_config_get() {
   local key="${1:-}" def="${2:-}" v=""
-  if [[ -n "$key" && -f "$UPD_CONFIG_FILE" && -r "$UPD_CONFIG_FILE" ]]; then
-    v=$(sed -n "s/^${key}:[[:space:]]*\([A-Za-z0-9_.-]*\)[[:space:]]*\(#.*\)\{0,1\}$/\1/p" \
-          "$UPD_CONFIG_FILE" 2>/dev/null | head -1) || v=""
-  fi
+  [[ -n "$key" ]] && v=$(_upd_kv_lookup "$UPD_CONFIG_FILE" "$key" ":")
   printf '%s' "${v:-$def}"
   return 0
 }
@@ -113,19 +135,19 @@ maestro_update_config_set() { # <chave> <valor> — cria/substitui a linha
 _upd_version_of() { # <ref-git|caminho> → versão do plugin.json
   local src="${1:-}" json=""
   if [[ -f "$src" ]]; then
-    json=$(cat "$src" 2>/dev/null) || json=""
+    json=$(<"$src") || json=""
   else
     json=$(_upd_git show "$src:.claude-plugin/plugin.json" 2>/dev/null) || json=""
   fi
-  printf '%s' "$json" \
-    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' \
-    | head -1
+  # regex do bash, sem sed: mesma gramática ([0-9][0-9.]*) de sempre
+  if [[ "$json" =~ \"version\"[[:space:]]*:[[:space:]]*\"([0-9][0-9.]*)\" ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  fi
   return 0
 }
 
 _upd_state_read() { # <chave> → valor do update-state (vazio se ausente)
-  [[ -f "$UPD_STATE_FILE" ]] || return 0
-  sed -n "s/^${1}=\(.*\)$/\1/p" "$UPD_STATE_FILE" 2>/dev/null | head -1
+  _upd_kv_lookup "$UPD_STATE_FILE" "$1" "="
   return 0
 }
 
@@ -151,6 +173,8 @@ _upd_state_write() { # grava o estado inteiro (atômico); preserva prev/head/upg
     printf 'ahead=%s\n' "$UPD_AHEAD"
     printf 'dirty=%s\n' "$UPD_DIRTY"
     printf 'branch=%s\n' "$UPD_BRANCH_CUR"
+    printf 'local_sha=%s\n' "$UPD_LOCAL_SHA"
+    printf 'remote_sha=%s\n' "$UPD_REMOTE_SHA"
     printf 'prev=%s\n' "${prev:-}"
     printf 'head=%s\n' "${head:-}"
     printf 'upgraded=%s\n' "${up:-}"
@@ -215,8 +239,8 @@ _upd_resolve_auto() { # publica UPD_AUTO (env vence config; default: ligado)
   return 0
 }
 
-_upd_maybe_fetch() { # <force> — respeita o intervalo; publica UPD_FETCH
-  local force="${1:-0}" interval="${MAESTRO_UPDATE_INTERVAL:-}" fetched now
+_upd_fetch_due() { # rc=0 se o intervalo desde o último fetch OK já venceu
+  local interval="${MAESTRO_UPDATE_INTERVAL:-}" fetched now
   if [[ ! "$interval" =~ ^[0-9]{1,9}$ ]]; then
     local h; h=$(maestro_update_config_get update_interval_hours 24)
     [[ "$h" =~ ^[0-9]{1,4}$ ]] || h=24
@@ -224,10 +248,34 @@ _upd_maybe_fetch() { # <force> — respeita o intervalo; publica UPD_FETCH
   fi
   fetched=$(_upd_state_read fetched); [[ "$fetched" =~ ^[0-9]+$ ]] || fetched=0
   now=$(_upd_now)
-  if (( force == 1 )) || (( now - fetched >= interval )); then
+  (( now - fetched >= interval ))
+}
+
+_upd_maybe_fetch() { # <force> — respeita o intervalo; publica UPD_FETCH
+  local force="${1:-0}"
+  if (( force == 1 )) || _upd_fetch_due; then
     mkdir -p "$UPD_HOME" 2>/dev/null || :
     if _upd_locked _upd_fetch; then UPD_FETCH="ok"; else UPD_FETCH="failed"; fi
   fi
+  return 0
+}
+
+_upd_fast_path() { # S-1810: sem fetch e sem nada mudado, reaproveita o estado (NFR <100ms)
+  # A medição completa (show, rev-list x2, branch, status) custava ~150ms por
+  # sessão mesmo dentro do intervalo. Se a última checagem deu "current" e
+  # HEAD e o ref remoto são os MESMOS SHAs de então, nada pode ter ficado para
+  # trás: dois rev-parse bastam. Qualquer diferença cai na medição completa.
+  [[ "$(_upd_state_read result)" == "current" ]] || return 1
+  local ref="refs/remotes/$UPD_REMOTE/$UPD_BRANCH" p_local p_remote head remote
+  p_local=$(_upd_state_read local_sha); p_remote=$(_upd_state_read remote_sha)
+  [[ "$p_local" =~ ^[0-9a-f]{40}$ && "$p_remote" =~ ^[0-9a-f]{40}$ ]] || return 1
+  head=$(_upd_git rev-parse HEAD 2>/dev/null) || return 1
+  remote=$(_upd_git rev-parse --verify -q "$ref" 2>/dev/null) || return 1
+  [[ "$head" == "$p_local" && "$remote" == "$p_remote" ]] || return 1
+  UPD_LOCAL_SHA="$head"; UPD_REMOTE_SHA="$remote"
+  UPD_REMOTE_VER=$(_upd_state_read remote); UPD_BRANCH_CUR=$(_upd_state_read branch)
+  UPD_AHEAD=$(_upd_state_read ahead); [[ "$UPD_AHEAD" =~ ^[0-9]+$ ]] || UPD_AHEAD=0
+  UPD_BEHIND=0; UPD_STATE="current"; UPD_REASON="fast-path"
   return 0
 }
 
@@ -287,6 +335,14 @@ maestro_update_check() {
 
   if _upd_disabled; then UPD_STATE="disabled"; UPD_REASON="config"; return 0; fi
   _upd_resolve_auto
+
+  # Fast path ANTES das sondas de repositório: dentro do intervalo e com HEAD e
+  # ref remoto idênticos à última checagem, dois rev-parse decidem (S-1810).
+  # Se algo não bater (não é repo, ref sumiu), cai no caminho completo abaixo.
+  if (( force == 0 )) && ! _upd_fetch_due && _upd_fast_path; then
+    _upd_state_write
+    return 0
+  fi
 
   # É um clone git com o remoto? Sem isso não há o que atualizar.
   if ! _upd_has git || ! _upd_git rev-parse --git-dir >/dev/null 2>&1; then

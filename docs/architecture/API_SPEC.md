@@ -36,6 +36,10 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   Rede falha, snooze vigente, em dia ou desligado: **nenhuma linha** — o estado fica em
   `$MAESTRO_HOME/update-state` (DATA_MODEL §10) e é o doctor que fala. A linha mora no
   cabeçalho (nunca trunca). Desliga com `MAESTRO_NO_UPDATE_CHECK=1` ou `update_check: false`.
+  **S-1810 (v1.11.1):** dentro do intervalo, se HEAD e `origin/main` são os mesmos SHAs
+  da última checagem `current`, o hook reaproveita o estado com dois `rev-parse`
+  (`reason=fast-path`) — custo medido ~50ms sobre a sessão sem checagem (era ~150ms).
+  Leitura de estado/config sem `sed`: lookups em bash puro.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
@@ -54,6 +58,17 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 
 ### `hooks/user-prompt-submit.sh` — evento UserPromptSubmit (ADR-008)
 - Prompt inicia com `/` → log `override_manual` com **apenas o nome do comando** (vocabulário fechado). Sempre exit 0; nunca altera o prompt.
+
+### `hooks/session-end.sh` — evento SessionEnd (S-1811, v1.11.1)
+- **Lê:** `session_id` do stdin (regex; `CLAUDE_SESSION_ID` como fallback) e o decision
+  record `$MAESTRO_HOME/sessions/<id>.json`, só por presença: `workflow` presente →
+  `decided=yes`; `outcome` ∈ accepted|rework|reverted → `settled=yes`.
+- **Emite:** uma linha `session_end` no log com `session_id`, `decided`, `settled` — nada
+  do record (brief, flags, reason) sai. Nada em stdout (`exec 1>&2`).
+- **Erros:** sempre exit 0 — stdin vazio/lixo/id fora do tipo, kill-switch, lib ausente,
+  home inescrevível: sem evento, sem ruído. Sem `jq`, sem Bun, sem rede.
+- **Consumidor:** `maestro retro` imprime `sessões encerradas · sem decisão · decididas
+  sem desfecho` (E18 fase 2: a variável que faltava para medir sessões sem `outcome`).
 
 ### `hooks/log-stop.sh` — evento Stop (opcional, v1.1)
 - Fecha o ciclo no log (`event: session_end`), computa contagens da sessão.
@@ -251,6 +266,7 @@ maestro conduct --session <session_id>
   fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
   quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
   é inerte e a linha é `ok`.
+- **Emenda S-1811 (v1.11.1):** hooks esperados passam a ser 5 (SessionEnd).
 - **Emenda E9:** hooks esperados passam a ser 4 (PostToolUse do habit hook);
   todo sensor do motor precisa de guia em `config/habit-guides/` (`fail_val` sem).
 - **Emenda E8:** valida cabeçalho e epoch de todo brief em `$MAESTRO_HOME/briefs/`

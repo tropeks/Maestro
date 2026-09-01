@@ -262,6 +262,10 @@ estado local, jamais no log além dos eventos.
 
 **Emenda E17 (S-1702):** evento novo `conduct` — chaves `session_id`, `flags_n` (inteiro) e `approach` (yes|no). O conteúdo de brief/flags JAMAIS entra no log (só contagens e metadados, como todo o vocabulário).
 
+**Emenda S-1811 (v1.11.1):** `session_end` passa a ser emitido (`hooks/session-end.sh`)
+com `session_id`, `decided` (yes|no — havia decision record) e `settled` (yes|no — havia
+`outcome`). Só presença e enum; nada do conteúdo do record entra no log.
+
 **Emenda E19 (S-1901):** evento novo `upgrade` — chaves `from` e `to` (versão do
 plugin, `^[0-9]+(\.[0-9]+){1,3}$`) e `via` (`auto|manual|rollback`). Um evento por
 APLICAÇÃO (ff-only ou rollback), nunca por checagem: a checagem é estado local (§10), não
@@ -382,6 +386,8 @@ checked=<epoch>  fetched=<epoch do último fetch OK>  fetch=ok|failed|skipped
 result=disabled|current|available|blocked|failed
 reason=<config|ahead|dirty|branch|in-progress|not-a-repo|no-remote|no-remote-ref|upgraded|rolled-back>
 local=<versão>  remote=<versão>  behind=<n>  ahead=<n>  dirty=0|1  branch=<nome>
+local_sha=<HEAD medido>  remote_sha=<origin/main medido>   (S-1810: se ambos batem na
+sessão seguinte e o intervalo não venceu, `reason=fast-path` — dois rev-parse, sem medição)
 prev=<sha do HEAD anterior ao último upgrade — alvo do --rollback>
 head=<sha que o upgrade produziu — o rollback recusa (`diverged`) se o HEAD já não for este>
 upgraded=<epoch>

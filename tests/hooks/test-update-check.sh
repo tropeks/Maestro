@@ -307,5 +307,28 @@ chk "fetch registrado como failed" "$(state "$H" fetch)" "failed"
 [[ -d "$H/update.lock.d" ]] && bad "lock mkdir ficou órfão" || ok "lock mkdir liberado"
 hasnt "1.0.8 invisível (não buscou)" "1.0.8" "$SANDBOX/out"
 
+echo "-- fast path (S-1810): dentro do intervalo e sem mudança, nada de status/rev-list"
+FB="$SANDBOX/fbin"; mkdir -p "$FB"
+cat > "$FB/git" <<WRAP
+#!/bin/bash
+for a in "\$@"; do case "\$a" in status|rev-list|show|branch) echo "\$a" >> "$SANDBOX/git-heavy.log";; esac; done
+exec "$REALGIT" "\$@"
+WRAP
+chmod +x "$FB/git"
+next_home; run "$H"                       # checagem completa: grava local_sha/remote_sha
+chk "estado current" "$(state "$H" result)" "current"
+[[ "$(state "$H" local_sha)" =~ ^[0-9a-f]{40}$ ]] && ok "local_sha gravado" || bad "local_sha ausente"
+: > "$SANDBOX/git-heavy.log"
+run "$H" MAESTRO_UPDATE_INTERVAL=86400 PATH="$FB:$PATH"
+chk "segue current" "$(state "$H" result)" "current"
+chk "motivo fast-path" "$(state "$H" reason)" "fast-path"
+[[ -s "$SANDBOX/git-heavy.log" ]] && bad "fast path chamou git pesado: $(tr '\n' ' ' < "$SANDBOX/git-heavy.log")" || ok "só rev-parse: nenhum status/rev-list/show/branch"
+echo local2 > "$CLONE/LOCAL2.md"; G -C "$CLONE" add -A; G -C "$CLONE" commit -qm "local2"
+: > "$SANDBOX/git-heavy.log"
+run "$H" MAESTRO_UPDATE_INTERVAL=86400 PATH="$FB:$PATH"
+[[ -s "$SANDBOX/git-heavy.log" ]] && ok "HEAD mudou: medição completa de novo" || bad "HEAD mudou e o fast path não desarmou"
+chk "ahead 1 medido" "$(state "$H" ahead)" "1"
+G -C "$CLONE" reset -q --hard "$(git -C "$CLONE" rev-parse refs/remotes/origin/main)"
+
 if [[ $fail -eq 0 ]]; then echo "test-update-check: OK"; else echo "test-update-check: FALHOU"; fi
 exit $fail
