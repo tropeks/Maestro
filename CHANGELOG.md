@@ -6,26 +6,16 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
-### Fixed
-- **`doctor` reprovava o record de quem registrou o desfecho.** A emenda v1.5
-  (E10/S-1001) mandou `maestro outcome` gravar `outcome`, `outcome_ts` e `suite`
-  no decision record, mas `RECORD_FIELDS` nunca cresceu — e a checagem "sem campos
-  extras" derrubava justamente o record correto. Efeito: qualquer sessão em que
-  alguém fechou o loop de calibração fazia `doctor --ci` sair 1, o que empurra o
-  operador a apagar o record (o `fix:` da própria mensagem) e perder o dado que o
-  E10 existe para colher. A CI não via porque a suíte roda o doctor com
-  `MAESTRO_HOME` temporário e zero record; agora vê.
-
-  Os três campos passam a ser validados, não só aceitos: `outcome ∈
-  {accepted, rework, reverted}`, `suite ∈ {pass, fail}`, e `outcome_ts`/`suite`
-  exigem `outcome` presente (não há desfecho órfão).
-
-### Removed
-- **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
-  engano no `d98838a`; viajava para todo clone e para o cache do plugin.
+## [1.10.0] — 2026-09-01
 
 ### Added
-- **Release diagram as a milestone contract (S-1709).** Deterministic archify source versioned at docs/assets/architecture.json (evidence-backed against the tagged commit) with the rendered HTML beside it; doctor now warns when the diagram's verified revision falls behind the latest tag. The archify package lives at ~/.tools/archify — a local tool, not an always-loaded skill.
+- **Release diagram as a milestone contract (S-1709).** Deterministic archify
+  source versioned at docs/assets/architecture.json (evidence-backed against
+  the tagged commit) with the rendered HTML beside it; doctor now warns when
+  the diagram's verified revision falls behind the latest tag. The archify
+  package lives at ~/.tools/archify — a local tool, not an always-loaded
+  skill. The release rite gains the regenerate + Architecture Delta step;
+  this release is its debut.
 
 ## [1.9.1] — 2026-08-31
 
@@ -206,6 +196,24 @@ valuable test failure.
   egress ledger (no sink by design), tracker trust-envelope (no ingestion),
   Aside browser and section carves (out of domain) rejected with rationale.
 
+### Fixed (folded 2026-09-01 — shipped in this release, left in Unreleased by mistake)
+- **`doctor` reprovava o record de quem registrou o desfecho.** A emenda v1.5
+  (E10/S-1001) mandou `maestro outcome` gravar `outcome`, `outcome_ts` e `suite`
+  no decision record, mas `RECORD_FIELDS` nunca cresceu — e a checagem "sem campos
+  extras" derrubava justamente o record correto. Efeito: qualquer sessão em que
+  alguém fechou o loop de calibração fazia `doctor --ci` sair 1, o que empurra o
+  operador a apagar o record (o `fix:` da própria mensagem) e perder o dado que o
+  E10 existe para colher. A CI não via porque a suíte roda o doctor com
+  `MAESTRO_HOME` temporário e zero record; agora vê.
+
+  Os três campos passam a ser validados, não só aceitos: `outcome ∈
+  {accepted, rework, reverted}`, `suite ∈ {pass, fail}`, e `outcome_ts`/`suite`
+  exigem `outcome` presente (não há desfecho órfão).
+
+### Removed (folded 2026-09-01 — same)
+- **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
+  engano no `d98838a`; viajava para todo clone e para o cache do plugin.
+
 ## [1.4.0] — 2026-08-24
 
 Epic E11: knowledge-graph freshness — structure without re-reading code. The
@@ -365,6 +373,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.10.0]: https://github.com/tropeks/Maestro/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/tropeks/Maestro/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/tropeks/Maestro/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/tropeks/Maestro/compare/v1.7.0...v1.8.0
