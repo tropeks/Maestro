@@ -1069,6 +1069,44 @@ check_project_profiles() { # S-303: expert inexistente no .maestro.yaml é aviso
   fi
 }
 
+check_release_diagram() { # S-1709: diagrama de arquitetura declarado vs. última tag — warn, nunca fail
+  local proj="${CLAUDE_PROJECT_DIR:-$PWD}" f rev tag tagc
+  f="$proj/docs/assets/architecture.json"
+  if [[ ! -f "$f" ]]; then
+    report skip "diagrama de release" "nenhum declarado (docs/assets/architecture.json)"
+    return 0
+  fi
+  if ! has jq; then
+    report skip "diagrama de release" "requer jq para ler docs/assets/architecture.json"
+    return 0
+  fi
+  if ! has git; then
+    report skip "diagrama de release" "requer git para comparar com a última tag"
+    return 0
+  fi
+  tag=$(git -C "$proj" describe --tags --abbrev=0 2>/dev/null) || true
+  if [[ -z "$tag" ]]; then
+    report skip "diagrama de release" "repositório sem tag — nada com que comparar"
+    return 0
+  fi
+  rev=$(jq -r '.meta.repository.revision // empty' "$f" 2>/dev/null) || true
+  if [[ ! "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+    report warn "diagrama de release" "sem revision verificável em docs/assets/architecture.json"
+    return 0
+  fi
+  tagc=$(git -C "$proj" rev-list -n1 "$tag" 2>/dev/null) || true
+  if [[ -z "$tagc" ]]; then
+    report skip "diagrama de release" "não consegui resolver o commit da tag $tag"
+    return 0
+  fi
+  if [[ "$rev" == "$tagc" ]]; then
+    report ok "diagrama de release: em dia com $tag"
+  else
+    report warn "diagrama de release" \
+      "verificado em ${rev:0:7}, release $tag em ${tagc:0:7} — regenere com archify (--repo-root) e recommite"
+  fi
+}
+
 # ------------------------------------------------------------------ decision records
 
 now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
@@ -1246,6 +1284,7 @@ doctor() {
   # --- roster (E3) -------------------------------------------------------------
   check_roster
   check_project_profiles
+  check_release_diagram
 
   # --- estado ----------------------------------------------------------------
   if [[ "$MAESTRO_HOME" != "$MAESTRO_HOME_DEFAULT" ]]; then

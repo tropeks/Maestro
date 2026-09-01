@@ -24,6 +24,9 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+### Added
+- **Release diagram as a milestone contract (S-1709).** Deterministic archify source versioned at docs/assets/architecture.json (evidence-backed against the tagged commit) with the rendered HTML beside it; doctor now warns when the diagram's verified revision falls behind the latest tag. The archify package lives at ~/.tools/archify — a local tool, not an always-loaded skill.
+
 ## [1.9.1] — 2026-08-31
 
 ### Fixed

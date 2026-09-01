@@ -379,6 +379,61 @@ else
   printf '%s\n' "$out" | sed 's/^/       | /'
 fi
 
+# =============================================================== 7. diagrama de release (S-1709)
+# check_release_diagram é warn-only: nunca deve mudar o rc do doctor.
+
+git_fixture() { # git_fixture <dir> → inicializa .git com 1 commit e retorna o sha via stdout
+  local d="$1"
+  git -C "$d" init -q
+  git -C "$d" config user.email 'test@example.com'
+  git -C "$d" config user.name 'test'
+  git -C "$d" add -A >/dev/null
+  git -C "$d" commit -q -m 'init' >/dev/null
+  git -C "$d" rev-parse HEAD
+}
+
+d="$(fresh diagrama-em-dia)"
+sha="$(git_fixture "$d")"
+git -C "$d" tag v0.1.0
+mkdir -p "$d/docs/assets"
+printf '{"meta":{"repository":{"revision":"%s"}}}\n' "$sha" >"$d/docs/assets/architecture.json"
+out="$(CLAUDE_PROJECT_DIR="$d" MAESTRO_HOME="$d/.state" NO_COLOR=1 "$d/bin/maestro" doctor 2>&1)"; rc=$?
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q 'diagrama de release: em dia com v0.1.0'; then
+  ok "S-1709: diagrama alinhado à tag → ok, rc=0"
+else
+  bad "S-1709: diagrama alinhado à tag não reportado como ok (rc=$rc)"
+  printf '%s\n' "$out" | sed 's/^/       | /'
+fi
+
+d="$(fresh diagrama-atrasado)"
+sha="$(git_fixture "$d")"
+git -C "$d" tag v0.2.0
+mkdir -p "$d/docs/assets"
+printf '{"meta":{"repository":{"revision":"000000000000000000000000000000000000dead"}}}\n' \
+  >"$d/docs/assets/architecture.json"
+out="$(CLAUDE_PROJECT_DIR="$d" MAESTRO_HOME="$d/.state" NO_COLOR=1 "$d/bin/maestro" doctor 2>&1)"; rc=$?
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^warn diagrama de release' \
+   && printf '%s\n' "$out" | grep -q 'verificado em 0000000, release v0.2.0' \
+   && printf '%s\n' "$out" | grep -q 'regenere com archify'; then
+  ok "S-1709: diagrama atrás da release → warn acionável, rc continua 0"
+else
+  bad "S-1709: diagrama atrasado não avisou como esperado (rc=$rc)"
+  printf '%s\n' "$out" | sed 's/^/       | /'
+fi
+
+d="$(fresh diagrama-ausente)"
+rm -f "$d/docs/assets/architecture.json"
+git_fixture "$d" >/dev/null
+git -C "$d" tag v0.3.0
+out="$(CLAUDE_PROJECT_DIR="$d" MAESTRO_HOME="$d/.state" NO_COLOR=1 "$d/bin/maestro" doctor 2>&1)"; rc=$?
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q 'skip diagrama de release — nenhum declarado' \
+   && ! printf '%s\n' "$out" | grep -q 'diagrama de release: em dia\|warn diagrama de release'; then
+  ok "S-1709: sem docs/assets/architecture.json → skip silencioso, rc=0"
+else
+  bad "S-1709: ausência do diagrama não tratada como skip (rc=$rc)"
+  printf '%s\n' "$out" | sed 's/^/       | /'
+fi
+
 # =============================================================== matriz final
 
 echo

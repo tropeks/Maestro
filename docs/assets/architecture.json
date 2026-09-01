@@ -1,0 +1,467 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Maestro v1.9.1 — trilhos determinísticos, IA nas bordas",
+    "subtitle": "Camada de roteamento MoE para Claude Code · pós-E17: regência, profundidade declarada, dissenso persistente",
+    "output": "maestro-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/tropeks/Maestro",
+      "revision": "e3f33dbc3d6e408f9cece3e8808ef5ff93134df6"
+    },
+    "views": [
+      {
+        "id": "regencia",
+        "label": "Regência (E17)",
+        "focus": [
+          "capitao",
+          "session",
+          "roster",
+          "cli"
+        ],
+        "note": "Todo contato humano em essência · impacto · approach; flags dos agentes sobem só Critical/High, regidas."
+      },
+      {
+        "id": "trilhos",
+        "label": "Trilhos",
+        "focus": [
+          "rtable",
+          "sstart",
+          "docs",
+          "ledger",
+          "session"
+        ],
+        "note": "Routing table injetada, docs como contrato (drift/covers) e evidência mecânica — o que impede o trem de descarrilar."
+      },
+      {
+        "id": "enforcement",
+        "label": "Enforcement",
+        "focus": [
+          "gates",
+          "cli",
+          "binm",
+          "record"
+        ],
+        "note": "Gate exige decisão; decide recusa plan-gated sem brief; doctor valida o schema; conduct preserva o dissenso."
+      }
+    ],
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Humano"
+        },
+        "backend": {
+          "label": "Hooks + CLI (bash/Bun)"
+        },
+        "security": {
+          "label": "Gates"
+        },
+        "database": {
+          "label": "Estado e contratos"
+        },
+        "cloud": {
+          "label": "Roster MoE"
+        },
+        "messagebus": {
+          "label": "Telemetria"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "capitao",
+      "type": "external",
+      "label": "Capitão",
+      "sublabel": "aprovador",
+      "tag": "gate plan · ship",
+      "pos": [
+        40,
+        110
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "session",
+      "type": "external",
+      "label": "Sessão Claude Code",
+      "sublabel": "diretor (rege, não toca)",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "sstart",
+      "type": "backend",
+      "label": "session-start.sh",
+      "sublabel": "injeção ≤6930B",
+      "sources": [
+        {
+          "path": "hooks/session-start.sh",
+          "line": 451,
+          "label": "build_and_emit"
+        }
+      ],
+      "pos": [
+        300,
+        110
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "PreToolUse gates",
+      "sublabel": "pre-tool + pre-bash",
+      "tag": "denylist ADR-003",
+      "sources": [
+        {
+          "path": "hooks/pre-tool-gate.sh",
+          "line": 1
+        },
+        {
+          "path": "hooks/pre-bash-guard.sh",
+          "line": 1
+        }
+      ],
+      "pos": [
+        300,
+        550
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "habits",
+      "type": "backend",
+      "label": "post-edit-habits.sh",
+      "sublabel": "nags tardios 5/15/40",
+      "tag": "regencia · doc-governed",
+      "sources": [
+        {
+          "path": "hooks/post-edit-habits.sh",
+          "line": 154,
+          "label": "sensor regencia"
+        }
+      ],
+      "pos": [
+        40,
+        550
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "rtable",
+      "type": "database",
+      "label": "routing-table.yaml",
+      "sublabel": "rotas · bindings · H1–H7",
+      "sources": [
+        {
+          "path": "config/routing-table.yaml",
+          "line": 146,
+          "label": "H7"
+        }
+      ],
+      "pos": [
+        820,
+        110
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "src/cli.ts",
+      "sublabel": "decide · log",
+      "tag": "--depth · --brief",
+      "sources": [
+        {
+          "path": "src/cli.ts",
+          "line": 454,
+          "label": "cmdDecide"
+        }
+      ],
+      "pos": [
+        300,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "binm",
+      "type": "backend",
+      "label": "bin/maestro",
+      "sublabel": "conduct · doctor · docs · evidence",
+      "sources": [
+        {
+          "path": "bin/maestro",
+          "line": 49,
+          "label": "RECORD_FIELDS"
+        }
+      ],
+      "pos": [
+        560,
+        550
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "roster",
+      "type": "cloud",
+      "label": "Roster MoE",
+      "sublabel": "12 agentes · haiku/sonnet/opus",
+      "tag": "seguranca · ux (opus)",
+      "sources": [
+        {
+          "path": "agents/seguranca.md",
+          "line": 1
+        },
+        {
+          "path": "agents/ux.md",
+          "line": 1
+        }
+      ],
+      "pos": [
+        560,
+        110
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "record",
+      "type": "database",
+      "label": "Decision record",
+      "sublabel": "~/.maestro/sessions · 0600",
+      "tag": "depth · brief · flags[]",
+      "pos": [
+        560,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "ledger",
+      "type": "messagebus",
+      "label": "Ledger + logs",
+      "sublabel": "evidência · routing.jsonl",
+      "tag": "só metadados",
+      "pos": [
+        820,
+        550
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "docs",
+      "type": "database",
+      "label": "Docs canônicos",
+      "sublabel": "covers · reviewed · catraca",
+      "tag": "drift E16",
+      "sources": [
+        {
+          "path": "docs/architecture/EPICS.md",
+          "line": 1
+        }
+      ],
+      "pos": [
+        820,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Plugin (repo vivo)",
+      "wraps": [
+        "sstart",
+        "gates",
+        "habits",
+        "rtable",
+        "cli",
+        "binm",
+        "roster",
+        "docs"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "MAESTRO_HOME",
+      "wraps": [
+        "record",
+        "ledger"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "dita-aprova",
+      "from": "capitao",
+      "to": "session",
+      "label": "aprova",
+      "variant": "emphasis",
+      "labelDx": -46,
+      "labelDy": 62
+    },
+    {
+      "id": "brief-regido",
+      "from": "session",
+      "to": "capitao",
+      "label": "brief",
+      "variant": "security",
+      "labelDx": 46
+    },
+    {
+      "id": "parse-tabela",
+      "from": "rtable",
+      "to": "sstart",
+      "label": "parse",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          895,
+          60
+        ],
+        [
+          375,
+          60
+        ]
+      ]
+    },
+    {
+      "id": "roster-injetado",
+      "from": "roster",
+      "to": "sstart",
+      "label": "roster filtrado",
+      "variant": "dashed"
+    },
+    {
+      "id": "injecao",
+      "from": "sstart",
+      "to": "session",
+      "label": "injeção",
+      "labelDy": -24
+    },
+    {
+      "id": "decide",
+      "from": "session",
+      "to": "cli",
+      "label": "decide",
+      "variant": "emphasis",
+      "labelDx": 34,
+      "labelDy": -12
+    },
+    {
+      "id": "grava-record",
+      "from": "cli",
+      "to": "record",
+      "label": "record 0600",
+      "variant": "emphasis"
+    },
+    {
+      "id": "conduct-doctor",
+      "from": "binm",
+      "to": "record",
+      "label": "conduct · doctor"
+    },
+    {
+      "id": "gate-exige",
+      "from": "gates",
+      "to": "record",
+      "label": "exige record",
+      "variant": "security"
+    },
+    {
+      "id": "nag-tardio",
+      "from": "habits",
+      "to": "session",
+      "label": "nag tardio",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "drift",
+      "from": "binm",
+      "to": "docs",
+      "label": "drift por covers"
+    },
+    {
+      "id": "evidencia",
+      "from": "binm",
+      "to": "ledger",
+      "label": "evidência mecânica",
+      "labelDy": 14
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Regência (E17)",
+      "items": [
+        "Aprovação em 3 níveis: essência · impacto · approach",
+        "Partitura técnica só sob demanda",
+        "Flags: só Critical/High sobem, ADR upstream soberano"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Trilhos",
+      "items": [
+        "Hooks garantem QUE a decisão acontece",
+        "Docs como contrato: covers + catraca de drift",
+        "Evidência mecânica no ledger, nunca palavra de honra"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Enforcement",
+      "items": [
+        "decide recusa plan-gated sem brief",
+        "Denylist de autoproteção: nem agente, nem record destrava",
+        "Dissenso persiste: flags[] sobrevive ao re-decide (S-1708)"
+      ]
+    }
+  ]
+}

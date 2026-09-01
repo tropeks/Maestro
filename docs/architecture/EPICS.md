@@ -505,6 +505,7 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
   `DATA_MODEL.md`, blocos `maestro decide`/`maestro conduct` em `API_SPEC.md`, e este
   épico em `EPICS.md`, todos no mesmo changeset (regra do contrato de docs, E16).
 - **S-1708:** flags de dissenso sobrevivem ao re-decide — o decide idempotente reescrevia o record e evaporava o flags[] que o conduct gravou (visto em produção no NetForge, 2026-08-31: conduct flags_n=4 seguido de decide que apagou o conteúdo; o log guarda só contagem, por contrato). cmdDecide agora faz merge do flags[] existente no record novo, inclusive quando workflow/mode mudam — a trilha é da sessão. Apagar flags exige apagar o record. **Entregue 2026-08-31.**
+- **S-1709:** diagrama de arquitetura como contrato de milestone — archify vira ferramenta local (~/.tools/archify, fora da listagem de skills: custo zero de contexto nas sessões comuns); fonte determinística versionada em docs/assets/architecture.json (evidence-backed: meta.repository.revision = commit verificado) + HTML entregue ao lado; check warn-only no doctor compara a revision do JSON com o commit da última tag e acusa diagrama atrasado em relação à release. Rito de release ganha o passo: regenerar + Architecture Delta contra a release anterior. **Entregue 2026-09-01.**
 - **Fora do v1, com registro:** interceptação REAL dos contatos de fim de sessão via hook
   Stop/SessionEnd (hoje inexistente em `hooks.json` — questão aberta do design, épico
   próprio); day-zero bootstrap ASSISTIDO além da convenção manual (o valor `day-zero` do
