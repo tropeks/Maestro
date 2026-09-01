@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.9.1 — trilhos determinísticos, IA nas bordas",
+    "title": "Maestro v1.10.0 — trilhos determinísticos, IA nas bordas",
     "subtitle": "Camada de roteamento MoE para Claude Code · pós-E17: regência, profundidade declarada, dissenso persistente",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "e3f33dbc3d6e408f9cece3e8808ef5ff93134df6"
+      "revision": "58ce4df1014137f4a3394e7bb348679f115821cc"
     },
     "views": [
       {
@@ -230,7 +230,8 @@
       "size": [
         150,
         64
-      ]
+      ],
+      "tag": "vigia retrato vs tag"
     },
     {
       "id": "roster",

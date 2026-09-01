@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "compare",
+  "type": "architecture",
+  "comparatorVersion": 1,
+  "canonicalVersion": 1,
+  "completeness": "complete",
+  "proofLevel": "revision-pinned",
+  "base": {
+    "title": "Maestro v1.9.1 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "1acf197b4f26b8363f0870dc4c89c8d17f4c421102c67462ce70049aef82bce0",
+    "semanticSha256": "79aa23c6278c280142ffeaea663d0202a61870088c0db1537ffd0910a70a2356",
+    "bytes": 9465,
+    "revision": "e3f33dbc3d6e408f9cece3e8808ef5ff93134df6"
+  },
+  "head": {
+    "title": "Maestro v1.10.0 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "272763d8947e0ea02a111244c2a822095faa78b6b0fd43c86c0df1517a9e19be",
+    "semanticSha256": "a65c8586ed2f55858d2fd44be09b24060d73d800a1f14a25a17be7c0a2a834d7",
+    "bytes": 9503,
+    "revision": "58ce4df1014137f4a3394e7bb348679f115821cc"
+  },
+  "summary": {
+    "components": {
+      "added": 0,
+      "changed": 1,
+      "evidenceChanged": 0,
+      "removed": 0,
+      "moved": 0
+    },
+    "connections": {
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "rerouted": 0
+    },
+    "boundaries": {
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "geometryChanged": 0
+    },
+    "presentationChanged": true,
+    "provenanceChanged": true
+  },
+  "changes": {
+    "components": [
+      {
+        "id": "binm",
+        "baseLabel": "bin/maestro",
+        "headLabel": "bin/maestro",
+        "status": "changed",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": [
+          "/tag"
+        ]
+      }
+    ],
+    "connections": [],
+    "boundaries": []
+  },
+  "identity": {
+    "components": "components[].id",
+    "connections": "connections[].id (required)",
+    "boundaries": "boundaries[].kind + boundaries[].label (derived)"
+  },
+  "view": {
+    "visualPreset": "classic"
+  },
+  "limitations": [
+    "Authored Architecture IR only; no runtime impact, causality, risk, or mergeability is inferred.",
+    "Boundary identity is conservatively derived from kind + label."
+  ],
+  "artifact": {
+    "sha256": "bcbe0e6a627902ecebc04c0c46c20f6744439b8af2b49294b05da8327b0c9ddd",
+    "bytes": 2059652
+  },
+  "validation": {
+    "checksPassed": 28,
+    "checkCount": 28,
+    "baseComposition": "pass",
+    "headComposition": "pass"
+  }
+}
