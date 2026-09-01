@@ -6,6 +6,8 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.10.1] — 2026-09-01
+
 ### Fixed
 - **Order label had a crack between suggestion and reader (S-1802).** The order
   contract suggested the raw oid (`order-001` if you typed 001) while the state
@@ -383,6 +385,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.10.1]: https://github.com/tropeks/Maestro/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/tropeks/Maestro/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/tropeks/Maestro/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/tropeks/Maestro/compare/v1.8.0...v1.9.0
