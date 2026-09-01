@@ -72,6 +72,8 @@ O gate.mode foi promovido a `block` em 2026-08-29 com prova comportamental (live
 **Decisão:** hook **UserPromptSubmit** detecta prompt iniciando com `/` (invocação manual de comando de workflow) e loga `override_manual` contendo **apenas o nome do comando** — vocabulário fechado, nunca o texto do prompt. `edits_per_decision` também é derivada (contagem de `gate_pass` por decision record) para detectar um record único liberando sessão inteira.
 **Consequências:** métrica sai de evento determinístico; custo ~zero (prefixo-match em bash).
 
+**Emenda v1.1 (E18/S-1801, 2026-09-01):** o sensor segue logando todo prompt iniciado por `/` (dado bruto), mas a MÉTRICA separa override roteável (comando que casa com alvo `skill:` de binding ou nome de workflow — o que o roteador teria roteado) de invocação não-roteável (ciclo de vida: context-save/restore, upgrade, login). Taxa de override, sinal ≥20% e critério de promoção warn→block usam só os roteáveis. Motivo: na primeira janela real de produção, 12/12 eram ciclo de vida — a métrica contaminada travaria o endurecimento do gate para sempre.
+
 ### ADR-004 — Roster de agentes com hierarquia de senioridade e especialização por linguagem
 **Status:** Aceito.
 **Contexto:** tiering de custo (Haiku↔Opus) + especialização por linguagem do portfólio (Go, Python, TS/React, SQL).

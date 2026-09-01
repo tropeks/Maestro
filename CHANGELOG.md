@@ -6,6 +6,9 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **Override rate counted lifecycle commands as routing failures (S-1801).** The ADR-008 sensor logs every slash prompt, and retro counted them all: a real 7-day window showed 21% override when every single event was context-save/restore, upgrade or login — true routable override was 0%, and the false signal would have blocked gate hardening forever. Retro now derives the routable set from the routing table itself and scores the rate on routable overrides only, reporting the lifecycle count separately. Sensor unchanged; raw data preserved.
+
 ## [1.10.0] — 2026-09-01
 
 ### Added

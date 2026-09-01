@@ -2027,15 +2027,60 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
     return 0
   fi
 
+  # S-1801 — o SENSOR (hooks/user-prompt-submit.sh, ADR-008) loga `override_manual`
+  # para TODO prompt que começa com `/`; boa parte é ciclo de vida do plugin
+  # (gstack-context-restore, login, cancel...), nunca teve rota automática pra
+  # "override". O CONSUMIDOR separa: ROTEÁVEL = cmd bate com um alvo `skill:`
+  # dos bindings (prefixo removido) OU com um nome de workflow — é só isso que
+  # entra na taxa. `agent:`/`native:` não são slash command, ficam fora do
+  # conjunto por definição. Tabela = fonte única (mesmo padrão de
+  # profile_experts()); ausente/vazia degrada SEM quebrar o retro (S-1801 AC).
+  local rt="${MAESTRO_ROUTING_TABLE:-$REPO_DIR/config/routing-table.yaml}"
+  local routable="" routable_warn=""
+  if [[ -f "$rt" && -r "$rt" ]]; then
+    routable=$(awk '
+      /^bindings:/ { in_b = 1; next }
+      in_b && /^[a-zA-Z]/ { in_b = 0 }
+      in_b {
+        line = $0; sub(/#.*/, "", line)
+        if (line ~ /^  [a-z_]+:/) {
+          sub(/^  [a-z_]+:[ \t]*/, "", line)
+          gsub(/[][]/, "", line)
+          n = split(line, arr, /,[ \t]*/)
+          for (i = 1; i <= n; i++) {
+            tok = arr[i]; gsub(/^[ \t]+|[ \t]+$/, "", tok)
+            if (tok ~ /^skill:/) { sub(/^skill:/, "", tok); print tok }
+          }
+        }
+      }
+      /^  [a-z]+:.*steps:/ { w = $0; gsub(/^  |:.*/, "", w); print w }
+    ' "$rt" 2>/dev/null | awk '!s[$0]++') || routable=""
+    [[ -z "$routable" ]] && routable_warn="routing-table sem bindings skill:/workflows reconhecíveis ($rt)"
+  else
+    routable_warn="routing-table.yaml ausente/ilegível ($rt)"
+  fi
+  local degrade=false
+  [[ -n "$routable_warn" ]] && degrade=true
+  local routable_json
+  routable_json=$(printf '%s\n' "$routable" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null) || routable_json='[]'
+  [[ -z "$routable_json" ]] && routable_json='[]'
+
   printf '== maestro retro — janela de %s dia(s)%s\n' "$days" "${cutoff:+ (desde $cutoff)}"
-  jq -rs --arg cut "$cutoff" '
+  if [[ "$degrade" == true ]]; then
+    printf -- '-- aviso: filtro roteável indisponível (%s) — override conta como no total (degradado, sem separar roteável/não-roteável)\n' "$routable_warn"
+  fi
+  jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" --argjson degrade "$degrade" '
     map(select(type == "object")) | map(select($cut == "" or .ts >= $cut)) as $w |
     ($w | map(select(.event == "decision"))) as $dec |
-    ($w | map(select(.event == "override_manual")) | length) as $ovr |
+    ($w | map(select(.event == "override_manual"))) as $overs |
+    ($overs | length) as $overs_n |
+    ($overs | map(select(.cmd as $c | $c != null and ($rtable | index($c)) != null)) | length) as $mset_n |
+    (if $degrade then $overs_n else $mset_n end) as $m |
+    (if $degrade then 0 else ($overs_n - $mset_n) end) as $k |
     ($dec | length) as $ndec |
-    (if ($ndec + $ovr) > 0 then (100 * $ovr / ($ndec + $ovr) | floor) else 0 end) as $rate |
+    (if $ndec > 0 then (100 * $m / $ndec | floor) else 0 end) as $rate |
     [
-      "-- decisões: \($ndec) · override manual: \($ovr) · taxa de override: \($rate)%",
+      "-- decisões: \($ndec) · override roteável: \($m) · não-roteável: \($k) · taxa de override: \($rate)%",
       "-- por modo: \($dec | group_by(.mode) | map("\(.[0].mode // "?"): \(length)") | join(" · "))",
       "-- por workflow: \($dec | group_by(.workflow) | map("\(.[0].workflow // "?"): \(length)") | join(" · "))",
       "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
@@ -2060,10 +2105,17 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   [[ -n "$unused" ]] && printf -- '-- workflows declarados sem uso na janela: %s\n' "${unused// /, }"
 
   # S-1004 — critério de promoção warn→block, codificado (nunca automático)
-  local ndec ovr rate
+  # S-1801: rate usa SÓ override roteável (mesma separação sensor/consumidor acima).
+  local ndec m rate
   ndec=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
-  ovr=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
-  rate=0; (( ndec + ovr > 0 )) && rate=$(( 100 * ovr / (ndec + ovr) ))
+  if [[ "$degrade" == true ]]; then
+    m=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+  else
+    m=$(jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" \
+      'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut) and (.cmd as $c | $c != null and ($rtable | index($c)) != null))) | length' \
+      "${logs[@]}" 2>/dev/null || echo 0)
+  fi
+  rate=0; (( ndec > 0 )) && rate=$(( 100 * m / ndec ))
   # E14: orçamento — quantas decisões declararam caps e quantos estouros houve
   local n_bw
   n_bw=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "budget_warn" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)

@@ -48,7 +48,7 @@ cat > "$LOG" <<J
 {"ts":"$TS","event":"decision","session_id":"r1","workflow":"fix","mode":"subagent","agents":["dev-pleno"]}
 {"ts":"$TS","event":"decision","session_id":"r2","workflow":"fix","mode":"direct"}
 {"ts":"$TS","event":"decision","session_id":"r3","workflow":"feature","mode":"multi","agents":["engenheiro","typescript-pro"]}
-{"ts":"$TS","event":"override_manual","session_id":"r4","cmd":"gstack-review"}
+{"ts":"$TS","event":"override_manual","session_id":"r4","cmd":"gstack-ship"}
 {"ts":"$TS","event":"gate_pass","session_id":"r1","tool":"Edit","file_ext":".py","gate_mode":"warn"}
 {"ts":"$TS","event":"gate_warn","session_id":"r4","tool":"Edit","file_ext":".ts","gate_mode":"warn"}
 {"ts":"$TS","event":"habit_warn","session_id":"r1","smell":"swallowed-error","n":"2","file_ext":".py"}
@@ -60,13 +60,13 @@ cat > "$LOG" <<J
 J
 out=$("$BIN" retro --days 7); rc=$?
 chk "retro → exit 0" "$rc" "0"
-grep -q 'decisões: 3 · override manual: 1 · taxa de override: 25%' <<<"$out" \
-  && ok "taxa de override calculada (1 de 4 = 25%)" || bad "taxa de override ($out)"
+grep -q 'decisões: 3 · override roteável: 1 · não-roteável: 0 · taxa de override: 33%' <<<"$out" \
+  && ok "taxa de override calculada (1 roteável de 3 decisões = 33%)" || bad "taxa de override ($out)"
 grep -q 'swallowed-error: 2' <<<"$out" && ok "smells ordenados por frequência" || bad "smells por frequência"
 grep -q 'accepted: 1' <<<"$out" && ok "desfechos agregados" || bad "desfechos agregados"
 grep -q 'grant 1' <<<"$out" && ok "consentimentos contados" || bad "consentimentos contados"
 grep -q 'sem uso na janela' <<<"$out" && ok "workflows declarados sem uso aparecem" || bad "workflows sem uso"
-grep -q 'override em 25% (≥20%)' <<<"$out" \
+grep -q 'override em 33% (≥20%)' <<<"$out" \
   && ok "sinal de calibração dispara com override alto" || bad "sinal de calibração"
 grep -q 'promoção warn→block: ainda não' <<<"$out" \
   && ok "promoção NÃO elegível com 3 decisões (piso é 10)" || bad "promoção não elegível"
@@ -86,6 +86,41 @@ rm -f "$LOG"
 out=$(MAESTRO_HOME="$tmp/vazio" "$BIN" retro); rc=$?
 chk "sem log → exit 0" "$rc" "0"
 grep -q 'sem dados' <<<"$out" && ok "diz que não há dado, não inventa conclusão" || bad "honestidade sem dados"
+
+echo "-- S-1801: taxa de override conta só comando ROTEÁVEL (skill: dos bindings + workflows)"
+RTHOME="$tmp/s1801"
+export MAESTRO_HOME="$RTHOME"
+mkdir -p "$MAESTRO_HOME/logs"
+RTLOG="$MAESTRO_HOME/logs/routing.jsonl"
+TS2=$(date -Iseconds)
+{
+  for i in $(seq 1 10); do
+    printf '{"ts":"%s","event":"decision","session_id":"s%s","workflow":"fix","mode":"subagent"}\n' "$TS2" "$i"
+  done
+  printf '{"ts":"%s","event":"override_manual","session_id":"o0","cmd":"gstack-ship"}\n' "$TS2"
+  for i in $(seq 1 5); do
+    printf '{"ts":"%s","event":"override_manual","session_id":"o%s","cmd":"gstack-context-restore"}\n' "$TS2" "$i"
+  done
+} > "$RTLOG"
+RTFIX="$tmp/routing-table-fixture.yaml"
+cat > "$RTFIX" <<Y
+version: 2
+workflows:
+  fix: {steps: [investigate], gate: none}
+bindings:
+  ship: skill:gstack-ship
+Y
+out=$(MAESTRO_ROUTING_TABLE="$RTFIX" "$BIN" retro --days 7); rc=$?
+chk "retro com tabela fixture → exit 0" "$rc" "0"
+grep -q 'decisões: 10 · override roteável: 1 · não-roteável: 5 · taxa de override: 10%' <<<"$out" \
+  && ok "taxa conta só o roteável (1/10 = 10%, não 6/10 = 60%)" || bad "taxa roteável ($out)"
+grep -q 'não-roteável: 5' <<<"$out" && ok "invocação de ciclo de vida contada à parte" || bad "não-roteável: 5"
+
+out=$(MAESTRO_ROUTING_TABLE="$tmp/nao-existe.yaml" "$BIN" retro --days 7); rc=$?
+chk "retro sem tabela (degrade) → exit 0, nunca quebra" "$rc" "0"
+grep -q -- '-- aviso:' <<<"$out" && ok "degrade avisa que o filtro roteável não pôde ser derivado" || bad "aviso de degrade"
+grep -q 'override roteável: 6' <<<"$out" \
+  && ok "degrade conta como antes (6 override_manual no total)" || bad "degrade conta 6 ($out)"
 
 echo "-- comando /maestro:retro registrado"
 CMD="$REPO/commands/retro.md"

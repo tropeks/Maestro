@@ -517,6 +517,11 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
   review 2026-08-31); fix real exige parsing ancorado nos 3 marcadores.
 - **Dependências:** E16 (docs), E13 (evidence), E10 (consent/outcome).
 
+### E18 — Calibração guiada por telemetria (P1, S) — aberto 2026-09-01, motivado pelo retro do NetForge
+- **S-1801:** a taxa de override do retro conta só comando ROTEÁVEL — o sensor ADR-008 loga todo prompt com `/`, mas 12/12 overrides da janela eram ciclo de vida (context-save/restore, upgrade, login) e a taxa saiu 21% (real: 0%), disparando "calibrar antes de endurecer" em falso. `cmd_retro` deriva o conjunto roteável da própria routing table (alvos `skill:` dos bindings + nomes de workflow), reporta roteável e não-roteável separados, e o sinal ≥20% + critério de promoção warn→block usam só os roteáveis. Sensor intacto: dado bruto preservado. **Entregue 2026-09-01.**
+- **Fase 2 registrada, não construída:** calibração de ROTA alimentada por override roteável real (quando existir volume: qual intent falhou, qual frase faltava na tabela); eval blind-judge re-rodado sobre casos vindos de produção.
+- **Dependências:** E17 (telemetria de conduct/flags), ADR-008 (sensor).
+
 ---
 
 ## Grafo de dependências
