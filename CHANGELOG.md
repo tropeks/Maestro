@@ -6,6 +6,50 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-09-01
+
+Epic E19: Maestro keeps itself current. Approved by the Captain with one
+adjustment to the house rule — network is allowed at runtime as long as it can
+never break execution. Until today the plugin had no update path at all: the
+README stopped at `git clone`, and on approval day the dev box itself sat two
+commits ahead of origin with no upstream, so any other machine pulling would
+have silently missed two fixes.
+
+### Added
+- **Auto-update on session start (S-1901).** `hooks/lib/update-check.sh` is the
+  one and only network call in Maestro: `git fetch` with a 5s timeout, at most
+  once per interval (24h), silent on failure, under a non-blocking `flock`.
+  When `origin/main` is ahead and the fast-forward is strictly safe (clean
+  tree, zero local commits ahead, on `main`), the hook merges and **re-executes
+  its new self** — the whole session is born on the new version, no old parser
+  reading new config. With `auto_upgrade: false` it injects one header line
+  instead (`atualização: vX → vY … maestro upgrade`). A development machine is
+  never overwritten: dirty or ahead trees get a one-line "push, não pull".
+  Silence never means up to date — every check, including failures, is written
+  to `~/.maestro/update-state` for the doctor (the gstack #1974 lesson). Log
+  event `upgrade` with `from`/`to`/`via`.
+- **`maestro upgrade` (S-1902).** Forced fetch + fast-forward with the guards
+  explained in plain language, CHANGELOG delta between the two versions, then
+  `exec doctor --ci` on the *new* binary. `--check` (exit 0/1/2), `--rollback`
+  (`git reset --keep` to the recorded previous SHA), `--snooze` (24h → 48h →
+  7d per remote version), `--set` for `~/.maestro/config.yaml`
+  (`update_check`, `auto_upgrade`, `update_interval_hours`). Disabling the
+  automatic check never disables the manual command.
+- **Doctor (S-1903).** `check_update_state` reads the state file: available →
+  warn with the command; failed, or last good fetch older than 7 days → warn;
+  blocked → ok naming the dev box. `check_upstream` catches the crack found on
+  approval day: commits without push and `main` without upstream are warnings.
+  The capabilities envelope gains `update.{result,local,remote}`.
+
+### Changed
+- ADR-001 amended: upgrade via git is now a mechanism, not an instruction. The
+  "no network at runtime" boundary is reworded everywhere (CLAUDE.md,
+  ARCHITECTURE NFRs, READMEs) to "network is never a dependency": one call,
+  timed out, rate-limited, silent, recorded.
+- The test suite exports `MAESTRO_NO_UPDATE_CHECK=1` globally; the update tests
+  opt back in against a `file://` bare remote — the suite never touches the
+  network.
+
 ## [1.10.1] — 2026-09-01
 
 ### Fixed
