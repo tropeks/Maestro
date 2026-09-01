@@ -8,36 +8,36 @@
   "completeness": "complete",
   "proofLevel": "revision-pinned",
   "base": {
-    "title": "Maestro v1.10.1 — trilhos determinísticos, IA nas bordas",
-    "rawSha256": "ef278381066e6b0659fa9a550493c6c42407aa98c39a7ec692144dbe8d976183",
-    "semanticSha256": "28e155191976bbae3d423a9662c863220039a80dcd4ddaadfc638d73fdf2e928",
-    "bytes": 9503,
-    "revision": "9b65a9371eb118377a004daa4a41499b5dc2537d"
-  },
-  "head": {
     "title": "Maestro v1.11.0 — trilhos determinísticos, IA nas bordas",
     "rawSha256": "9f7fb6271d2d6c08b73607f98409a0cba9b95f9e44df062e898270d182555a95",
     "semanticSha256": "343bc54e309bbe0fffc25c7b63532c9ac2b3c13f399f8deeca022551154416ab",
     "bytes": 11416,
     "revision": "66cafee22698fda602bd77b2573c52eb13f37333"
   },
+  "head": {
+    "title": "Maestro v1.11.1 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "a1ef47b511c68a3ae66086ca0e831ba33b3492cc7536cd150216bc3fe6c884b8",
+    "semanticSha256": "daa77e090e4f0c25c3b027f8022b5edcb37afb3c75da49c9fbe74a5a8b3470df",
+    "bytes": 11449,
+    "revision": "522c17614e50936f3ff84453373864a0a118686c"
+  },
   "summary": {
     "components": {
-      "added": 2,
+      "added": 0,
       "changed": 1,
       "evidenceChanged": 0,
       "removed": 0,
       "moved": 0
     },
     "connections": {
-      "added": 2,
+      "added": 0,
       "changed": 0,
       "removed": 0,
       "rerouted": 0
     },
     "boundaries": {
       "added": 0,
-      "changed": 1,
+      "changed": 0,
       "removed": 0,
       "geometryChanged": 0
     },
@@ -47,78 +47,20 @@
   "changes": {
     "components": [
       {
-        "id": "binm",
-        "baseLabel": "bin/maestro",
-        "headLabel": "bin/maestro",
+        "id": "sstart",
+        "baseLabel": "session-start.sh",
+        "headLabel": "session-start.sh",
         "status": "changed",
         "classifications": [
           "semantic"
         ],
         "changedFields": [
-          "/sublabel"
-        ]
-      },
-      {
-        "id": "origin",
-        "headLabel": "origin/main",
-        "status": "added",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": []
-      },
-      {
-        "id": "update",
-        "headLabel": "update-check.sh",
-        "status": "added",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": []
-      }
-    ],
-    "connections": [
-      {
-        "id": "fetch",
-        "head": {
-          "from": "update",
-          "to": "origin",
-          "label": "fetch · ff-only"
-        },
-        "status": "added",
-        "classifications": [
-          "topology"
-        ],
-        "changedFields": []
-      },
-      {
-        "id": "update-step",
-        "head": {
-          "from": "sstart",
-          "to": "update",
-          "label": "update_step"
-        },
-        "status": "added",
-        "classifications": [
-          "topology"
-        ],
-        "changedFields": []
-      }
-    ],
-    "boundaries": [
-      {
-        "key": "region:Plugin (repo vivo)",
-        "kind": "region",
-        "label": "Plugin (repo vivo)",
-        "status": "changed",
-        "classifications": [
-          "scope"
-        ],
-        "changedFields": [
-          "/wraps"
+          "/tag"
         ]
       }
-    ]
+    ],
+    "connections": [],
+    "boundaries": []
   },
   "identity": {
     "components": "components[].id",
@@ -133,8 +75,8 @@
     "Boundary identity is conservatively derived from kind + label."
   ],
   "artifact": {
-    "sha256": "99d56dad1eeae46e2b70bb6464c0b6c5865e05d598eb3b7b7d0d94ae3c9635c0",
-    "bytes": 2076638
+    "sha256": "0dac5642f88da44a1d3986d6828f2f42fd257e3f26d755452c369dd3a2379e8c",
+    "bytes": 2077778
   },
   "validation": {
     "checksPassed": 28,
