@@ -12,8 +12,8 @@ table, and a roster of cost-tiered agents.
 
 > **Philosophy:** deterministic rails, AI at the edges. Hooks guarantee **THAT** a
 > routing decision happens; the session's Claude decides **WHAT** to do, guided by
-> the table. No LLM on the critical path, no network at runtime, no component that
-> blocks work when it fails.
+> the table. No LLM on the critical path, no network on the critical path, no
+> component that blocks work when it fails.
 
 ## The problem
 
@@ -194,6 +194,26 @@ Runtime dependencies: `bash`, `jq`, `flock` (hooks) and [Bun](https://bun.sh) (C
 The hooks never invoke Bun — if Bun disappears, the CLI degrades with a message
 citing the last `doctor` run; the rails stay up.
 
+## Update
+
+Maestro keeps itself current. The plugin runs straight from the clone, so every
+session start does a `git fetch` (5s timeout, at most once a day, silent on failure)
+and fast-forwards to `origin/main` when that is strictly safe: clean tree, no local
+commits ahead, on `main`. The session is then born on the new version — the new hook
+re-executes itself. A development machine (dirty tree or unpushed commits) is never
+overwritten; the session just gets a one-line "push, don't pull" notice.
+
+```bash
+maestro upgrade                     # fetch + fast-forward now, show the CHANGELOG delta, run doctor
+maestro upgrade --check             # measure only: exit 0 current · 1 available/blocked · 2 failed
+maestro upgrade --rollback          # git reset --keep to the previous version
+maestro upgrade --set auto_upgrade=false   # notify only; also update_check, update_interval_hours
+```
+
+Silence never means "up to date": the result of every check, including failures, lands
+in `~/.maestro/update-state`, and `maestro doctor` reports it. `MAESTRO_NO_UPDATE_CHECK=1`
+turns the automatic check off.
+
 ## Validate
 
 ```bash
@@ -222,8 +242,9 @@ the debt is being paid down).
 - **Log privacy:** `~/.maestro/logs/routing.jsonl` carries metadata only, with typed
   keys and a closed vocabulary — never the prompt text, never a full file path (only
   the extension). No key accepts `/`.
-- **No floats in cost metrics** (integer tokens/cents), **no network at runtime**,
-  **`vendor/` is read-only**.
+- **No floats in cost metrics** (integer tokens/cents), **no network on the critical
+  path** (the only network call is the auto-update fetch: timed out, rate-limited,
+  silent on failure), **`vendor/` is read-only**.
 - **Self-protection:** the gate always blocks — even with a decision on record —
   edits to `.claude/` and `.github/workflows/` in any project, and to `hooks/`,
   `bin/`, `src/`, `agents/`, `config/routing-table.yaml`, and `.claude-plugin/`

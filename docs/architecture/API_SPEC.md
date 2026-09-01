@@ -25,6 +25,17 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 - **Erros:** qualquer falha → exit 0 com stderr logado (degrada, nunca bloqueia sessão).
 - **Orçamento:** saída ≤ **8.000 bytes** (proxy determinístico de ~2k tokens). Truncamento em ordem: heurísticas → índice do roster → nunca a instrução canônica nem o session_id.
 - **Emenda E7 (S-707/S-709):** emite também `## Mote de execução` (`config/execution-ethos.md`) e `## Estilo de comunicação com o usuário` (`config/communication-style.md`) — teto de 2.000 bytes por arquivo; ausente → seção omitida em silêncio. No orçamento cedem ANTES de tudo, nesta ordem: estilo primeiro, mote depois — referência de comportamento, não instrução de ação.
+- **Emenda E19 (S-1901):** ANTES de ler tabela e roster, `update_step` roda a checagem de
+  atualização (`hooks/lib/update-check.sh`): `git fetch` com timeout (`MAESTRO_UPDATE_TIMEOUT`,
+  5s) no máximo uma vez por intervalo, depois só git local. Estado `available` +
+  `auto_upgrade` (default ligado) → `merge --ff-only` e **re-exec do hook novo** com
+  `MAESTRO_UPDATE_REEXEC=1`, `MAESTRO_UPDATED_FROM/TO` e `CLAUDE_SESSION_ID` (o stdin já foi
+  consumido) — a injeção sai inteira da versão nova, com a linha `atualizado agora: vX → vY`.
+  Sem auto: linha `atualização: vX → vY (N commit(s) no origin) — maestro upgrade aplica`.
+  Bloqueado (árvore suja/à frente/branch): linha nomeando a máquina de desenvolvimento.
+  Rede falha, snooze vigente, em dia ou desligado: **nenhuma linha** — o estado fica em
+  `$MAESTRO_HOME/update-state` (DATA_MODEL §10) e é o doctor que fala. A linha mora no
+  cabeçalho (nunca trunca). Desliga com `MAESTRO_NO_UPDATE_CHECK=1` ou `update_check: false`.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
@@ -198,6 +209,33 @@ maestro conduct --session <session_id>
   seguem sem rede). A injeção emite a linha `grafo:` na seção `## Projeto` só quando o
   grafo existe; STALE manda desconfiar, nunca consultar.
 
+### `maestro upgrade` (E19/S-1902)
+- `maestro upgrade`: fetch forçado (ignora o intervalo) e `merge --ff-only` para
+  `origin/main`. Em dia → mensagem, exit 0. Bloqueado → explica o motivo (à frente:
+  "máquina de desenvolvimento: git push, não pull"; suja; branch; merge em andamento),
+  exit 1. Aplicou → evento `upgrade` (`via=manual`), imprime `vX → vY (N commit(s))`, o
+  delta do `CHANGELOG.md` entre as duas versões, a linha de rollback, e faz `exec
+  bin/maestro doctor --ci` no binário NOVO (só quando o clone atualizado é o próprio
+  plugin). Falha de ambiente (não é clone git, sem `origin`, sem `origin/main` conhecido)
+  → `die env`, exit 2.
+- `--check [--force]`: só mede e imprime uma linha; nunca aplica. Exit 0 em dia/desligado,
+  1 disponível/bloqueado, 2 falhou.
+- `--rollback`: `git reset --keep <prev>` para o SHA gravado pelo último upgrade
+  (recusa se perderia alteração local, e recusa — `diverged` — se houver commit local
+  depois do upgrade: a ferramenta não desfaz trabalho de gente); evento `upgrade` com
+  `via=rollback`; o estado gravado depois é o MEDIDO de novo; exit 1 sem upgrade
+  registrado.
+- Concorrência: o merge só acontece se o HEAD ainda é o que foi medido; outra sessão
+  chegando antes devolve `raced` sem tocar o `prev` do rollback. `check_upstream` do
+  doctor honra `MAESTRO_UPDATE_REPO` (a mesma costura da lib).
+- `--snooze`: adia o aviso da versão remota atual (24h → 48h → 7 dias, escalonado por
+  versão); não muda o estado.
+- `--set chave=valor`: `update_check` (true|false), `auto_upgrade` (true|false),
+  `update_interval_hours` (1..720) em `$MAESTRO_HOME/config.yaml`.
+- `update_check: false` e `MAESTRO_NO_UPDATE_CHECK=1` desligam só a checagem automática:
+  o comando manual sempre roda (`UPD_MANUAL=1`). Costuras de teste: `MAESTRO_UPDATE_REPO`,
+  `MAESTRO_UPDATE_REMOTE`, `MAESTRO_UPDATE_BRANCH`, `MAESTRO_UPDATE_INTERVAL`.
+
 ### `maestro doctor`
 **Checagem S-1709 (E17):** `doctor` compara `meta.repository.revision` de `docs/assets/architecture.json` (quando o projeto o declara) com o commit da última tag git — divergência é warn acionável ("regenere com archify"), ausência é skip; nunca falha o doctor.
 
@@ -219,6 +257,12 @@ maestro conduct --session <session_id>
   (malformado é warn nomeando o arquivo); o SessionStart emite a seção `## Projeto`
   (ponteiro do brief + freshness barata por HEAD + `memória:` do
   `memory_container` + cobrança S-803) — nunca a narrativa, só a garantia.
+- **Emenda E19 (S-1903):** `check_update_state` lê `$MAESTRO_HOME/update-state` — disponível
+  → warn com `maestro upgrade`; falhou, ou último fetch bem-sucedido há mais de 7 dias →
+  warn ("silêncio não é 'atualizado'"); bloqueado → ok nomeando a máquina de
+  desenvolvimento; ausente → ok ("a primeira sessão verifica"). `check_upstream` (sem rede):
+  commits à frente de `origin/main` sem push e `main` sem upstream viram warn. O envelope
+  `capabilities.json` ganha `update.{result,local,remote}`. Nunca falha o doctor.
 
 ## 3. Envelope de erro (CLI)
 

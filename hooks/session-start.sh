@@ -52,6 +52,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 maestro_killswitch
+# E19/S-1901 — auto-update. Lib ausente/ilegível → sessão segue sem checagem.
+UPDATE_LIB_OK=0
+if [[ -r "$SCRIPT_DIR/lib/update-check.sh" ]]; then
+  # shellcheck source=lib/update-check.sh
+  source "$SCRIPT_DIR/lib/update-check.sh" 2>/dev/null && UPDATE_LIB_OK=1 || UPDATE_LIB_OK=0
+fi
 
 # LC_ALL=C dá semântica de BYTE para ${#s} e ${s:0:n} — o orçamento do API_SPEC
 # é em bytes e o conteúdo é pt-BR (multibyte). Todo corte acontece em fronteira
@@ -446,6 +452,57 @@ cleanup_records() {
 }
 
 # ---------------------------------------------------------------------------
+# 6b. E19/S-1901 — auto-update. Roda ANTES de ler tabela/roster: se o ff-only
+# aplicar, o hook NOVO é re-executado (exec) e a sessão inteira nasce na versão
+# nova — nada de session-start velho lendo YAML novo. O session_id vai por
+# CLAUDE_SESSION_ID (o stdin já foi consumido; read_session_id aceita o env).
+# MAESTRO_UPDATE_REEXEC=1 é a trava anti-loop: o hook re-executado não checa.
+# Tudo aqui degrada: rede com timeout, falha silenciosa, rc sempre 0. O
+# resultado fica em $MAESTRO_HOME/update-state para o doctor — silêncio na
+# injeção NUNCA quer dizer "atualizado".
+# ---------------------------------------------------------------------------
+UPDATE_NOTICE=""
+update_notice_for_state() { # → UPDATE_NOTICE (uma linha, sem caminho)
+  case "$UPD_STATE" in
+    available)
+      (( UPD_SNOOZED == 1 )) && return 0
+      UPDATE_NOTICE="atualização: v$UPD_LOCAL → v$UPD_REMOTE_VER ($UPD_BEHIND commit(s) no origin) — maestro upgrade aplica; --snooze adia" ;;
+    blocked)
+      case "$UPD_REASON" in
+        ahead) UPDATE_NOTICE="atualização: v$UPD_REMOTE_VER no origin, mas esta árvore está à frente — máquina de desenvolvimento: push, não pull" ;;
+        dirty) UPDATE_NOTICE="atualização: v$UPD_REMOTE_VER no origin, mas esta árvore está suja — máquina de desenvolvimento: push, não pull" ;;
+        *) UPDATE_NOTICE="atualização: v$UPD_REMOTE_VER no origin, merge bloqueado ($UPD_REASON) — maestro upgrade explica" ;;
+      esac ;;
+  esac
+  return 0
+}
+
+update_step() {
+  if [[ "${MAESTRO_UPDATE_REEXEC:-0}" == "1" ]]; then
+    local from="${MAESTRO_UPDATED_FROM:-?}" to="${MAESTRO_UPDATED_TO:-?}"
+    [[ "$from" =~ ^[0-9][0-9.]{0,15}$ ]] || from="?"
+    [[ "$to"   =~ ^[0-9][0-9.]{0,15}$ ]] || to="?"
+    UPDATE_NOTICE="atualizado agora: v$from → v$to (hooks e CLI novos valem desde esta sessão; maestro upgrade --rollback desfaz)"
+    return 0
+  fi
+  (( UPDATE_LIB_OK == 1 )) || return 0
+  maestro_update_check || return 0
+  if [[ "$UPD_STATE" == "available" && "$UPD_AUTO" == "1" ]] && maestro_update_apply; then
+    log_event upgrade from="$UPD_FROM" to="$UPD_LOCAL" via=auto || :
+    local new_hook="$UPD_REPO/hooks/session-start.sh"
+    if [[ -r "$new_hook" ]]; then
+      MAESTRO_UPDATE_REEXEC=1 MAESTRO_UPDATED_FROM="$UPD_FROM" MAESTRO_UPDATED_TO="$UPD_LOCAL" \
+        CLAUDE_SESSION_ID="$SESSION_ID" exec bash "$new_hook" </dev/null
+      # exec falhou (raro): segue no hook velho, com o aviso.
+    fi
+    UPDATE_NOTICE="atualizado agora: v$UPD_FROM → v$UPD_LOCAL (hooks e CLI novos valem desde esta sessão; maestro upgrade --rollback desfaz)"
+    return 0
+  fi
+  update_notice_for_state
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 7. Montagem do bloco + orçamento de 8000 bytes.
 # ---------------------------------------------------------------------------
 build_and_emit() {
@@ -460,6 +517,9 @@ build_and_emit() {
            "$REPO_DIR/.claude-plugin/plugin.json" 2>/dev/null | head -1)
   [[ -n "$_ver" ]] && _ver=" v$_ver"
   sec_head+="Maestro${_ver} — roteamento MoE. Kill-switch: MAESTRO_OFF=1."$'\n'
+  # E19: a linha de atualização mora no cabeçalho (nunca trunca) — é curta e é
+  # instrução de ação; ausência de linha não é sinal de nada (o doctor é).
+  [[ -n "$UPDATE_NOTICE" ]] && sec_head+="$UPDATE_NOTICE"$'\n'
   if (( SESSION_ID_OK == 1 )); then
     sec_head+="session_id: $SESSION_ID"$'\n'
   else
@@ -690,6 +750,7 @@ build_and_emit() {
 
 main() {
   read_session_id   || :
+  update_step       || :   # E19: pode exec o hook novo; nunca falha a sessão
   parse_routing_table || :
   collect_gates     || :
   parse_profile     || :

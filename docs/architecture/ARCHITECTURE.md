@@ -34,6 +34,18 @@ O Maestro é uma camada de roteamento e política sobre o Claude Code: um **plug
 **Decisão:** estrutura de **plugin do Claude Code** num repo git próprio (`maestro/`), instalado localmente (marketplace pessoal `/plugin marketplace add <repo>` ou symlink). Single-user.
 **Alternativas:** pasta solta em `~/.claude/` (rejeitada: sem versionamento coeso nem caminho pra fase 2); MCP server (rejeitada na v1: complexidade sem ganho — vira fase 2 no orchestrator).
 **Consequências:** upgrade/rollback via git; caminho natural para publicação futura.
+**Emenda E19 (2026-09-01) — o upgrade via git vira mecanismo, não instrução:** o plugin
+executa direto do clone (marketplace de diretório), então o SessionStart faz `git fetch`
+com timeout curto, no máximo uma vez por intervalo (24h), e aplica `merge --ff-only`
+quando é estritamente seguro (árvore limpa, zero commits à frente, branch rastreada) —
+depois **re-executa o hook novo**, para a sessão inteira nascer na versão nova. A rede
+entra no runtime **sem virar dependência**: qualquer falha é silenciosa para a sessão e
+fica registrada em `$MAESTRO_HOME/update-state` para o doctor — silêncio nunca significa
+"atualizado". A máquina de desenvolvimento nunca é sobrescrita (bloqueio por árvore suja/à
+frente/branch). `maestro upgrade` é a versão manual, com `--rollback` (`git reset --keep`
+para o SHA anterior). Config por máquina em `$MAESTRO_HOME/config.yaml`
+(`update_check`, `auto_upgrade`, `update_interval_hours`); `MAESTRO_NO_UPDATE_CHECK=1`
+desliga.
 
 ### ADR-002 — Roteamento de intenção: LLM da sessão guiado por routing table declarativa
 **Status:** Aceito.
@@ -246,7 +258,7 @@ Sem outros usos de IA. `ai-architect` **não é necessário** — o AI Touchpoin
 
 - Overhead dos hooks: < 100ms por invocação (percebido zero no fluxo)
 - Injeção do SessionStart: ≤ ~2k tokens (routing table + roster resumido) — o Maestro não pode causar o inchaço que combate
-- Zero dependência de rede em runtime (tudo local)
+- Rede nunca é dependência em runtime: a única chamada de rede é o fetch do auto-update (E19) — timeout ≤5s, uma vez por intervalo, falha silenciosa e registrada; tudo o mais é local
 
 ## Flags para o orchestrator
 

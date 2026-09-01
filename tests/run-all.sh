@@ -5,6 +5,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SUITE_HOME=$(mktemp -d)
 export MAESTRO_HOME="$SUITE_HOME"
+# E19: a suíte nunca toca a rede — o teste do update usa remoto file:// e liga por conta própria.
+export MAESTRO_NO_UPDATE_CHECK=1
 trap 'rm -rf "$SUITE_HOME"' EXIT
 
 fail=0

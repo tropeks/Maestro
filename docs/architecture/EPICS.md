@@ -529,6 +529,44 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
 - **Fase 2 registrada, não construída:** calibração de ROTA alimentada por override roteável real (quando existir volume: qual intent falhou, qual frase faltava na tabela); eval blind-judge re-rodado sobre casos vindos de produção.
 - **Dependências:** E17 (telemetria de conduct/flags), ADR-008 (sensor).
 
+### E19 — Auto-update via git (P1, S) — aprovado 2026-09-01 ("pode usar rede, desde que nunca quebre a execução")
+Origem: o gstack se atualiza sozinho; o Maestro não se atualizava de jeito nenhum — o
+README não tinha sequer um passo de `git pull`, e no dia da aprovação a máquina de
+desenvolvimento estava com 2 commits sem push e a `main` sem upstream: qualquer outra
+máquina que atualizasse ficaria sem dois fixes, sem sinal. Decisão de desenho: o plugin
+roda DIRETO do clone (ADR-001), logo atualizar é `fetch` + `merge --ff-only`; a rede entra
+no runtime, mas **nunca como dependência** — timeout curto, uma vez por intervalo, falha
+silenciosa, e o resultado (inclusive a falha) fica em estado local que o doctor lê.
+Silêncio NUNCA significa "atualizado" (lição do gstack #1974). A máquina de
+desenvolvimento nunca é sobrescrita: árvore suja, commits à frente ou branch fora da
+rastreada bloqueiam o merge; o ff-only já é estritamente seguro e, mesmo assim, só roda
+quando não há trabalho local.
+- **S-1901 — hook:** `hooks/lib/update-check.sh` (bash puro; única porta de rede do
+  Maestro) e `update_step` no SessionStart, ANTES de ler tabela/roster: com
+  `auto_upgrade` (default ligado) e estado `available`, aplica o ff-only e **re-executa
+  o hook novo** (`exec`, session_id via `CLAUDE_SESSION_ID`, trava anti-loop
+  `MAESTRO_UPDATE_REEXEC`) — a sessão inteira nasce na versão nova. Sem auto: uma linha
+  no cabeçalho da injeção (`atualização: vX → vY … maestro upgrade`). Bloqueado por
+  máquina de dev: linha "push, não pull". Rede falha: nada na injeção, `fetch=failed`
+  no `update-state`. Snooze cala só o aviso. Evento `upgrade` (`from`/`to`/`via`) no
+  log. Config por máquina em `$MAESTRO_HOME/config.yaml` (DATA_MODEL §10).
+  **Entregue 2026-09-01.**
+- **S-1902 — CLI:** `maestro upgrade` (fetch forçado, guardas explicadas em pt-BR, delta
+  do CHANGELOG entre as versões, `exec doctor --ci` no binário novo), `--check`
+  (exit 0/1/2), `--rollback` (`git reset --keep` para o `prev` gravado), `--snooze`
+  (24h → 48h → 7d), `--set chave=valor` (config.yaml). `update_check: false` desliga
+  só a checagem automática; o comando manual sempre roda. **Entregue 2026-09-01.**
+- **S-1903 — doctor:** `check_update_state` (lê o `update-state`: disponível → warn com o
+  comando; falhou ou último fetch >7d → warn "silêncio não é atualizado"; bloqueado →
+  ok nomeando a máquina de dev) e `check_upstream` (higiene da máquina de
+  desenvolvimento: commits sem push e `main` sem upstream viram warn — a fresta
+  encontrada no dia). Envelope `capabilities.json` ganha `update.{result,local,remote}`.
+  **Entregue 2026-09-01.**
+- **Fora do épico:** atualização da cópia em cache do Claude Code (o marketplace de
+  diretório executa o repo, S-710 já vigia divergência); notificação ativa (push) —
+  a linha na injeção e o doctor bastam para single-user.
+- **Dependências:** ADR-001 (emenda), E7 (doctor/envelope), ADR-008 (log).
+
 ---
 
 ## Grafo de dependências

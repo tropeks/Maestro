@@ -262,6 +262,11 @@ estado local, jamais no log além dos eventos.
 
 **Emenda E17 (S-1702):** evento novo `conduct` — chaves `session_id`, `flags_n` (inteiro) e `approach` (yes|no). O conteúdo de brief/flags JAMAIS entra no log (só contagens e metadados, como todo o vocabulário).
 
+**Emenda E19 (S-1901):** evento novo `upgrade` — chaves `from` e `to` (versão do
+plugin, `^[0-9]+(\.[0-9]+){1,3}$`) e `via` (`auto|manual|rollback`). Um evento por
+APLICAÇÃO (ff-only ou rollback), nunca por checagem: a checagem é estado local (§10), não
+telemetria. SHA, URL do remoto e caminho do clone jamais entram no log.
+
 ### 5. Roster — `agents/*.md` (repo do plugin)
 
 Frontmatter obrigatório:
@@ -356,6 +361,42 @@ existe (git) · provada (recibo §8 com wtree_after == árvore do tip do branch)
 aceita (`accepted_at` anexado pelo diretor via --accept, que exige provada). Log:
 `order_create`/`order_accept` com `n` (id) — nunca título/caminho.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
+
+### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
+
+Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o
+box), flat, `chave: valor`, valor só `[A-Za-z0-9_.-]`, nada avaliado:
+```yaml
+update_check: true            # false desliga a checagem automática (o CLI manual segue)
+auto_upgrade: true            # false = só avisa na injeção; aplicar é `maestro upgrade`
+update_interval_hours: 24     # 1..720 — intervalo mínimo entre fetches
+```
+Env vence config: `MAESTRO_NO_UPDATE_CHECK=1`, `MAESTRO_AUTO_UPGRADE=0|1`,
+`MAESTRO_UPDATE_INTERVAL` (segundos), `MAESTRO_UPDATE_TIMEOUT` (segundos, 5).
+
+`update-state` (reescrito atômico a cada checagem; é o que o doctor lê — silêncio na
+injeção nunca é "atualizado"):
+```
+schema=maestro-update-state-v1
+checked=<epoch>  fetched=<epoch do último fetch OK>  fetch=ok|failed|skipped
+result=disabled|current|available|blocked|failed
+reason=<config|ahead|dirty|branch|in-progress|not-a-repo|no-remote|no-remote-ref|upgraded|rolled-back>
+local=<versão>  remote=<versão>  behind=<n>  ahead=<n>  dirty=0|1  branch=<nome>
+prev=<sha do HEAD anterior ao último upgrade — alvo do --rollback>
+head=<sha que o upgrade produziu — o rollback recusa (`diverged`) se o HEAD já não for este>
+upgraded=<epoch>
+```
+Motivos que só a API devolve (nunca gravados como `result`): `raced` — o HEAD mudou entre
+a medição e o merge (outra sessão aplicou primeiro; `prev` fica intacto), `locked` — seção
+crítica ocupada, `diverged` — commit local depois do upgrade (rollback é manual), `merge` —
+ff-only recusado.
+`update-snoozed`: uma linha `<sha remoto> <until-epoch> <nível 1..3>` — cala só o aviso
+daquela versão; versão nova no origin volta a avisar. `update.lock`: `flock -n` do fetch e
+do merge (dois SessionStart simultâneos: o segundo pula, nunca espera); sem `flock`,
+lock de diretório (`update.lock.d`, mkdir atômico, órfão >120s é removido) com o mesmo
+contrato. Sem `timeout`, um watchdog em bash mata o fetch no mesmo teto — fetch sem
+limite não existe.
+`# classification: confidential` (SHA e versões locais — jamais no log além de `from`/`to`)
 
 ---
 

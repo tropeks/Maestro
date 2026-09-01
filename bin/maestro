@@ -82,6 +82,10 @@ maestro <comando>
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
+  upgrade         auto-update via git (E19): sem flag verifica e aplica (ff-only, só quando
+                  seguro) · --check [--force] só relata, nunca aplica · --rollback desfaz o
+                  último upgrade · --snooze adia o aviso (24h→48h→7d) · --set chave=valor
+                  (update_check|auto_upgrade|update_interval_hours) — bash puro, sem Bun
 
 exit: 0 ok · 1 validação · 2 ambiente quebrado
 U
@@ -101,6 +105,7 @@ CAP_BINDINGS_OK=0; CAP_SKILL_ROOTS=0   # E7/S-705: fatos capturados p/ capabilit
 CAP_INJECTION_BYTES=0                  # E7/S-703: conta real da injeção do SessionStart
 CAP_INSTALL_REGISTERED=0; CAP_INSTALL_DIVERGENT=0   # E7/S-710: instalação vs repo
 CAP_INSTALL_REPO_LIVE=0                # E7/S-710: o repo é o CLAUDE_PLUGIN_ROOT vivo?
+CAP_UPDATE_RESULT="absent"; CAP_UPDATE_LOCAL=""; CAP_UPDATE_REMOTE=""   # E19/S-1903
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -734,6 +739,89 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
   fi
 }
 
+check_update_state() { # E19/S-1903: última checagem de atualização — nunca falha
+  local f="$MAESTRO_HOME/update-state"
+  if [[ ! -f "$f" || ! -r "$f" ]]; then
+    report ok "atualização: ainda não verificada (a primeira sessão verifica; maestro upgrade --check força)"
+    return 0
+  fi
+  local result local_v remote_v behind reason fetched checked fetch
+  result=$(sed -n 's/^result=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  local_v=$(sed -n 's/^local=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  remote_v=$(sed -n 's/^remote=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  behind=$(sed -n 's/^behind=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  reason=$(sed -n 's/^reason=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  fetched=$(sed -n 's/^fetched=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  checked=$(sed -n 's/^checked=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  fetch=$(sed -n 's/^fetch=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  [[ "$behind" =~ ^[0-9]+$ ]] || behind=0
+  [[ "$fetched" =~ ^[0-9]+$ ]] || fetched=0
+  [[ "$checked" =~ ^[0-9]+$ ]] || checked=0
+
+  CAP_UPDATE_RESULT="${result:-unknown}"
+  CAP_UPDATE_LOCAL="${local_v:-}"
+  CAP_UPDATE_REMOTE="${remote_v:-}"
+
+  case "$result" in
+    disabled)
+      report ok "atualização: verificação desligada por config" ;;
+    available)
+      report warn "atualização disponível: v$local_v → v$remote_v ($behind commit(s))" "maestro upgrade" ;;
+    blocked)
+      local det=""
+      case "$reason" in
+        ahead|dirty) det="máquina de desenvolvimento — push, não pull" ;;
+      esac
+      report ok "atualização: v$remote_v no origin, merge bloqueado ($reason)" "$det" ;;
+    failed)
+      report warn "verificação de atualização falhou ($reason)" \
+        "silêncio não é 'atualizado' — maestro upgrade --check --force" ;;
+    current)
+      local now days
+      now=$(date +%s 2>/dev/null || echo 0)
+      days=$(( (now - fetched) / 86400 ))
+      if [[ "$fetch" == "failed" || $fetched -eq 0 || $days -ge 7 ]]; then
+        report warn "atualização: último fetch bem-sucedido há $days dia(s)" \
+          "rede? maestro upgrade --check --force"
+      else
+        report ok "atualização: v$local_v em dia (verificado há $(( (now - checked) / 3600 ))h)"
+      fi
+      ;;
+    *)
+      report ok "atualização: estado desconhecido ($result)" ;;
+  esac
+}
+
+check_upstream() { # E19/S-1903: higiene da máquina de desenvolvimento — publicação, sem rede
+  # MAESTRO_UPDATE_REPO é a mesma costura de teste da lib: o check nasceu de um
+  # incidente real (2 commits sem push, main sem upstream) e precisa ser testável.
+  local repo="${MAESTRO_UPDATE_REPO:-$REPO_DIR}"
+  if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    report skip "publicação: fora de um clone git"
+    return 0
+  fi
+  if ! git -C "$repo" rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1; then
+    report ok "publicação: sem origin/main conhecido (clone raso?)"
+    return 0
+  fi
+  local ahead
+  ahead=$(git -C "$repo" rev-list --count origin/main..HEAD 2>/dev/null) || ahead=0
+  [[ "$ahead" =~ ^[0-9]+$ ]] || ahead=0
+  if (( ahead > 0 )); then
+    report warn "publicação: $ahead commit(s) sem push — outras máquinas não recebem" "git push"
+    return 0
+  fi
+  local branch
+  branch=$(git -C "$repo" branch --show-current 2>/dev/null) || branch=""
+  if [[ "$branch" == "main" ]] \
+     && ! git -C "$repo" rev-parse --abbrev-ref 'main@{u}' >/dev/null 2>&1; then
+    report warn "publicação: branch main sem upstream" \
+      "git branch --set-upstream-to=origin/main main"
+    return 0
+  fi
+  report ok "publicação: em dia com origin/main"
+}
+
 check_evidence() { # E13: ledger de evidência — recibos parseáveis, nunca fingidos
   local ed="$MAESTRO_HOME/evidence" f bad=() n=0
   [[ -d "$ed" ]] || { report ok "evidência: ledger vazio (registre com maestro evidence --record)"; return 0; }
@@ -852,7 +940,7 @@ check_injection_bill() { # S-703: conta real da injeção vs teto de 8000B
   th=$(mktemp -d 2>/dev/null) || return 0
   tp=$(mktemp -d 2>/dev/null) || { rm -rf "$th"; return 0; }
   bytes=$(printf '{"session_id":"doctor-bill"}' \
-    | MAESTRO_HOME="$th" CLAUDE_PROJECT_DIR="$tp" MAESTRO_OFF='' bash "$hook" 2>/dev/null \
+    | MAESTRO_HOME="$th" CLAUDE_PROJECT_DIR="$tp" MAESTRO_OFF='' MAESTRO_NO_UPDATE_CHECK=1 bash "$hook" 2>/dev/null \
     | wc -c | tr -d ' ') || bytes=''
   rm -rf "$th" "$tp"
   if [[ ! "$bytes" =~ ^[0-9]+$ ]] || (( bytes == 0 )); then
@@ -924,13 +1012,16 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
        --argjson roster "$rn" --argjson inj "$CAP_INJECTION_BYTES" \
        --argjson ireg "$CAP_INSTALL_REGISTERED" --argjson idiv "$CAP_INSTALL_DIVERGENT" \
        --argjson ilive "$([[ $CAP_INSTALL_REPO_LIVE -eq 1 ]] && echo true || echo false)" \
+       --arg upd_result "$CAP_UPDATE_RESULT" --arg upd_local "$CAP_UPDATE_LOCAL" \
+       --arg upd_remote "$CAP_UPDATE_REMOTE" \
        '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
          runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
                   git:{present:$git,version:$gitv}, flock:{present:$flock}},
          doctor:{checks:$checks,warns:$warns,skips:$skips,fail_env:$fail_env,fail_val:$fail_val},
          bindings:{resolved:$b_ok, skill_roots:$b_roots},
          roster:{agents:$roster}, injection:{bytes:$inj, budget:8000},
-         install:{registered:$ireg, divergent:$idiv, repo_is_live:$ilive}}' > "$tmp" 2>/dev/null \
+         install:{registered:$ireg, divergent:$idiv, repo_is_live:$ilive},
+         update:{result:$upd_result, local:$upd_local, remote:$upd_remote}}' > "$tmp" 2>/dev/null \
      && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
     report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
   else
@@ -1308,6 +1399,8 @@ doctor() {
   check_evidence
   check_vendor_integrity
   check_plugin_install
+  check_update_state
+  check_upstream
   check_session_env
   check_injection_bill
   write_capabilities
@@ -2504,6 +2597,203 @@ brief_auto_skeleton() { # <proj> → esqueleto determinístico no stdout (sem LL
   return 0
 }
 
+# --------------------------------------------------------------- upgrade (E19)
+
+_upgrade_failed_msg() { # <motivo> → mensagem humana para UPD_STATE=failed
+  case "$1" in
+    not-a-repo) printf '%s' "o plugin não roda de um clone git — reinstale com git clone (ADR-001)" ;;
+    no-remote)  printf '%s' "clone sem remoto 'origin'" ;;
+    no-remote-ref) printf '%s' "fetch falhou e não há origin/main conhecido (rede? URL?)" ;;
+    *) printf 'checagem falhou (%s)' "$1" ;;
+  esac
+}
+
+_upgrade_blocked_msg() { # usa UPD_REASON/UPD_AHEAD/UPD_BRANCH_CUR do estado corrente
+  case "$UPD_REASON" in
+    ahead) printf 'esta árvore tem %s commit(s) à frente do origin — máquina de desenvolvimento: git push, não pull' "$UPD_AHEAD" ;;
+    dirty) printf '%s' "árvore suja — commite ou guarde (git stash) antes" ;;
+    branch) printf "branch '%s' não é main — git checkout main" "$UPD_BRANCH_CUR" ;;
+    in-progress) printf '%s' "merge/rebase em andamento — termine ou aborte antes" ;;
+    *) printf 'merge bloqueado (%s)' "$UPD_REASON" ;;
+  esac
+}
+
+_upgrade_rollback_failed_msg() { # <motivo> → mensagem humana para maestro_update_rollback
+  case "$1" in
+    no-prev) printf '%s' "nada para desfazer — nenhum upgrade registrado" ;;
+    prev-missing) printf '%s' "commit anterior não existe mais neste clone" ;;
+    reset) printf '%s' "git reset --keep recusou: alteração local seria perdida" ;;
+    diverged) printf '%s' "há commit local depois do upgrade — o rollback é manual (git log / git reflog), a ferramenta não desfaz trabalho seu" ;;
+    *) printf 'rollback falhou (%s)' "$1" ;;
+  esac
+}
+
+_upgrade_apply() { # aplica e reporta a versão nova (chamado só quando UPD_STATE=available)
+  local behind="$UPD_BEHIND"
+  if ! maestro_update_apply; then
+    die validation "aplicar a atualização falhou ($UPD_REASON)" \
+      "árvore/remoto podem ter mudado — rode maestro upgrade --check --force" 1
+  fi
+  log_event upgrade from="$UPD_FROM" to="$UPD_LOCAL" via=manual
+  printf 'Maestro v%s → v%s (%s commit(s))\n' "$UPD_FROM" "$UPD_LOCAL" "$behind"
+
+  local delta
+  delta=$(awk -v to="## [$UPD_LOCAL]" -v from="## [$UPD_FROM]" '
+      $0 == to   { inrange = 1; print; next }
+      inrange && $0 == from { exit }
+      inrange    { print }
+    ' "$UPD_REPO/CHANGELOG.md" 2>/dev/null) || delta=""
+  if [[ -n "$delta" ]]; then
+    printf '%s\n' "$delta"
+  else
+    printf 'changelog: sem entradas entre as versões\n'
+  fi
+  printf 'rollback: maestro upgrade --rollback (volta para %s)\n' "${UPD_PREV:0:7}"
+
+  # o binário NOVO valida a instalação nova — só quando $UPD_REPO é o MESMO
+  # clone que este CLI está rodando (nada de exec num repo de teste alheio).
+  if [[ -x "$UPD_REPO/bin/maestro" ]]; then
+    local upd_real repo_real
+    upd_real=$(cd -P -- "$UPD_REPO" && pwd) || upd_real=""
+    repo_real=$(cd -P -- "$REPO_DIR" && pwd) || repo_real=""
+    if [[ -n "$upd_real" && "$upd_real" == "$repo_real" ]]; then
+      exec "$UPD_REPO/bin/maestro" doctor --ci
+    fi
+  fi
+  printf 'doctor: rode maestro doctor no plugin atualizado\n'
+  return 0
+}
+
+_upgrade_run() { # sem flag: verifica com --force e age pelo estado
+  maestro_update_check --force
+  case "$UPD_STATE" in
+    failed)
+      die env "$(_upgrade_failed_msg "$UPD_REASON")" "veja a mensagem acima" 2 ;;
+    current)
+      local msg="Maestro v$UPD_LOCAL já é a última versão (origin/main)"
+      [[ "$UPD_FETCH" == "failed" ]] && \
+        msg+=" — fetch falhou; comparado com o último origin/main conhecido"
+      printf '%s\n' "$msg"; return 0 ;;
+    blocked)
+      printf '%s\n' "$(_upgrade_blocked_msg)"; exit 1 ;;
+    available)
+      _upgrade_apply; return 0 ;;
+    *)
+      die env "estado de atualização desconhecido ($UPD_STATE)" "maestro doctor" 2 ;;
+  esac
+}
+
+_upgrade_check() { # --check [--force]: nunca aplica, mesmo com auto_upgrade
+  local force="$1"
+  if [[ "$force" == "1" ]]; then maestro_update_check --force; else maestro_update_check; fi
+  local line="" rc=0
+  case "$UPD_STATE" in
+    disabled) line="atualização: verificação desligada"; rc=0 ;;
+    current)  line="atualização: em dia (v$UPD_LOCAL)"; rc=0 ;;
+    available)
+      line="atualização: v$UPD_LOCAL → v$UPD_REMOTE_VER disponível ($UPD_BEHIND commit(s)) — maestro upgrade"
+      rc=1 ;;
+    blocked)
+      line="atualização: v$UPD_REMOTE_VER no origin, merge bloqueado ($UPD_REASON)"; rc=1 ;;
+    failed)
+      line="atualização: falhou ($UPD_REASON)"; rc=2 ;;
+    *) line="atualização: estado desconhecido ($UPD_STATE)"; rc=2 ;;
+  esac
+  printf '%s\n' "$line"
+  exit "$rc"
+}
+
+_upgrade_rollback() { # --rollback: git reset --keep para o prev registrado, sem rede
+  if maestro_update_rollback; then
+    log_event upgrade from="$UPD_FROM" to="$UPD_LOCAL" via=rollback
+    printf 'Maestro v%s → v%s (rollback); maestro upgrade reaplica\n' "$UPD_FROM" "$UPD_LOCAL"
+    return 0
+  fi
+  die validation "$(_upgrade_rollback_failed_msg "$UPD_REASON")" "veja a mensagem acima" 1
+}
+
+_upgrade_snooze() { # --snooze: adia só o AVISO da versão remota atual (24h→48h→7d)
+  maestro_update_check
+  case "$UPD_STATE" in
+    available)
+      if maestro_update_snooze; then
+        printf 'aviso adiado por %s (v%s)\n' "$UPD_SNOOZE_HUMAN" "$UPD_REMOTE_VER"
+      else
+        die validation "não consegui adiar ($UPD_REASON)" "tente de novo" 1
+      fi ;;
+    current)  printf 'nada a adiar: já na última versão\n' ;;
+    blocked)  printf '%s\n' "$(_upgrade_blocked_msg)" ;;
+    failed)   printf 'atualização: falhou (%s)\n' "$UPD_REASON"; exit 2 ;;
+    *)        printf 'atualização: estado desconhecido (%s)\n' "$UPD_STATE" ;;
+  esac
+  return 0
+}
+
+_upgrade_set() { # --set chave=valor: só as 3 chaves de config.yaml que a lib entende
+  local kv="$1"
+  [[ "$kv" == *=* ]] || die validation "formato inválido (esperado chave=valor)" \
+    "maestro upgrade --set chave=valor" 1
+  local key="${kv%%=*}" val="${kv#*=}"
+  case "$key" in
+    update_check|auto_upgrade)
+      [[ "$val" == "true" || "$val" == "false" ]] || die validation \
+        "valor inválido para '$key': '$val' (esperado true|false)" \
+        "maestro upgrade --set $key=true|false" 1 ;;
+    update_interval_hours)
+      [[ "$val" =~ ^[0-9]{1,3}$ ]] && (( 10#$val >= 1 && 10#$val <= 720 )) || die validation \
+        "valor inválido para 'update_interval_hours': '$val' (esperado inteiro 1..720)" \
+        "maestro upgrade --set update_interval_hours=24" 1 ;;
+    *) die validation "chave desconhecida '$key'" \
+        "chaves válidas: update_check, auto_upgrade, update_interval_hours" 1 ;;
+  esac
+  maestro_update_config_set "$key" "$val" || \
+    die env "falha ao gravar config.yaml" "verifique permissões em \$MAESTRO_HOME" 2
+  printf 'config.yaml: %s = %s\n' "$key" "$val"
+}
+
+cmd_upgrade() { # E19/S-1902 — CLI do auto-update: source direto da lib do S-1901
+  # UPD_MANUAL=1 é a diferença entre o hook (silencioso, respeita config) e o
+  # CLI (ação explícita do humano — ignora update_check:false e o kill-switch
+  # de checagem, nunca a rede em si).
+  local mode="" force=0 setkv=""
+  while (( $# )); do
+    case "$1" in
+      --check)   mode="check" ;;
+      --force)   force=1 ;;
+      --rollback) mode="rollback" ;;
+      --snooze)  mode="snooze" ;;
+      --set)     mode="set"
+                 # `--set` como último argumento: sem o `(( $# > 1 ))` o shift
+                 # interno esvaziaria $@ e o shift do laço morreria sob set -e
+                 # com erro cru do bash em vez do die de validação.
+                 if (( $# > 1 )); then setkv="$2"; shift; else setkv=""; fi ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro upgrade [--check [--force]|--rollback|--snooze|--set chave=valor]" 1 ;;
+    esac
+    shift
+  done
+  if (( force == 1 )) && [[ "$mode" != "check" ]]; then
+    die validation "flag desconhecida '--force'" \
+      "maestro upgrade [--check [--force]|--rollback|--snooze|--set chave=valor]" 1
+  fi
+  [[ -z "$mode" ]] && mode="run"
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  export UPD_MANUAL=1
+  # shellcheck source=hooks/lib/update-check.sh
+  source "$REPO_DIR/hooks/lib/update-check.sh"
+
+  case "$mode" in
+    run)      _upgrade_run ;;
+    check)    _upgrade_check "$force" ;;
+    rollback) _upgrade_rollback ;;
+    snooze)   _upgrade_snooze ;;
+    set)      _upgrade_set "$setkv" ;;
+  esac
+  return 0
+}
+
 # ----------------------------------------------------------------------- dispatch
 
 delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
@@ -2543,6 +2833,7 @@ case "$cmd" in
   evidence) shift; cmd_evidence "$@" ;;
   order) shift; cmd_order "$@" ;;
   docs) shift; cmd_docs "$@" ;;
+  upgrade) shift; cmd_upgrade "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

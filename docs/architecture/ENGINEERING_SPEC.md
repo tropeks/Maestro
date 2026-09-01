@@ -93,7 +93,8 @@ API_SPEC.md (contratos hook+CLI) · EPICS.md (escopo — nada fora dele sem emen
 
 ## Proibido
 - float em qualquer métrica de custo (usar inteiros de tokens/centavos)
-- dependência de rede em runtime
+- dependência de rede em runtime (a única chamada de rede é o fetch do auto-update, E19:
+  timeout curto, uma vez por intervalo, falha silenciosa — rede nunca bloqueia nem quebra)
 - editar vendor/ no lugar
 ```
 

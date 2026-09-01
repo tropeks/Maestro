@@ -112,7 +112,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -140,6 +140,9 @@ _maestro_set_key_regex() {
     n)          _maestro_re='^[0-9]{1,9}$' ;;
     flags_n)    _maestro_re='^[0-9]{1,9}$' ;;
     approach)   _maestro_re='^(yes|no)$' ;;
+    from)       _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;   # E19: versão do plugin
+    to)         _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;
+    via)        _maestro_re='^(auto|manual|rollback)$' ;;
     *)          _maestro_re=""; return 1 ;;
   esac
   return 0

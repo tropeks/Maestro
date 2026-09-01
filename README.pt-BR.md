@@ -12,7 +12,7 @@ table declarativa e um roster de agentes tierizados por custo.
 
 > **Filosofia:** trilhos determinísticos, IA nas bordas. Os hooks garantem **QUE** a
 > decisão de roteamento acontece; o Claude da sessão decide **O QUE** fazer, guiado
-> pela tabela. Nenhum LLM no caminho crítico, nenhuma rede em runtime, nenhum
+> pela tabela. Nenhum LLM no caminho crítico, nenhuma rede no caminho crítico, nenhum
 > componente que bloqueie trabalho ao falhar.
 
 ## O problema
@@ -195,6 +195,26 @@ Dependências de runtime: `bash`, `jq`, `flock` (hooks) e [Bun](https://bun.sh) 
 Os hooks nunca invocam Bun — se o Bun sumir, o CLI degrada com mensagem citando o
 último `doctor`; os trilhos continuam de pé.
 
+## Atualizar
+
+O Maestro se mantém atualizado sozinho. O plugin roda direto do clone, então todo início
+de sessão faz um `git fetch` (timeout de 5s, no máximo uma vez por dia, silencioso se
+falhar) e avança para `origin/main` quando isso é estritamente seguro: árvore limpa, nenhum
+commit local à frente, na `main`. A sessão nasce na versão nova — o hook novo re-executa a
+si mesmo. Máquina de desenvolvimento (árvore suja ou commits sem push) nunca é
+sobrescrita; a sessão só recebe uma linha "push, não pull".
+
+```bash
+maestro upgrade                     # fetch + fast-forward agora, delta do CHANGELOG, doctor
+maestro upgrade --check             # só mede: exit 0 em dia · 1 disponível/bloqueado · 2 falhou
+maestro upgrade --rollback          # git reset --keep para a versão anterior
+maestro upgrade --set auto_upgrade=false   # só avisa; também update_check, update_interval_hours
+```
+
+Silêncio nunca significa "atualizado": o resultado de toda checagem, inclusive a falha,
+fica em `~/.maestro/update-state`, e o `maestro doctor` reporta. `MAESTRO_NO_UPDATE_CHECK=1`
+desliga a checagem automática.
+
 ## Validar
 
 ```bash
@@ -222,8 +242,9 @@ enquanto a dívida não fecha).
 - **Privacidade do log:** `~/.maestro/logs/routing.jsonl` carrega só metadados com
   vocabulário fechado — jamais o texto do prompt, jamais caminho completo de arquivo
   (só a extensão). Nenhuma chave aceita `/`.
-- **Sem float em métrica de custo** (inteiros de tokens/centavos), **sem rede em
-  runtime**, **`vendor/` read-only**.
+- **Sem float em métrica de custo** (inteiros de tokens/centavos), **sem rede no
+  caminho crítico** (a única chamada de rede é o fetch do auto-update: com timeout,
+  limitado por intervalo, silencioso ao falhar), **`vendor/` read-only**.
 - **Autoproteção:** o gate bloqueia sempre — mesmo com decisão registrada — edição de
   `.claude/` e `.github/workflows/` em qualquer projeto, e de `hooks/`, `bin/`,
   `src/`, `agents/`, `config/routing-table.yaml` e `.claude-plugin/` sob a raiz do
