@@ -3,7 +3,7 @@ covers:
   - hooks/**
   - bin/**
   - src/**
-reviewed: 91457b2
+reviewed: da1aaae
 ---
 # ARCHITECTURE.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)

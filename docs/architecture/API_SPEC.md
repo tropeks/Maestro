@@ -191,6 +191,8 @@ maestro conduct --session <session_id>
   grafo existe; STALE manda desconfiar, nunca consultar.
 
 ### `maestro doctor`
+**Checagem S-1709 (E17):** `doctor` compara `meta.repository.revision` de `docs/assets/architecture.json` (quando o projeto o declara) com o commit da última tag git — divergência é warn acionável ("regenere com archify"), ausência é skip; nunca falha o doctor.
+
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.
 - **Emenda E7 (S-705/S-706):** grava o envelope `maestro.capabilities.v1` e o snapshot de
   resolução de bindings em `$MAESTRO_HOME` (DATA_MODEL §6); detecta

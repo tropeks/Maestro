@@ -1,7 +1,7 @@
 ---
 covers:
   - docs/architecture/**
-reviewed: adfcab6
+reviewed: da1aaae
 ---
 # EPICS.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
