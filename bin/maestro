@@ -1585,6 +1585,23 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     return 0
   }
 
+  _order_proof_tree() { # <arquivo> → árvore PROVADA (sha) no stdout; vazio se não há prova
+    # Mesma resolução do _order_status (inclusive a tolerância S-1802 ao label
+    # acolchoado): quem carimba o aceite tem de enxergar exatamente a mesma
+    # prova que autorizou o aceite.
+    local f="$1" o br cand ev_f ev_w tip_tree
+    br=$(_order_field "$f" branch); o=$(_order_field "$f" id)
+    tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || return 0
+    [[ -n "$tip_tree" ]] || return 0
+    for cand in "order-$((10#$o))" "order-$(printf '%03d' "$((10#$o))")"; do
+      ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+      [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
+      ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
+      [[ -n "$ev_w" && "$ev_w" == "$tip_tree" ]] && { printf '%s' "$ev_w"; return 0; }
+    done
+    return 0
+  }
+
   if [[ "$action" == "list" ]]; then
     [[ -d "$odir" ]] || { echo "nenhuma ordem em $odir (crie: maestro order --create)"; return 0; }
     local f any=0
@@ -1614,7 +1631,16 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       && printf ' (existe, tip %s)\n' "$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)" \
       || printf ' (não existe)\n'
     printf '  prova   : ' 
-    "$REPO_DIR/bin/maestro" evidence --label "order-$((10#$oid))" --project "$proj" 2>/dev/null | head -1 || echo "?"
+    # S-1803: numa ordem ACEITA a leitura ao vivo é ruído — o carimbo do
+    # próprio aceite já moveu a árvore. Reporta-se o fato que autorizou o
+    # aceite. Sem carimbo (ordem aceita antes desta versão) cai no antigo.
+    local _ptree=""
+    [[ "$st" == "aceita" ]] && _ptree=$(grep -m1 '^accepted_tree: ' "$of" 2>/dev/null | sed 's/^accepted_tree: //')
+    if [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
+      printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
+    else
+      "$REPO_DIR/bin/maestro" evidence --label "order-$((10#$oid))" --project "$proj" 2>/dev/null | head -1 || echo "?"
+    fi
     local _od; _od=$(_order_field "$of" doc)
     if [[ -n "$_od" ]]; then
       printf '  doc     : %s — ' "$_od"
@@ -1635,7 +1661,19 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       die validation "ordem $oid está '$st', não 'provada'" \
         "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
     fi
-    printf 'accepted_at: %s\naccepted_session: %s\n' "$(date -Iseconds)" "${sid:-desconhecido}" >> "$of"
+    # S-1803: o carimbo do aceite ESCREVE no arquivo da ordem, que é rastreado
+    # (E15: "work order versionada"). Sem o carimbo da árvore, o próprio
+    # --accept faz o conteúdo andar depois da prova e o recibo — que é amarrado
+    # a CONTEÚDO (S-1301) — vence no ato de aceitar: a ordem fica 'aceita' com
+    # 'prova VENCIDA', que lê como auditoria quebrada. Gravamos aqui a árvore
+    # que a prova cobriu: depois do aceite a pergunta deixa de ser "o conteúdo
+    # de AGORA ainda bate" (o estado é terminal, nada mais será executado) e
+    # passa a ser "houve prova válida NA aceitação" — fato histórico, que não
+    # expira. Ordem aceita antes desta versão não tem o campo e cai no
+    # comportamento antigo (leitura ao vivo), então isto é retrocompatível.
+    local ptree; ptree=$(_order_proof_tree "$of")
+    printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
+      "$(date -Iseconds)" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
     log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
     printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
     return 0

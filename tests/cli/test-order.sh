@@ -82,6 +82,21 @@ chk "commit APÓS a prova → volta a em_execucao (prova não acompanha)" \
 "$BIN" order --accept 1 --project "$P" --session dir-1 >/dev/null
 chk "prova re-feita + aceite = aceita" "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[aceita]"
 grep -q '^accepted_at: ' "$OF" && ok "aceite carimbado no arquivo (auditável)" || bad "aceite carimbado"
+
+# S-1803: o carimbo do aceite escreve num arquivo RASTREADO, então ele próprio
+# move a árvore depois da prova. Sem o carimbo da árvore provada, a ordem ficava
+# 'aceita' exibindo 'prova VENCIDA' — auditoria que lê como quebrada. As três
+# asserções abaixo rodam ANTES de qualquer commit de propósito: comitar o
+# carimbo mascarava o defeito (era o que este teste fazia na linha seguinte).
+PT=$(grep -m1 '^accepted_tree: ' "$OF" | sed 's/^accepted_tree: //')
+[[ -n "$PT" && "$PT" != "desconhecida" ]] && ok "aceite carimba a árvore provada" || bad "árvore provada no carimbo (obtido: '${PT:-vazio}')"
+chk "árvore carimbada == árvore do tip provado" "$PT" "$(git -C "$P" rev-parse "$BR^{tree}")"
+if "$BIN" order --status 1 --project "$P" | grep -q 'prova   : VÁLIDA na aceitação'; then
+  ok "ordem aceita reporta prova histórica, não comparação ao vivo"
+else
+  bad "ordem aceita ainda reporta prova ao vivo ($("$BIN" order --status 1 --project "$P" | grep 'prova' | head -1))"
+fi
+
 git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "aceite 001"
 
 echo "-- injeção (S-1503) e frozen zone no gate (S-1504)"
