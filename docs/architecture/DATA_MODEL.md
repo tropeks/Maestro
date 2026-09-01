@@ -220,6 +220,8 @@ segue o precedente do `reason`: corta e avisa, nunca falha silenciosamente.
 continua confidencial pelo mesmo motivo do resto do arquivo (revela estrutura de decisão
 do projeto).
 
+Persistência do dissenso (S-1708): `flags[]` sobrevive ao re-decide da mesma sessão — `maestro decide` faz merge do array existente no record novo (o decide preserva, não valida; o schema do doctor segue autoritativo). O log continua recebendo só `flags_n` (contagem): o conteúdo vive exclusivamente no record.
+
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
 Uma linha por evento. Eventos (vocabulário fechado): `decision`, `gate_pass`, `gate_warn`, `gate_block`, `override_manual`, `conduct`, `killswitch`, `session_end`. Hooks emitem SOMENTE este vocabulário via `log_event` do `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado (proteção contra JSONL malformado, review Opus).

@@ -503,6 +503,7 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
 - **S-1707:** estas emendas — ADR-009 em `ARCHITECTURE.md`, Emenda v1.7 em
   `DATA_MODEL.md`, blocos `maestro decide`/`maestro conduct` em `API_SPEC.md`, e este
   épico em `EPICS.md`, todos no mesmo changeset (regra do contrato de docs, E16).
+- **S-1708:** flags de dissenso sobrevivem ao re-decide — o decide idempotente reescrevia o record e evaporava o flags[] que o conduct gravou (visto em produção no NetForge, 2026-08-31: conduct flags_n=4 seguido de decide que apagou o conteúdo; o log guarda só contagem, por contrato). cmdDecide agora faz merge do flags[] existente no record novo, inclusive quando workflow/mode mudam — a trilha é da sessão. Apagar flags exige apagar o record. **Entregue 2026-08-31.**
 - **Fora do v1, com registro:** interceptação REAL dos contatos de fim de sessão via hook
   Stop/SessionEnd (hoje inexistente em `hooks.json` — questão aberta do design, épico
   próprio); day-zero bootstrap ASSISTIDO além da convenção manual (o valor `day-zero` do

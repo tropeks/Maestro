@@ -79,7 +79,7 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
       --depth deep --brief $'essencia: gate de regência no decide\nimpacto: aprovador le 3 linhas, nao o diff\napproach: pendente'
   ok: record gravado (depth=deep, brief=3/3 marcadores, approach=pendente)
   ```
-- Grava decision record (com `expires_at` = ts+4h) + linha `decision` no JSONL via `JSON.stringify` (nunca concatenação manual). Idempotente por sessão.
+- Grava decision record (com `expires_at` = ts+4h) + linha `decision` no JSONL via `JSON.stringify` (nunca concatenação manual). Idempotente por sessão — o re-decide preserva o `flags[]` existente do record anterior, fazendo merge mesmo quando workflow/mode mudam (S-1708).
 - **Exit codes:** 0 ok · 1 validação (mensagem clara no stderr, inclui a recusa de brief plan-gated) · 2 ambiente quebrado (instrui `maestro doctor`).
 
 ### `maestro status`

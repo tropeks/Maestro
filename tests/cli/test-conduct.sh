@@ -106,4 +106,38 @@ grep -q 'cnd-pend: outcome registrado com approach pendente' <<<"$out" \
   && bad "aviso deveria sumir após --approach" || ok "aviso some depois que conduct --approach fecha o pendente"
 rm -f "$(REC cnd-pend)"
 
+# ---------------------------------------------------------------------------
+# S-1708 — flags[] é trilha de sessão: sobrevive a um re-decide posterior na
+# MESMA sessão, mesmo que o novo decide mude workflow/mode (o record é
+# idempotente por sessão — write+rename reescreve do zero em src/cli.ts).
+# ---------------------------------------------------------------------------
+command -v bun >/dev/null || { echo "FAIL bun ausente (necessário p/ decide, S-1708)"; exit 1; }
+
+echo "-- S-1708: flags[] sobrevivem ao re-decide da mesma sessão"
+# workflow fix tem gate:none — não exige --brief.
+"$BIN" decide --session s1708-a --workflow fix --mode direct >/dev/null; rc=$?
+chk "decide inicial (sem flags) → exit 0" "$rc" "0"
+chk "record recém-decidido não tem flags" "$(jq -r 'has("flags")' "$(REC s1708-a)")" "false"
+
+# injeta flags no record, no mesmo shape que `maestro conduct --flag` gravaria
+jq '.flags = [{"sev":"high","decisao":"x","tradeoff":"y","mitigacao":"z"}]' \
+  "$(REC s1708-a)" > "$(REC s1708-a).tmp" && mv -f "$(REC s1708-a).tmp" "$(REC s1708-a)"
+chk "fixture: flags injetadas" "$(jq '.flags | length' "$(REC s1708-a)")" "1"
+
+# re-decide na MESMA sessão, mudando workflow/mode — a trilha é da sessão, não do workflow
+"$BIN" decide --session s1708-a --workflow audit --mode direct >/dev/null; rc=$?
+chk "re-decide (workflow/mode mudam) → exit 0" "$rc" "0"
+chk "workflow atualizado pelo re-decide" "$(jq -r .workflow "$(REC s1708-a)")" "audit"
+chk "flags sobrevivem ao re-decide" "$(jq '.flags | length' "$(REC s1708-a)")" "1"
+chk "conteúdo da flag intacto (decisao)" "$(jq -r '.flags[0].decisao' "$(REC s1708-a)")" "x"
+chk "conteúdo da flag intacto (sev)" "$(jq -r '.flags[0].sev' "$(REC s1708-a)")" "high"
+
+echo "-- S-1708: sessão sem flags prévias não ganha o campo no re-decide"
+"$BIN" decide --session s1708-b --workflow fix --mode direct >/dev/null; rc=$?
+chk "decide sem flags prévias → exit 0" "$rc" "0"
+"$BIN" decide --session s1708-b --workflow audit --mode direct >/dev/null; rc=$?
+chk "re-decide sem flags prévias → exit 0" "$rc" "0"
+chk "record sem flags prévias não ganha o campo" \
+    "$(jq -r 'has("flags")' "$(REC s1708-b)")" "false"
+
 exit $fail

@@ -464,6 +464,9 @@ interface DecisionRecord {
   depth?: string;
   profile?: string;
   brief?: string;
+  // E17/S-1708 — dissenso é trilha, sobrevive ao re-decide da mesma sessão;
+  // schema autoritativo em `bin/maestro record_schema_ok`.
+  flags?: Array<Record<string, string>>;
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -740,6 +743,13 @@ function cmdDecide(args: Args): number {
   const expires = isoLocal(new Date(now.getTime() + ttlSeconds() * 1000));
   const wtree = computeWtree(); // E7/S-701: ~200ms; aqui no CLI, jamais no gate
 
+  // E17/S-1708: o record é idempotente por sessão (write+rename reescreve do
+  // zero) — sem isso, um re-decide na mesma sessão apagaria `flags[]` gravado
+  // por `maestro conduct`. A trilha de dissenso é da SESSÃO, não do workflow
+  // decidido: sobrevive mesmo quando este decide muda workflow/mode. O decide
+  // só PRESERVA; validar o conteúdo das flags é assunto do doctor.
+  const prev = readRecord(session);
+
   const record: DecisionRecord = {
     session_id: session,
     ts,
@@ -753,6 +763,9 @@ function cmdDecide(args: Args): number {
     ...(depth ? { depth } : {}),
     ...(profile ? { profile } : {}),
     ...(brief ? { brief } : {}),
+    ...(prev?.flags && Array.isArray(prev.flags) && prev.flags.length
+      ? { flags: prev.flags }
+      : {}),
   };
 
   const target = recordPath(session);
