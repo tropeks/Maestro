@@ -6,6 +6,27 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.11.1] — 2026-09-01
+
+The first release that flows through the auto-updater. Two real items, both
+measured, nothing decorative.
+
+### Added
+- **`session_end` is finally emitted (S-1811).** The event had been in the log
+  vocabulary since E2 and nothing produced it, so a session that ended without
+  `maestro outcome` was invisible to the retro. `hooks/session-end.sh` (pure
+  bash, no jq) logs `decided`/`settled` by presence in the decision record —
+  never its content. Doctor now expects 5 hook events; `maestro retro` prints
+  `sessões encerradas · sem decisão · decididas sem desfecho`.
+
+### Changed
+- **Update check fast path (S-1810).** Inside the fetch interval the full
+  measurement (show, rev-list ×2, branch, status) still ran every session and
+  cost ~150ms against the <100ms NFR. When HEAD and `origin/main` match the
+  SHAs recorded by the last `current` check, two `rev-parse` decide
+  (`reason=fast-path`). State and config are read without `sed`. Measured on
+  NetForge: ~50ms over a session with the check disabled.
+
 ## [1.11.0] — 2026-09-01
 
 Epic E19: Maestro keeps itself current. Approved by the Captain with one
