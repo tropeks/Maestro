@@ -1602,6 +1602,27 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     return 0
   }
 
+  _order_evidence_label() { # <arquivo> → rótulo do recibo a EXIBIR
+    # S-1804: a DERIVAÇÃO de estado tolera o label acolchoado (S-1802), mas a
+    # LEITURA exibida não toleravam — recibo gravado como order-002 derivava
+    # 'provada' e aparecia como 'NENHUMA' na linha de prova, descrevendo a
+    # mesma ordem de dois jeitos incompatíveis. Aqui a exibição passa a usar a
+    # MESMA resolução: o candidato que prova; senão o que existe; senão o
+    # canônico (para a mensagem de "registre com" sair normalizada).
+    local f="$1" o cand ev_f ev_w tip_tree br first=""
+    o=$(_order_field "$f" id); br=$(_order_field "$f" branch)
+    tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
+    for cand in "order-$((10#$o))" "order-$(printf '%03d' "$((10#$o))")"; do
+      ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+      [[ -f "$ev_f" ]] || continue
+      [[ -z "$first" ]] && first="$cand"
+      grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
+      ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
+      [[ -n "$ev_w" && -n "$tip_tree" && "$ev_w" == "$tip_tree" ]] && { printf '%s' "$cand"; return 0; }
+    done
+    printf '%s' "${first:-order-$((10#$o))}"
+  }
+
   if [[ "$action" == "list" ]]; then
     [[ -d "$odir" ]] || { echo "nenhuma ordem em $odir (crie: maestro order --create)"; return 0; }
     local f any=0
@@ -1639,7 +1660,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     if [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
       printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
     else
-      "$REPO_DIR/bin/maestro" evidence --label "order-$((10#$oid))" --project "$proj" 2>/dev/null | head -1 || echo "?"
+      "$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$of")" --project "$proj" 2>/dev/null | head -1 || echo "?"
     fi
     local _od; _od=$(_order_field "$of" doc)
     if [[ -n "$_od" ]]; then

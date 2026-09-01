@@ -62,6 +62,15 @@ git -C "$P" -c user.email=t@t -c user.name=t commit -qm mais
 "$BIN" evidence --record --label order-001 --project "$P" -- true >/dev/null
 chk "recibo com label order-001 (acolchoado) ainda deriva provada" \
     "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[provada]"
+# S-1804: a EXIBIÇÃO tem de tolerar o mesmo acolchoado que a DERIVAÇÃO tolera.
+# Antes: estado 'provada' e linha de prova 'NENHUMA' — a mesma ordem descrita
+# de dois jeitos incompatíveis, e foi isso que levou um operador a regravar um
+# recibo que já estava bom.
+if "$BIN" order --status 1 --project "$P" | grep -q 'prova   : evidência (order-001): VÁLIDA'; then
+  ok "linha de prova enxerga o recibo acolchoado (derivação e exibição concordam)"
+else
+  bad "linha de prova ignora o acolchoado ($("$BIN" order --status 1 --project "$P" | grep 'prova' | head -1))"
+fi
 # fixture ISOLADA (não rouba o próximo id do fluxo principal): ordem 007 já
 # existe em disco (nome de arquivo acolchoado) — a sugestão do create seguinte
 # deve sair NORMALIZADA (order-8), derivada da mesma fórmula do leitor.
@@ -98,6 +107,17 @@ else
 fi
 
 git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "aceite 001"
+
+echo "-- S-1804: sem recibo, a sugestão de registro sai normalizada"
+P3=$(mktemp -d); git -C "$P3" init -q
+echo z > "$P3/z.txt"; git -C "$P3" add -A; git -C "$P3" -c user.email=t@t -c user.name=t commit -qm base
+"$BIN" order --create --title "Sem prova" --project "$P3" <<< "obj" >/dev/null
+if "$BIN" order --status 1 --project "$P3" | grep -q -- '--label order-1 '; then
+  ok "sem recibo → sugere o label canônico (order-1, sem zeros)"
+else
+  bad "sugestão de label não normalizada ($("$BIN" order --status 1 --project "$P3" | grep 'prova' | head -1))"
+fi
+rm -rf "$P3"
 
 echo "-- injeção (S-1503) e frozen zone no gate (S-1504)"
 "$BIN" order --create --title "Segunda" --frozen "core/auth/" --project "$P" <<< "x" >/dev/null
