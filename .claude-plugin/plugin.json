@@ -1,6 +1,6 @@
 {
   "name": "maestro",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Camada de roteamento MoE para Claude Code: hooks deterministicos + routing table + roster de agentes. Trilhos deterministicos, IA nas bordas.",
   "author": {
     "name": "Romulo"

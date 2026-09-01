@@ -24,6 +24,20 @@ from the decision log and tag messages when this file was introduced.
 - **`.orphaned_at` destrackeado.** Marcador interno do Claude Code que entrou por
   engano no `d98838a`; viajava para todo clone e para o cache do plugin.
 
+## [1.9.1] — 2026-08-31
+
+### Fixed
+- **Dissent flags survive re-decide (S-1708).** Found live in NetForge hours
+  after v1.9.0: `conduct` recorded 4 flags, a re-decide 9 minutes later rewrote
+  the session record and the flag content evaporated (the log keeps only
+  `flags_n`, by contract). `decide` now merges the existing `flags[]` into the
+  new record, including across workflow/mode changes — the dissent trail
+  belongs to the session; deleting flags requires deleting the record.
+
+### Changed
+- Governance gotcha paid: EPICS.md covers its own directory, so a sibling
+  re-attest commit marks it STALE once; re-attesting EPICS itself converges.
+
 ## [1.9.0] — 2026-08-31
 
 Epic E17: conducting — every human contact translated (essence · impact ·
@@ -348,6 +362,7 @@ shellcheck + suite + doctor, MIT license.
 
 - E1+E2: plugin skeleton, kill switch, doctor, injection, gate, CLI, override baseline.
 
+[1.9.1]: https://github.com/tropeks/Maestro/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/tropeks/Maestro/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/tropeks/Maestro/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/tropeks/Maestro/compare/v1.6.0...v1.7.0
