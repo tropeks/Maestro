@@ -53,6 +53,28 @@ chk "branch existe = em_execucao" "$("$BIN" order --list --project "$P" | grep -
 chk "aceite SEM prova → exit 1 (executor não fecha sozinho)" "$rc" "1"
 "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null
 chk "evidência verde no tip = provada" "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[provada]"
+
+echo "-- S-1802: label acolchoado não perde prova, sugestão sai normalizada"
+# recibo gravado como order-001 (formato do NOME do arquivo, não do label) VALE:
+# o leitor tolera o acolchoado — ninguém perde prova boa por formatação.
+echo extra >> "$P/core/auth/jwt.py"; git -C "$P" add -A
+git -C "$P" -c user.email=t@t -c user.name=t commit -qm mais
+"$BIN" evidence --record --label order-001 --project "$P" -- true >/dev/null
+chk "recibo com label order-001 (acolchoado) ainda deriva provada" \
+    "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[provada]"
+# fixture ISOLADA (não rouba o próximo id do fluxo principal): ordem 007 já
+# existe em disco (nome de arquivo acolchoado) — a sugestão do create seguinte
+# deve sair NORMALIZADA (order-8), derivada da mesma fórmula do leitor.
+P2=$(mktemp -d); git -C "$P2" init -q
+mkdir -p "$P2/.maestro/orders"
+sed 's/^id: .*/id: 007/' "$OF" > "$P2/.maestro/orders/007.md"
+"$BIN" order --create --title "Oitava" --branch order/8 --project "$P2" >/dev/null 2>&1 <<< "objetivo: t"
+OF2=$(ls "$P2/.maestro/orders/"008-*.md 2>/dev/null | head -1)
+if [[ -n "$OF2" ]] && grep -q -- '--label order-8 ' "$OF2"; then
+  ok "contrato da ordem sugere o label normalizado (order-8, sem zeros)"
+else
+  bad "contrato da ordem sugere o label normalizado (obtido: $(grep -o 'order-[0-9]*' "$OF2" 2>/dev/null | head -1))"
+fi
 echo suja >> "$P/src/app.py"; git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm depois
 chk "commit APÓS a prova → volta a em_execucao (prova não acompanha)" \
     "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[em_execucao]"

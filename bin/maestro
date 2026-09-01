@@ -1471,7 +1471,8 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
   # O estado NUNCA é auto-declarado: deriva de git + evidence ledger + aceite —
   #   aberta       → nada aconteceu
   #   em_execucao  → o branch declarado existe
-  #   provada      → recibo de evidência (label order-NNN) com exit 0 cujo
+  #   provada      → recibo de evidência (label order-<n>, SEM zeros à
+  #                  esquerda — ex.: order-2; o leitor tolera order-00n) com exit 0 cujo
   #                  wtree_after == árvore do TIP do branch (prova mecânica de
   #                  que a suíte passou exatamente naquele conteúdo — S-701)
   #   aceita       → aceite explícito do diretor (--accept, auditado)
@@ -1544,7 +1545,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf '\n## Contrato de execução\n'
       printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
       [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
-      printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$oid"
+      printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$((10#$oid))"
       [[ -n "$odoc" ]] && printf -- '- Esta ordem é autorizada por `%s` — siga-o; se a entrega mudar o contrato, EMENDE o doc no mesmo changeset (o aceite confere o frescor).\n' "$odoc"
       printf -- '- Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.\n'
       printf -- '- O aceite é do diretor: `maestro order --accept %s` (você não fecha a própria ordem).\n' "$oid"
@@ -1565,14 +1566,21 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf 'aberta'; return 0
     fi
     local o; o=$(_order_field "$f" id)
-    ev_f=$(maestro_evidence_file "$proj" "order-$((10#$o))" 2>/dev/null)
-    if [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null; then
+    # Tolerância S-1802: o label canônico é sem zeros (order-2), mas recibo
+    # gravado com o acolchoado do NOME do arquivo (order-002) também PROVA —
+    # ninguém perde prova boa por formatação. Cada candidato é avaliado até o
+    # fim (exit=0 + wtree==tip): um recibo velho no formato canônico não pode
+    # sombrear um recibo fresco no acolchoado.
+    local cand
+    tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null)
+    for cand in "order-$((10#$o))" "order-$(printf '%03d' "$((10#$o))")"; do
+      ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+      [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
       ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
-      tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null)
       if [[ -n "$ev_w" && "$ev_w" == "$tip_tree" ]]; then
         printf 'provada'; return 0
       fi
-    fi
+    done
     printf 'em_execucao'
     return 0
   }

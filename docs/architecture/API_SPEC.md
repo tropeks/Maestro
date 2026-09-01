@@ -135,6 +135,8 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   covers/fan-out. Sensor `doc-governed` no habit hook faz o reforço tardio.
 
 ### `maestro order` (E15)
+**Emenda E18/S-1802 (2026-09-01):** o label canônico de evidência é `order-<n>` SEM zeros (o nome do arquivo `NNN.md` é acolchoado, o label não); a sugestão no contrato da ordem é derivada da mesma fórmula do leitor, e o leitor tolera recibo gravado como `order-00n` — avalia ambos os candidatos até um provar.
+
 - `--create --title t [--branch b] [--frozen "a/ b/"] [--budget-*] [--project d]`
   (corpo via stdin) · `--list` · `--status N` · `--accept N`. Estado derivado de
   git + ledger (§8) + aceite; `--accept` exige `provada` (exit 1 sem prova). O

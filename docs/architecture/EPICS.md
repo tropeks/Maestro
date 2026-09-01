@@ -1,7 +1,7 @@
 ---
 covers:
   - docs/architecture/**
-reviewed: 0fe14dc
+reviewed: e47661a
 ---
 # EPICS.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
@@ -519,6 +519,13 @@ reforço tardio (nag no habit hook) + o resto declarado como compliance ASSISTID
 
 ### E18 — Calibração guiada por telemetria (P1, S) — aberto 2026-09-01, motivado pelo retro do NetForge
 - **S-1801:** a taxa de override do retro conta só comando ROTEÁVEL — o sensor ADR-008 loga todo prompt com `/`, mas 12/12 overrides da janela eram ciclo de vida (context-save/restore, upgrade, login) e a taxa saiu 21% (real: 0%), disparando "calibrar antes de endurecer" em falso. `cmd_retro` deriva o conjunto roteável da própria routing table (alvos `skill:` dos bindings + nomes de workflow), reporta roteável e não-roteável separados, e o sinal ≥20% + critério de promoção warn→block usam só os roteáveis. Sensor intacto: dado bruto preservado. **Entregue 2026-09-01.**
+- **S-1802:** label de ordem sem fresta — o contrato da ordem sugeria o oid CRU
+  (order-001 se o humano digitou 001) enquanto os leitores normalizam (order-1):
+  seguir a sugestão gerava recibo invisível e custou uma rodada real de 14min
+  (relato do Capitão, NetForge). Sugestão agora derivada da MESMA fórmula do
+  leitor; leitor avalia os dois candidatos (canônico e acolchoado) até um
+  PROVAR — recibo velho canônico não sombreia recibo fresco acolchoado;
+  comentário do código conta a verdade. **Entregue 2026-09-01.**
 - **Fase 2 registrada, não construída:** calibração de ROTA alimentada por override roteável real (quando existir volume: qual intent falhou, qual frase faltava na tabela); eval blind-judge re-rodado sobre casos vindos de produção.
 - **Dependências:** E17 (telemetria de conduct/flags), ADR-008 (sensor).
 
