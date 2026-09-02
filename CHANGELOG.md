@@ -6,6 +6,22 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.11.2] — 2026-09-01
+
+### Fixed
+- **The updater told the truth to itself and not to the human (Legatus finding).**
+  `maestro upgrade --check` without `--force` honors the fetch interval, so it
+  compared against a 31-minute-old `origin/main` and printed "em dia (v1.11.0)"
+  while v1.11.1 was already published. Three disclosure defects, one cause:
+  the doctor hint said `--check` "forces" (it does not — `--check --force`
+  does); the doctor's "verificado há Nh" counted from the last cache read
+  instead of the last successful fetch, so it could say 0h with 23h-old network
+  data; and `--check` never revealed whether it had fetched. Now the hint
+  teaches `--check --force`, the doctor age comes from `fetched`, and the
+  `--check` line says "cache do último fetch; --force consulta o origin" (or
+  "fetch FALHOU") whenever the claim was made without touching the remote.
+  Behavior of the updater unchanged; only what it reports. Tests pin all three.
+
 ## [1.11.1] — 2026-09-01
 
 The first release that flows through the auto-updater. Two real items, both
