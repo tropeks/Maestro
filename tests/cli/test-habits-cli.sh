@@ -25,6 +25,58 @@ out=$("$BIN" habits --project "$PROJ"); rc=$?
 chk "sem mudanças → exit 0" "$rc" "0"
 grep -q 'diff limpo' <<<"$out" && ok "explica que o diff está limpo" || bad "explica que o diff está limpo ($out)"
 
+echo "-- S-1807: o sensor é de linha e confundia TEXTO com código"
+# Os três casos vieram de uso real no NetForge, todos com o mesmo desfecho: o
+# comportamento certo era IGNORAR o sensor. Sensor que se ignora com frequência
+# ensina a ignorar sempre — por isso viram teste.
+mkdir -p "$PROJ/fp"
+# 1) docstring com lista indentada NÃO é deep-nesting
+cat > "$PROJ/fp/doc_nesting.py" <<'FX'
+"""
+Fontes que o relatório soma:
+  - support.SupportTicket         (chamados; schema do tenant)
+  - billing.InvoiceCollectionLog  (cobrança; schema do tenant)
+                                    (continuação bem indentada)
+"""
+def f():
+    return 1
+FX
+# 2) `@pytest.mark.skip` CITADO num docstring NÃO é teste pulado
+cat > "$PROJ/fp/test_doc_skip.py" <<'FX'
+class TestAlgo:
+    """
+    Não dá para usar `@pytest.mark.skipif(...)` como decorator aqui: a
+    expressão roda em tempo de COLETA, antes de o banco estar liberado.
+    """
+    def test_algo(self):
+        assert 1 == 1
+FX
+# 3) marcador `*` de keyword-only NÃO é parâmetro
+cat > "$PROJ/fp/kwonly.py" <<'FX'
+def make(tenant, *, status, first_seen, acked=None, resolved=None):
+    return (tenant, status, first_seen, acked, resolved)
+FX
+out=$("$BIN" habits "$PROJ/fp/doc_nesting.py" "$PROJ/fp/test_doc_skip.py" "$PROJ/fp/kwonly.py" --project "$PROJ" 2>&1); rc=$?
+grep -q 'deep-nesting' <<<"$out" && bad "docstring indentado ainda vira deep-nesting" || ok "docstring indentado não é deep-nesting"
+grep -q 'skipped-test' <<<"$out" && bad "skip citado em docstring ainda vira skipped-test" || ok "skip citado em docstring não é teste pulado"
+grep -q 'too-many-params' <<<"$out" && bad "marcador '*' ainda conta como parâmetro" || ok "marcador '*' de keyword-only não conta como parâmetro"
+chk "os três juntos → exit 0 (limpo)" "$rc" "0"
+
+# E o sensor não pode ficar CEGO: os casos de verdade seguem sendo pegos.
+cat > "$PROJ/fp/real.py" <<'FX'
+def make(a, b, c, d, e, f):
+    return 1
+FX
+cat > "$PROJ/fp/test_real_skip.py" <<'FX'
+import pytest
+@pytest.mark.skip(reason="depois")
+def test_x():
+    assert 1 == 1
+FX
+out2=$("$BIN" habits "$PROJ/fp/real.py" "$PROJ/fp/test_real_skip.py" --project "$PROJ" 2>&1) || true
+grep -q 'too-many-params' <<<"$out2" && ok "seis parâmetros DE VERDADE continuam sendo pegos" || bad "sensor ficou cego para too-many-params"
+grep -q 'skipped-test' <<<"$out2" && ok "skip DE VERDADE continua sendo pego" || bad "sensor ficou cego para skipped-test"
+
 echo "-- diff sujo com smell"
 cat > "$PROJ/novo.py" <<'FX'
 def f(data):

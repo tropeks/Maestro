@@ -41,6 +41,11 @@ BEGIN {
 }
 
 function want(s) { return all || (s in on) }
+function is_param(seg) {   # S-1807: marcador não é parâmetro
+  gsub(/^[ \t]+|[ \t]+$/, "", seg)
+  if (seg == "" || seg == "*" || seg == "/") return 0
+  return 1
+}
 function emit(s, l, d) { printf "%s\t%d\t%s\n", s, l, d }
 
 # indentação em "níveis": tab = 1 nível, 4 espaços = 1 nível
@@ -71,6 +76,27 @@ function close_fn(endline,   fn_len) {
   is_comment = (stripped ~ /^(#|\/\/|\/\*|\*)/)
   if (!is_comment && EXT ~ /^(lua|sql)$/ && stripped ~ /^--/) is_comment = 1
 
+  # ---- docstring de Python (S-1807) -----------------------------------------
+  # Os sensores são de LINHA e não sabiam distinguir código de TEXTO. Custo
+  # medido em uso real: indentação de lista dentro de docstring virava
+  # `deep-nesting` nível 9, e `@pytest.mark.skip` CITADO num docstring (que
+  # explicava por que o código NÃO pode usar o decorator) virava
+  # `skipped-test`. Nos dois casos o certo era ignorar o sensor — e sensor que
+  # se ignora com frequência ensina a ignorar sempre, o que corrói a catraca.
+  # Flag PRÓPRIA, não `is_comment`: `dead-code` caça comentário que parece
+  # código, e docstring com exemplo viraria falso positivo novo.
+  is_doc = 0
+  if (py) {
+    _t = line; _n3 = gsub(/"""/, "&", _t)
+    _t = line; _m3 = gsub(/\x27\x27\x27/, "&", _t)
+    _was = in_doc
+    if (in_doc) {
+      if ((doc_q == 1 && _n3 > 0) || (doc_q == 2 && _m3 > 0)) in_doc = 0
+    } else if (_n3 % 2 == 1) { in_doc = 1; doc_q = 1 }
+    else if (_m3 % 2 == 1)   { in_doc = 1; doc_q = 2 }
+    if (_was || in_doc) is_doc = 1
+  }
+
   # ---- função: início/fim (heurística conservadora por família) -------------
   fn_start = 0
   if (py     && stripped ~ /^(async )?def [A-Za-z_]/)                        fn_start = 1
@@ -97,13 +123,21 @@ function close_fn(endline,   fn_len) {
       sig = line
       sub(/^[^(]*\(/, "", sig); sub(/\).*$/, "", sig)
       if (sig !~ /^ *$/) {
-        depth = 0; params = 1
+        # S-1807: contar VÍRGULA tratava o marcador `*` de keyword-only (e o
+        # `/` de positional-only) como se fosse parâmetro. Assinatura com cinco
+        # parâmetros reais e um `*` no meio era acusada de seis — e o conserto
+        # "certo" pelo sensor seria agrupar cinco em quatro, piorando o
+        # contrato para calar um erro de contagem. Agora contamos SEGMENTOS e
+        # descartamos os marcadores, que não são parâmetros.
+        depth = 0; params = 0; seg = ""
         for (i = 1; i <= length(sig); i++) {
           c = substr(sig, i, 1)
-          if (c == "(" || c == "[" || c == "{" || c == "<") depth++
-          else if (c == ")" || c == "]" || c == "}" || c == ">") depth--
-          else if (c == "," && depth == 0) params++
+          if (c == "(" || c == "[" || c == "{" || c == "<") { depth++; seg = seg c }
+          else if (c == ")" || c == "]" || c == "}" || c == ">") { depth--; seg = seg c }
+          else if (c == "," && depth == 0) { params += is_param(seg); seg = "" }
+          else seg = seg c
         }
+        params += is_param(seg)
         if (params > MAXPARAMS) emit("too-many-params", NR, params " parâmetros (max " MAXPARAMS ")")
       }
     }
@@ -113,7 +147,7 @@ function close_fn(endline,   fn_len) {
   }
 
   # ---- deep-nesting: primeiro estouro do arquivo (código, não comentário) ---
-  if (want("deep-nesting") && !nest_hit && !is_blank && !is_comment && ind > MAXNEST) {
+  if (want("deep-nesting") && !nest_hit && !is_blank && !is_comment && !is_doc && ind > MAXNEST) {
     nest_hit = 1
     emit("deep-nesting", NR, "indentação nível " ind " (max " MAXNEST ")")
   }
@@ -233,7 +267,7 @@ function close_fn(endline,   fn_len) {
   if (want("skipped-test") && ISTEST) {
     if (stripped ~ /^(it|test|describe)\.skip\(/ || stripped ~ /^x(it|describe|test)\(/)
       emit("skipped-test", NR, "teste pulado")
-    if (line ~ /@pytest\.mark\.skip/ || stripped ~ /(^|[^A-Za-z0-9_])t\.Skip\(/)
+    if (!is_doc && (line ~ /@pytest\.mark\.skip/ || stripped ~ /(^|[^A-Za-z0-9_])t\.Skip\(/))
       emit("skipped-test", NR, "teste pulado")
     if (stripped ~ /^assert True[ \t]*(#.*)?$/ || line ~ /expect\(true\)\.toBe\(true\)/)
       emit("skipped-test", NR, "asserção que não afirma nada")
