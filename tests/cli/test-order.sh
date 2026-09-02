@@ -120,6 +120,23 @@ else
   bad "branch andou e a ordem seguiu dizendo encerrada ($("$BIN" order --status 1 --project "$P" | tail -1))"
 fi
 
+# S-1806: re-aceite so e no-op quando NADA andou. Aqui o branch andou (teste do
+# S-1805 acima), entao pedir aceite de novo e decisao NOVA — e decisao nova
+# exige prova do conteudo de AGORA, como qualquer aceite.
+"$BIN" order --accept 1 --project "$P" >/dev/null 2>&1; rc=$?
+chk "branch andou e sem prova nova → aceite RECUSA (exit 1)" "$rc" "1"
+"$BIN" order --accept 1 --project "$P" 2>&1 | grep -q 'não tem prova do conteúdo atual' \
+  && ok "a recusa diz o motivo e o comando para gerar a prova" || bad "recusa sem motivo"
+# Com prova do conteudo atual, o re-aceite acontece e ACRESCENTA carimbo.
+"$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null
+"$BIN" order --accept 1 --project "$P" 2>&1 | grep -q 'REACEITA' \
+  && ok "com prova do conteúdo atual, reaceita" || bad "reaceite com prova"
+chk "o histórico guarda os DOIS aceites" "$(grep -c '^accepted_at: ' "$OF")" "2"
+"$BIN" order --status 1 --project "$P" | grep -q 'encerrada' \
+  && ok "depois do re-aceite volta a encerrada (o aceite vigente é o último)" || bad "encerrada pos-reaceite"
+# E agora, parada no lugar, re-aceite volta a ser no-op.
+"$BIN" order --accept 1 --project "$P" 2>/dev/null | grep -q 'já aceita' && ok "re-aceite sem movimento é no-op honesto" || bad "no-op"
+
 echo "-- S-1804: sem recibo, a sugestão de registro sai normalizada"
 P3=$(mktemp -d); git -C "$P3" init -q
 echo z > "$P3/z.txt"; git -C "$P3" add -A; git -C "$P3" -c user.email=t@t -c user.name=t commit -qm base
@@ -156,6 +173,5 @@ echo "-- validações"
 chk "sem --title → exit 1" "$rc" "1"
 "$BIN" order --status 99 --project "$P" >/dev/null 2>&1; rc=$?
 chk "ordem inexistente → exit 1" "$rc" "1"
-"$BIN" order --accept 1 --project "$P" 2>/dev/null | grep -q 'já aceita' && ok "re-aceite é no-op honesto" || bad "re-aceite"
 
 exit $fail

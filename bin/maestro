@@ -1756,6 +1756,23 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     return 0
   }
 
+  _order_moved_since_accept() { # <arquivo> → caminhos mudados (vazio = nao andou)
+    # S-1806: "andou depois do aceite" nao e diferenca de hash de arvore — o
+    # proprio carimbo do aceite escreve no arquivo da ordem (rastreado) e
+    # mudaria o hash sozinho. E QUAL caminho mudou: bookkeeping da ordem nao
+    # conta. Le o ULTIMO `accepted_tree:` porque re-aceite acrescenta carimbo
+    # novo em vez de reescrever o anterior — o historico de aceites fica no
+    # arquivo, e quem compara compara com o aceite VIGENTE.
+    local f="$1" at tip br
+    br=$(_order_field "$f" branch)
+    at=$(grep '^accepted_tree: ' "$f" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+    [[ -n "$at" && "$at" != "desconhecida" ]] || return 0
+    tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
+    [[ -n "$tip" && "$at" != "$tip" ]] || return 0
+    git -C "$proj" diff --name-only "$at" "$tip" 2>/dev/null \
+      | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ' || true
+  }
+
   _order_evidence_label() { # <arquivo> → rótulo do recibo a EXIBIR
     # S-1804: a DERIVAÇÃO de estado tolera o label acolchoado (S-1802), mas a
     # LEITURA exibida não toleravam — recibo gravado como order-002 derivava
@@ -1832,7 +1849,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
         # certa e o texto errado. Ordem aceita antes do S-1803 não tem o campo
         # e mantém o texto antigo.
         local _at2 _tip2
-        _at2=$(grep -m1 '^accepted_tree: ' "$of" 2>/dev/null | sed 's/^accepted_tree: //')
+        _at2=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
         _tip2=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
         # Comparar hash de árvore é grosso demais: o PRÓPRIO carimbo do aceite
         # escreve no arquivo da ordem (rastreado), então comitá-lo já muda a
@@ -1862,7 +1879,27 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
 
   if [[ "$action" == "accept" ]]; then
     local st; st=$(_order_status "$of")
-    [[ "$st" == "aceita" ]] && { echo "ordem $oid já aceita"; return 0; }
+    if [[ "$st" == "aceita" ]]; then
+      # S-1806: re-aceite continua no-op quando nada andou — o invariante
+      # "executor nao fecha a propria ordem" nao muda. Mas branch que andou
+      # DEPOIS do aceite (S-1805) e conteudo que ninguem aceitou: reaceitar ali
+      # e decisao NOVA do diretor, nao repeticao, e exige prova do conteudo de
+      # agora como qualquer aceite. Carimbo novo e ACRESCENTADO; o anterior
+      # fica, para o historico mostrar que houve dois aceites e o que mudou
+      # entre eles.
+      local _mv; _mv=$(_order_moved_since_accept "$of")
+      if [[ -z "$_mv" ]]; then echo "ordem $oid já aceita"; return 0; fi
+      local _ptree2; _ptree2=$(_order_proof_tree "$of")
+      if [[ -z "$_ptree2" ]]; then
+        die validation "ordem $oid andou depois do aceite e não tem prova do conteúdo atual" \
+          "mudou fora do bookkeeping: ${_mv}— re-rode e regrave: maestro evidence --record --label order-$((10#$oid)) -- <suíte>" 1
+      fi
+      printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
+        "$(date -Iseconds)" "${sid:-desconhecido}" "$_ptree2" >> "$of"
+      log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
+      printf 'ordem %s REACEITA — o branch andou depois do aceite anterior (%s), e o conteúdo de agora tem prova própria\n' "$oid" "${_mv% }"
+      return 0
+    fi
     if [[ "$st" != "provada" ]]; then
       die validation "ordem $oid está '$st', não 'provada'" \
         "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
