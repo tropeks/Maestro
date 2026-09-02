@@ -134,6 +134,12 @@ chk "branch andou e sem prova nova → aceite RECUSA (exit 1)" "$rc" "1"
 chk "o histórico guarda os DOIS aceites" "$(grep -c '^accepted_at: ' "$OF")" "2"
 "$BIN" order --status 1 --project "$P" | grep -q 'encerrada' \
   && ok "depois do re-aceite volta a encerrada (o aceite vigente é o último)" || bad "encerrada pos-reaceite"
+# A linha de PROVA tambem tem de seguir o aceite vigente. Com `grep -m1` ela
+# ficava congelada no primeiro carimbo mesmo depois de reaceitar — a ordem
+# dizia encerrada citando uma arvore que ja nao era a aceita.
+PTL=$(grep '^accepted_tree: ' "$OF" | tail -1 | sed 's/^accepted_tree: //')
+"$BIN" order --status 1 --project "$P" | grep -q "árvore ${PTL:0:12}" \
+  && ok "a linha de prova cita a árvore do aceite VIGENTE, não a do primeiro" || bad "linha de prova presa no primeiro aceite"
 # E agora, parada no lugar, re-aceite volta a ser no-op.
 "$BIN" order --accept 1 --project "$P" 2>/dev/null | grep -q 'já aceita' && ok "re-aceite sem movimento é no-op honesto" || bad "no-op"
 

@@ -1827,7 +1827,10 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     # próprio aceite já moveu a árvore. Reporta-se o fato que autorizou o
     # aceite. Sem carimbo (ordem aceita antes desta versão) cai no antigo.
     local _ptree=""
-    [[ "$st" == "aceita" ]] && _ptree=$(grep -m1 '^accepted_tree: ' "$of" 2>/dev/null | sed 's/^accepted_tree: //')
+    # S-1806: o ULTIMO carimbo, nao o primeiro — re-aceite acrescenta em vez de
+    # sobrescrever, e o aceite VIGENTE e o mais recente. Com `-m1` a linha de
+    # prova ficava congelada no primeiro aceite mesmo depois de reaceitar.
+    [[ "$st" == "aceita" ]] && _ptree=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
     if [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
       printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
     else
