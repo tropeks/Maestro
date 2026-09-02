@@ -215,6 +215,23 @@ Silêncio nunca significa "atualizado": o resultado de toda checagem, inclusive 
 fica em `~/.maestro/update-state`, e o `maestro doctor` reporta. `MAESTRO_NO_UPDATE_CHECK=1`
 desliga a checagem automática.
 
+## Telemetria entre máquinas (opcional)
+
+Com mais de uma máquina rodando o Maestro, o retro de cada uma só enxerga a si mesma.
+O E20 usa um repo git privado como barramento: no fim de cada sessão (uma vez por dia,
+com teto de tempo, silencioso se a rede falhar) a máquina publica só os seus
+`routing*.jsonl` em `logs/<host-id>/`, e `maestro retro --all` agrega a união.
+
+```bash
+maestro telemetry --remote git@github.com:voce/maestro-telemetry.git   # liga nesta máquina
+maestro telemetry --push        # publica agora
+maestro retro --all             # retro cruzando as máquinas
+maestro telemetry --off         # desliga nesta máquina
+```
+
+Só o log viaja, e ele é metadado por construção. Records, briefs, evidência e
+consentimentos nunca saem da máquina.
+
 ## Validar
 
 ```bash

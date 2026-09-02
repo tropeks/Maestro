@@ -89,8 +89,7 @@ _upd_kv_lookup() { # _upd_kv_lookup <arquivo> <chave> <separador '=' ou ':'>
     if [[ "$sep" == ":" ]]; then
       v="${v#"${v%%[![:space:]]*}"}"      # trim à esquerda
       v="${v%%[[:space:]]#*}"; v="${v%%#*}"  # comentário de fim de linha
-      v="${v%"${v##*[![:space:]]}"}"       # trim à direita
-      [[ "$v" =~ ^[A-Za-z0-9_.-]*$ ]] || v=""
+      v="${v%"${v##*[![:space:]]}"}"       # trim à direita (o tipo do valor é do chamador)
     fi
     printf '%s' "$v"
     return 0
@@ -111,6 +110,7 @@ _upd_git_path() { # <nome> → caminho ABSOLUTO em $GIT_DIR (vale em worktree vi
 maestro_update_config_get() {
   local key="${1:-}" def="${2:-}" v=""
   [[ -n "$key" ]] && v=$(_upd_kv_lookup "$UPD_CONFIG_FILE" "$key" ":")
+  [[ "$v" =~ ^[A-Za-z0-9_.-]*$ ]] || v=""   # tipo fechado: nada daqui é avaliado
   printf '%s' "${v:-$def}"
   return 0
 }
@@ -182,18 +182,19 @@ _upd_state_write() { # grava o estado inteiro (atômico); preserva prev/head/upg
   return 0
 }
 
-_upd_fetch() { # a ÚNICA linha de rede do Maestro. rc = do git.
-  # O teto de tempo é INEGOCIÁVEL: sem `timeout` (macOS de fábrica, imagem
-  # mínima), um watchdog em bash faz o papel — nunca um fetch sem limite, porque
-  # uma conexão que trava (não falha) travaria o SessionStart inteiro.
-  local to="${MAESTRO_UPDATE_TIMEOUT:-5}"; [[ "$to" =~ ^[0-9]{1,4}$ ]] || to=5
+_upd_run_timed() { # _upd_run_timed <segundos> <comando...> — teto de tempo INEGOCIÁVEL
+  # Sem `timeout` (macOS de fábrica, imagem mínima), um watchdog em bash faz o
+  # papel — nunca um comando de rede sem limite, porque uma conexão que trava
+  # (não falha) travaria o hook inteiro. Compartilhado com a telemetria (E20).
+  local to="$1"; shift
+  [[ "$to" =~ ^[0-9]{1,4}$ ]] || to=5
   export GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
   if _upd_has timeout; then
-    timeout "$to" git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" "$UPD_BRANCH" >/dev/null 2>&1
+    timeout "$to" "$@" >/dev/null 2>&1
     return $?
   fi
   local pid wd rc=0
-  git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" "$UPD_BRANCH" >/dev/null 2>&1 </dev/null &
+  "$@" >/dev/null 2>&1 </dev/null &
   pid=$!
   ( sleep "$to"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
   wd=$!
@@ -201,6 +202,10 @@ _upd_fetch() { # a ÚNICA linha de rede do Maestro. rc = do git.
   kill "$wd" 2>/dev/null || :
   wait "$wd" 2>/dev/null || :
   return "$rc"
+}
+
+_upd_fetch() { # a linha de rede do update. rc = do git.
+  _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" "$UPD_BRANCH"
 }
 
 _upd_locked() { # _upd_locked <função> — seção crítica NÃO bloqueante (rc 99 = ocupada)

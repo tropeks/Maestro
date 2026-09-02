@@ -49,4 +49,15 @@ if [[ -f "$rec" && -r "$rec" ]]; then
 fi
 
 log_event session_end session_id="$sid" decided="$decided" settled="$settled" || :
+
+# E20/S-2001 — publica os logs no barramento de telemetria, se esta máquina
+# optou por isso (telemetry_remote no config.yaml). Uma vez por intervalo, com
+# teto de tempo por operação, falha silenciosa e registrada em telemetry-state.
+# Fim de sessão é o único lugar onde alguns segundos de rede não atrasam ninguém.
+if [[ -r "$SCRIPT_DIR/lib/telemetry-sync.sh" ]]; then
+  # shellcheck source=lib/telemetry-sync.sh
+  if source "$SCRIPT_DIR/lib/telemetry-sync.sh" 2>/dev/null; then
+    maestro_telemetry_push || :
+  fi
+fi
 exit 0

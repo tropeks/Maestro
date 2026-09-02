@@ -404,6 +404,27 @@ contrato. Sem `timeout`, um watchdog em bash mata o fetch no mesmo teto — fetc
 limite não existe.
 `# classification: confidential` (SHA e versões locais — jamais no log além de `from`/`to`)
 
+### 11. Barramento de telemetria — repo git privado + `~/.maestro/telemetry/` (E20)
+
+Git como transporte (o mesmo trilho do upgrade, das work orders e dos docs): cada máquina
+publica SÓ os seus `routing*.jsonl` num repo privado, em `logs/<host-id>/` — um escritor
+por arquivo, nunca conflito de merge. Layout do repo:
+```
+logs/<host-id>/HOST                    # hostname legível (o id é sha256(hostname)[0:8])
+logs/<host-id>/routing-current.jsonl   # o routing.jsonl vivo da máquina (espelho)
+logs/<host-id>/routing-YYYY-MM.jsonl   # rotacionados (§4), espelhados como estão
+```
+Branch única `main`. Opt-in por máquina (`telemetry_remote: <url>` no config.yaml §10;
+`telemetry_interval_hours`, default 24). Push no SessionEnd (único hook onde alguns
+segundos de rede não atrasam ninguém): uma vez por intervalo, cada operação de git com
+teto de tempo, sob lock não bloqueante, falha silenciosa e registrada em
+`~/.maestro/telemetry-state` (`checked`, `pushed`, `result` ∈
+`disabled|pushed|nochange|skipped|failed`, `reason`, `host`, `files`). Push que falhou
+deixa o commit local; a rodada seguinte publica o que ficou. `maestro retro --all` puxa
+o clone e agrega a união, excluindo o diretório do próprio host (os eventos locais já
+estão em `$MAESTRO_LOG_DIR`; contar duas vezes é mentira).
+`# classification: confidential` (metadados de roteamento, repo privado; hostnames)
+
 ---
 
 ## Regras de integridade
@@ -411,7 +432,10 @@ limite não existe.
 - Decision record é **por sessão**: novo `session_id` = nova decisão exigida (evita record velho liberando o gate para sempre).
 - Escrita do JSONL é append atômico com `flock -n` (**não bloqueante** — contenção descarta a linha com aviso no stderr; review Opus); falha de escrita **nunca** bloqueia a operação (log é subproduto, não trilho).
 - `maestro doctor` valida schema do YAML e dos records; CI do repo do plugin roda o mesmo check.
-- Nenhum arquivo do Maestro sai da máquina (residência local, brief §7).
+- Nenhum arquivo do Maestro sai da máquina (residência local, brief §7) — **exceção única
+  (E20, opt-in):** os `routing*.jsonl`, que são metadados por construção (chaves tipadas,
+  vocabulário fechado, nenhuma chave aceita `/`), podem ir para o repo privado de
+  telemetria §11. Records, briefs, evidência, consentimentos e work orders continuam locais.
 
 ## Flags para o orchestrator
 

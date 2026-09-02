@@ -69,6 +69,25 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   home inescrevível: sem evento, sem ruído. Sem `jq`, sem Bun, sem rede.
 - **Consumidor:** `maestro retro` imprime `sessões encerradas · sem decisão · decididas
   sem desfecho` (E18 fase 2: a variável que faltava para medir sessões sem `outcome`).
+- **Emenda E20 (S-2001):** depois do evento, se a máquina optou (`telemetry_remote`),
+  publica os `routing*.jsonl` no barramento (DATA_MODEL §11) via
+  `hooks/lib/telemetry-sync.sh`: uma vez por intervalo, teto de tempo por operação de
+  git (`MAESTRO_TELEMETRY_TIMEOUT`, 10s), lock não bloqueante, falha silenciosa e
+  registrada em `telemetry-state`. Nunca muda o exit 0. `MAESTRO_NO_TELEMETRY=1` desliga.
+
+### `maestro telemetry` (E20/S-2002)
+- `--status` (default): estado legível a partir de `telemetry-state` ou "desligada". Exit 0
+  (2 se o último push falhou).
+- `--push`: publica agora (ignora o intervalo). Exit 0 publicou/sem novidade, 1 desligada,
+  2 falhou.
+- `--pull`: deixa o clone `~/.maestro/telemetry` em dia e lista os hosts. Exit 0/1/2.
+- `--remote <url>`: grava `telemetry_remote` no config.yaml (liga); `--off` remove (desliga).
+- `maestro retro --all`: pull + agrega os logs dos outros hosts (nunca o próprio, que já
+  está local) e imprime `-- por máquina: <id> (<HOST>): N decisões · …`; desligada → avisa
+  e segue só local. Sem `--all`, saída inalterada.
+- Doctor: `check_telemetry` — sem remoto → ok "local"; último push falhou, ou sem push
+  bem-sucedido há mais de 7 dias → warn com `maestro telemetry --push`. Envelope ganha
+  `telemetry.{result,host}`.
 
 ### `hooks/log-stop.sh` — evento Stop (opcional, v1.1)
 - Fecha o ciclo no log (`event: session_end`), computa contagens da sessão.

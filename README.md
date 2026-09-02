@@ -214,6 +214,23 @@ Silence never means "up to date": the result of every check, including failures,
 in `~/.maestro/update-state`, and `maestro doctor` reports it. `MAESTRO_NO_UPDATE_CHECK=1`
 turns the automatic check off.
 
+## Cross-machine telemetry (optional)
+
+With more than one machine running Maestro, each retro only sees its own box. E20
+uses a private git repo as the bus: at the end of each session (once a day, timed
+out, silent when the network fails) the machine publishes only its `routing*.jsonl`
+under `logs/<host-id>/`, and `maestro retro --all` aggregates the union.
+
+```bash
+maestro telemetry --remote git@github.com:you/maestro-telemetry.git   # opt in on this machine
+maestro telemetry --push        # publish now
+maestro retro --all             # retro across machines
+maestro telemetry --off         # opt out on this machine
+```
+
+Only the log travels, and it is metadata by construction. Records, briefs, evidence
+and consents never leave the machine.
+
 ## Validate
 
 ```bash

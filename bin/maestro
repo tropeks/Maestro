@@ -79,6 +79,12 @@ maestro <comando>
                   --approach "texto" (fecha o approach: pendente do brief); pelo menos um
   retro           relatório de calibração (E10): agrega o log da janela (--days N) —
                   override rate, gates, smells, desfechos, critério de promoção
+                  --all: soma o barramento de telemetria (E20) — outras máquinas, sem
+                  dobrar o host local
+  telemetry       git como barramento de telemetria (E20): --status (default) lê
+                  telemetry-state · --push publica agora (--force implícito) · --pull
+                  atualiza o clone local (para o retro --all) · --remote <url> liga
+                  nesta máquina (opt-in) · --off desliga — nada sai sem telemetry_remote
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
@@ -106,6 +112,7 @@ CAP_INJECTION_BYTES=0                  # E7/S-703: conta real da injeção do Se
 CAP_INSTALL_REGISTERED=0; CAP_INSTALL_DIVERGENT=0   # E7/S-710: instalação vs repo
 CAP_INSTALL_REPO_LIVE=0                # E7/S-710: o repo é o CLAUDE_PLUGIN_ROOT vivo?
 CAP_UPDATE_RESULT="absent"; CAP_UPDATE_LOCAL=""; CAP_UPDATE_REMOTE=""   # E19/S-1903
+CAP_TEL_RESULT="absent"; CAP_TEL_HOST=""                                # E20/S-2001
 
 report() { # report <ok|warn|skip|fail_env|fail_val> <descrição> [detalhe]
   local st="$1" desc="$2" det="${3:-}"
@@ -792,6 +799,57 @@ check_update_state() { # E19/S-1903: última checagem de atualização — nunca
   esac
 }
 
+check_telemetry() { # E20/S-2001: publicação no barramento de telemetria — nunca falha
+  # Lê config.yaml e telemetry-state por sed puro (mesmo padrão de
+  # check_update_state): o doctor precisa funcionar sem Bun e sem depender de
+  # sourcear a lib inteira (que puxa update-check.sh) só para um diagnóstico.
+  local cfg="$MAESTRO_HOME/config.yaml" remote=""
+  if [[ -f "$cfg" && -r "$cfg" ]]; then
+    remote=$(sed -n 's/^telemetry_remote:[ \t]*//p' "$cfg" 2>/dev/null | head -1 | tr -d '[:space:]')
+  fi
+  if [[ -z "$remote" ]]; then
+    report ok "telemetria: local (sem telemetry_remote — opcional)"
+    return 0
+  fi
+
+  local f="$MAESTRO_HOME/telemetry-state"
+  if [[ ! -f "$f" || ! -r "$f" ]]; then
+    report ok "telemetria: configurada, ainda não publicou (a próxima sessão publica)"
+    return 0
+  fi
+  local result reason host pushed now days
+  result=$(sed -n 's/^result=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  reason=$(sed -n 's/^reason=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  host=$(sed -n 's/^host=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  pushed=$(sed -n 's/^pushed=\(.*\)$/\1/p' "$f" 2>/dev/null | head -1)
+  [[ "$pushed" =~ ^[0-9]+$ ]] || pushed=0
+  CAP_TEL_RESULT="${result:-unknown}"
+  CAP_TEL_HOST="${host:-}"
+
+  if [[ "$result" == "failed" ]]; then
+    report warn "telemetria: último push falhou ($reason)" "maestro telemetry --push"
+    return 0
+  fi
+
+  now=$(date +%s 2>/dev/null || echo 0)
+  case "$result" in
+    pushed|nochange|skipped)
+      if [[ "$pushed" -eq 0 ]]; then
+        report warn "telemetria: sem push bem-sucedido ainda" "rede? maestro telemetry --push"
+      else
+        days=$(( (now - pushed) / 86400 ))
+        if (( days >= 7 )); then
+          report warn "telemetria: sem push bem-sucedido há $days dia(s)" "rede? maestro telemetry --push"
+        else
+          report ok "telemetria: publicada há $(( (now - pushed) / 3600 ))h (host $host)"
+        fi
+      fi
+      ;;
+    *)
+      report ok "telemetria: estado desconhecido ($result)" ;;
+  esac
+}
+
 check_upstream() { # E19/S-1903: higiene da máquina de desenvolvimento — publicação, sem rede
   # MAESTRO_UPDATE_REPO é a mesma costura de teste da lib: o check nasceu de um
   # incidente real (2 commits sem push, main sem upstream) e precisa ser testável.
@@ -1014,6 +1072,7 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
        --argjson ilive "$([[ $CAP_INSTALL_REPO_LIVE -eq 1 ]] && echo true || echo false)" \
        --arg upd_result "$CAP_UPDATE_RESULT" --arg upd_local "$CAP_UPDATE_LOCAL" \
        --arg upd_remote "$CAP_UPDATE_REMOTE" \
+       --arg tel_result "$CAP_TEL_RESULT" --arg tel_host "$CAP_TEL_HOST" \
        '{schema:"maestro.capabilities.v1", generated_at:$at, generated_epoch:$epoch,
          runtime:{bun:{present:$bun,version:$bunv}, jq:{present:true},
                   git:{present:$git,version:$gitv}, flock:{present:$flock}},
@@ -1021,7 +1080,8 @@ write_capabilities() { # S-705 (P0.1 do ECC audit): envelope maestro.capabilitie
          bindings:{resolved:$b_ok, skill_roots:$b_roots},
          roster:{agents:$roster}, injection:{bytes:$inj, budget:8000},
          install:{registered:$ireg, divergent:$idiv, repo_is_live:$ilive},
-         update:{result:$upd_result, local:$upd_local, remote:$upd_remote}}' > "$tmp" 2>/dev/null \
+         update:{result:$upd_result, local:$upd_local, remote:$upd_remote},
+         telemetry:{result:$tel_result, host:$tel_host}}' > "$tmp" 2>/dev/null \
      && mv -f "$tmp" "$MAESTRO_HOME/capabilities.json" 2>/dev/null; then
     report ok "capabilities.json: envelope maestro.capabilities.v1 gravado"
   else
@@ -1401,6 +1461,7 @@ doctor() {
   check_plugin_install
   check_update_state
   check_upstream
+  check_telemetry
   check_session_env
   check_injection_bill
   write_capabilities
@@ -2158,16 +2219,25 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
 
 # ----------------------------------------------------------------- retro (E10)
 
+_retro_count_decisions() { # _retro_count_decisions <cutoff> <arquivos...> → nº de `decision` na janela
+  local cut="$1"; shift
+  (( $# == 0 )) && { echo 0; return 0; }
+  jq -rs --arg cut "$cut" \
+    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' \
+    "$@" 2>/dev/null || echo 0
+}
+
 cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   # Agregação DETERMINÍSTICA da janela (default 14 dias): o que aconteceu, em
   # números — override rate, gates, smells, desfecho por modo, workflows sem
   # uso. A INTERPRETAÇÃO é da IA nas bordas (/maestro:retro), que propõe diffs;
   # o exame é o eval-on-diff; o commit é o aprendizado versionado.
-  local days=14
+  local days=14 all=0
   while (( $# )); do
     case "$1" in
       --days) days="${2:-}"; shift ;;
-      *) die validation "flag desconhecida '$1'" "maestro retro [--days N]" 1 ;;
+      --all)  all=1 ;;
+      *) die validation "flag desconhecida '$1'" "maestro retro [--days N] [--all]" 1 ;;
     esac
     shift
   done
@@ -2176,13 +2246,50 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
 
   # shellcheck source=hooks/lib/common.sh
   source "$REPO_DIR/hooks/lib/common.sh"
-  local cutoff logs=() f
+  local cutoff logs=() local_logs=() f
   cutoff=$(date -Iseconds -d "-$days days" 2>/dev/null) || cutoff=""
   shopt -s nullglob
-  logs=("$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl)
+  local_logs=("$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl)
   shopt -u nullglob
+  logs=("${local_logs[@]}")
+
+  # E20/S-2001 — --all une o barramento de telemetria ao log local: cada
+  # máquina publica SEUS routing*.jsonl em logs/<host>/ (telemetry-sync.sh). O
+  # host local já está em $MAESTRO_LOG_DIR — somar de novo pelo clone contaria
+  # o mesmo evento duas vezes, e isso é mentira, não agregação.
+  local tel_msg="" machine_line=""
+  if (( all == 1 )); then
+    # shellcheck source=hooks/lib/telemetry-sync.sh
+    source "$REPO_DIR/hooks/lib/telemetry-sync.sh"
+    if ! maestro_telemetry_enabled; then
+      tel_msg="-- telemetria: desligada nesta máquina (retro só local)"
+    else
+      if ! maestro_telemetry_pull; then
+        tel_msg="-- telemetria: pull falhou ($TEL_REASON) — agregando o clone que já existe"
+      fi
+      local self_host hd hid hlogs host_label n
+      self_host=$(maestro_telemetry_host_id)
+      n=$(_retro_count_decisions "$cutoff" "${local_logs[@]}")
+      machine_line="$self_host (local): $n decisões"
+      shopt -s nullglob
+      for hd in "$TEL_DIR"/logs/*/; do
+        hid="${hd%/}"; hid="${hid##*/}"
+        [[ "$hid" == "$self_host" ]] && continue
+        hlogs=("$hd"routing*.jsonl)
+        (( ${#hlogs[@]} > 0 )) && logs+=("${hlogs[@]}")
+        host_label="?"
+        [[ -f "${hd}HOST" ]] && host_label=$(head -c 200 -- "${hd}HOST" 2>/dev/null | tr -d '\n\r')
+        [[ -n "$host_label" ]] || host_label="?"
+        n=$(_retro_count_decisions "$cutoff" "${hlogs[@]}")
+        machine_line+=" · $hid ($host_label): $n decisões"
+      done
+      shopt -u nullglob
+    fi
+  fi
+
   local have=0; for f in "${logs[@]}"; do [[ -f "$f" ]] && have=1; done
   if (( have == 0 )); then
+    [[ -n "$tel_msg" ]] && printf '%s\n' "$tel_msg"
     printf 'retro: log vazio — sem dados na janela de %sd, sem conclusão a tirar.\n' "$days"
     return 0
   fi
@@ -2229,6 +2336,8 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   if [[ "$degrade" == true ]]; then
     printf -- '-- aviso: filtro roteável indisponível (%s) — override conta como no total (degradado, sem separar roteável/não-roteável)\n' "$routable_warn"
   fi
+  [[ -n "$tel_msg" ]] && printf '%s\n' "$tel_msg"
+  [[ -n "$machine_line" ]] && printf -- '-- por máquina: %s\n' "$machine_line"
   jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" --argjson degrade "$degrade" '
     map(select(type == "object")) | map(select($cut == "" or .ts >= $cut)) as $w |
     ($w | map(select(.event == "decision"))) as $dec |
@@ -2801,6 +2910,154 @@ cmd_upgrade() { # E19/S-1902 — CLI do auto-update: source direto da lib do S-1
   return 0
 }
 
+# ------------------------------------------------------------------ telemetria (E20)
+#
+# `maestro telemetry` é a metade CLI de hooks/lib/telemetry-sync.sh (S-2001):
+# git como barramento — cada máquina publica SEUS logs/<host-id>/ num remoto
+# opt-in (telemetry_remote no config.yaml). Nada sai sem essa chave.
+
+_tel_cli_config_set_remote() { # <url> — grava/substitui telemetry_remote, resto do config.yaml intacto
+  # NÃO reaproveita maestro_update_config_set: ela só aceita valor em
+  # [A-Za-z0-9_.-]{1,32} (chaves internas), e uma URL de git é mais larga e
+  # mais longa que isso. Mesma técnica (tmp + mv, sem editar em lugar).
+  local url="$1" f="$MAESTRO_HOME/config.yaml" tmp
+  mkdir -p "$MAESTRO_HOME" 2>/dev/null || return 1
+  tmp="$f.tmp.$$"
+  {
+    if [[ -f "$f" ]]; then
+      grep -v -E '^telemetry_remote:' "$f" 2>/dev/null || :
+    else
+      printf '# maestro — config por máquina (DATA_MODEL §10)\n'
+    fi
+    printf 'telemetry_remote: %s\n' "$url"
+  } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$f" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  return 0
+}
+
+_tel_cli_config_remove_remote() { # remove a linha telemetry_remote (config sem a chave = desligada)
+  local f="$MAESTRO_HOME/config.yaml" tmp
+  [[ -f "$f" ]] || return 0
+  tmp="$f.tmp.$$"
+  grep -v -E '^telemetry_remote:' "$f" > "$tmp" 2>/dev/null || :
+  mv -f "$tmp" "$f" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  return 0
+}
+
+_telemetry_status() { # --status (default): estado legível a partir de telemetry-state
+  if ! maestro_telemetry_enabled; then
+    printf 'telemetria: desligada (sem telemetry_remote — maestro telemetry --remote <url>)\n'
+    return 0
+  fi
+  local result; result=$(_tel_state_read result)
+  if [[ -z "$result" ]]; then
+    printf 'telemetria: configurada, nunca publicou (a próxima sessão publica; --push força)\n'
+    return 0
+  fi
+  local host files reason pushed now hago
+  host=$(_tel_state_read host); files=$(_tel_state_read files); reason=$(_tel_state_read reason)
+  pushed=$(_tel_state_read pushed); [[ "$pushed" =~ ^[0-9]+$ ]] || pushed=0
+  now=$(_tel_now); hago=$(( (now - pushed) / 3600 ))
+  case "$result" in
+    pushed)   printf 'telemetria: publicada há %sh (host %s, %s arquivo(s))\n' "$hago" "$host" "$files" ;;
+    nochange) printf 'telemetria: sem novidade desde o último push há %sh\n' "$hago" ;;
+    skipped)  printf 'telemetria: dentro do intervalo (último push há %sh)\n' "$hago" ;;
+    failed)
+      printf 'telemetria: falhou (%s) — --push tenta de novo\n' "$reason"
+      exit 2 ;;
+    *) printf 'telemetria: configurada, nunca publicou (a próxima sessão publica; --push força)\n' ;;
+  esac
+  return 0
+}
+
+_telemetry_push() { # --push: publica AGORA, ignorando o intervalo (ação explícita do humano)
+  if ! maestro_telemetry_enabled; then
+    printf 'telemetria: nada configurado (maestro telemetry --remote <url>)\n'
+    exit 1
+  fi
+  maestro_telemetry_push --force
+  case "$TEL_STATE" in
+    pushed)   printf 'telemetria: publicada — host %s, %s arquivo(s)\n' "$TEL_HOST" "$TEL_FILES" ;;
+    nochange) printf 'telemetria: sem novidade\n' ;;
+    *)        printf 'telemetria: falhou (%s)\n' "$TEL_REASON"; exit 2 ;;
+  esac
+  return 0
+}
+
+_telemetry_pull() { # --pull: atualiza o clone local ($MAESTRO_HOME/telemetry) — insumo do retro --all
+  if ! maestro_telemetry_enabled; then
+    printf 'telemetria: nada configurado (maestro telemetry --remote <url>)\n'
+    exit 1
+  fi
+  if ! maestro_telemetry_pull; then
+    printf 'telemetria: falhou (%s)\n' "$TEL_REASON"
+    exit 2
+  fi
+  local hd hid label hosts=() hosts_str=""
+  shopt -s nullglob
+  for hd in "$TEL_DIR"/logs/*/; do
+    hid="${hd%/}"; hid="${hid##*/}"
+    label="?"
+    [[ -f "${hd}HOST" ]] && label=$(head -c 200 -- "${hd}HOST" 2>/dev/null | tr -d '\n\r')
+    [[ -n "$label" ]] || label="?"
+    hosts+=("$hid ($label)")
+  done
+  shopt -u nullglob
+  for hd in "${hosts[@]}"; do hosts_str+="${hosts_str:+ · }$hd"; done
+  printf 'telemetria: clone em dia — %s host(s): %s\n' "${#hosts[@]}" "$hosts_str"
+  return 0
+}
+
+_telemetry_set_remote() { # --remote <url>: liga a publicação nesta máquina (opt-in)
+  local url="$1"
+  [[ "$url" =~ ^[A-Za-z0-9@:/._~+-]{1,200}$ ]] || die validation \
+    "URL de telemetria inválida '$url'" \
+    "esperado uma URL de git sem espaço/aspas — maestro telemetry --remote <url>" 1
+  _tel_cli_config_set_remote "$url" || die env "falha ao gravar config.yaml" \
+    "verifique permissões em \$MAESTRO_HOME" 2
+  printf 'config.yaml: telemetry_remote = %s\n' "$url"
+  return 0
+}
+
+_telemetry_off() { # --off: desliga nesta máquina (remove a chave; nada mais muda)
+  _tel_cli_config_remove_remote || die env "falha ao gravar config.yaml" \
+    "verifique permissões em \$MAESTRO_HOME" 2
+  printf 'telemetria: desligada nesta máquina\n'
+  return 0
+}
+
+cmd_telemetry() { # E20/S-2001 — CLI de hooks/lib/telemetry-sync.sh
+  local mode="status" remote_url=""
+  while (( $# )); do
+    case "$1" in
+      --status) mode="status" ;;
+      --push)   mode="push" ;;
+      --pull)   mode="pull" ;;
+      --off)    mode="off" ;;
+      --remote)
+        mode="remote"
+        if (( $# > 1 )); then remote_url="$2"; shift; else remote_url=""; fi ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro telemetry [--push|--pull|--status|--remote <url>|--off]" 1 ;;
+    esac
+    shift
+  done
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  # shellcheck source=hooks/lib/telemetry-sync.sh
+  source "$REPO_DIR/hooks/lib/telemetry-sync.sh"
+
+  case "$mode" in
+    status) _telemetry_status ;;
+    push)   _telemetry_push ;;
+    pull)   _telemetry_pull ;;
+    remote) _telemetry_set_remote "$remote_url" ;;
+    off)    _telemetry_off ;;
+  esac
+  return 0
+}
+
 # ----------------------------------------------------------------------- dispatch
 
 delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
@@ -2841,6 +3098,7 @@ case "$cmd" in
   order) shift; cmd_order "$@" ;;
   docs) shift; cmd_docs "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
+  telemetry) shift; cmd_telemetry "$@" ;;
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

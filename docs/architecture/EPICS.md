@@ -576,6 +576,29 @@ quando não há trabalho local.
   a linha na injeção e o doctor bastam para single-user.
 - **Dependências:** ADR-001 (emenda), E7 (doctor/envelope), ADR-008 (log).
 
+### E20 — Git como barramento de telemetria (P1, S) — aprovado 2026-09-01
+Origem: com o E19 fluindo, o Capitão passou a ter duas máquinas de verdade rodando o
+Maestro — e o `routing.jsonl` é por box: o retro de cada uma só enxerga a si mesma.
+Decisão: o log entra no mesmo trilho que já atravessa máquina (upgrade, work orders,
+docs) — um repo git privado, em vez de servidor, daemon ou memória externa. Descartados:
+servidor central no Legatus (infra nova para centenas de linhas/mês), supermemory como
+barramento (memória, não armazém de log) e pull por ssh (exige rota entre os boxes e
+alguém rodando; o git resolve NAT e ausência).
+- **S-2001 — lib + hook:** `hooks/lib/telemetry-sync.sh` sobre os primitivos da
+  `update-check.sh` (teto de tempo, lock, leitura de estado). Push no SessionEnd,
+  opt-in (`telemetry_remote`), 1×/intervalo, `logs/<host-id>/` com um escritor por
+  arquivo (rebase sempre limpo), branch `main` fixa, push falho deixa commit e a rodada
+  seguinte publica. Estado em `telemetry-state`; silêncio nunca é "publicado".
+  Só `routing*.jsonl` viaja (DATA_MODEL §11, exceção única à residência local).
+  **Entregue 2026-09-01.**
+- **S-2002 — CLI + retro + doctor:** `maestro telemetry --status/--push/--pull/--remote/
+  --off`; `maestro retro --all` (pull + união excluindo o próprio host + linha
+  `-- por máquina`); `check_telemetry` no doctor; envelope `telemetry.{result,host}`.
+  **Entregue 2026-09-01.**
+- **Fora do épico:** retro cruzando hosts por dimensão (override por máquina, etc.) —
+  quando houver volume; apagar logs de host aposentado é operação manual no repo.
+- **Dependências:** E19 (primitivos e config.yaml), E18 (retro), ADR-008 (log).
+
 ---
 
 ## Grafo de dependências
