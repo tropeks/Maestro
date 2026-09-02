@@ -1570,6 +1570,25 @@ cmd_docs() { # S-1601/S-1602: docs canônicos como CONTRATO — drift mecânico
     local spec=() g fan=0
     set -f
     for g in $covers; do spec+=(":(glob)$g"); done
+    # S-1809: contrato é o que o doc PROMETE, não todo arquivo que encosta na
+    # área. Teste VERIFICA contrato, não o define; e bookkeeping do próprio
+    # Maestro (baseline da catraca, arquivos de ordem) não é contrato de coisa
+    # nenhuma. Sem isto, dividir um arquivo de teste ou regravar o baseline
+    # envelhecia o doc de ARQUITETURA — e o caminho "honesto" (`reviewed:`)
+    # está corretamente barrado, porque atestar o doc inteiro seria mentira.
+    # Sinal que fica sempre vermelho e ninguém pode limpar sem mentir deixa de
+    # ser sinal. Medido no NetForge: três docs STALE por causa de um commit que
+    # só mexeu num .tsv de catraca.
+    #
+    # Doc que GOVERNA teste continua enxergando teste: se os próprios covers
+    # citam caminho de teste, a exclusão não se aplica a ele.
+    if [[ "$covers" != *test* && "$covers" != *spec* ]]; then
+      spec+=(":(glob,exclude)**/tests/**" ":(glob,exclude)**/test/**"
+             ":(glob,exclude)**/__tests__/**" ":(glob,exclude)**/*_test.*"
+             ":(glob,exclude)**/*.test.*" ":(glob,exclude)**/*.spec.*"
+             ":(glob,exclude)**/conftest.py")
+    fi
+    spec+=(":(exclude).maestro/**" ":(glob,exclude)**/.maestro-*.tsv")
     set +f
     fan=$(git -C "$proj" ls-files -- "${spec[@]}" 2>/dev/null | grep -c . || true)
     local fanwarn=""

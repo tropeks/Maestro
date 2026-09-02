@@ -111,4 +111,42 @@ grep -q '^doc: docs/SPEC.md$' "$OF" && ok "ordem referencia o doc que autoriza" 
 grep -q 'EMENDE o doc no mesmo changeset' "$OF" && ok "contrato da ordem cobra a emenda" || bad "contrato cobra emenda"
 "$BIN" order --status 1 --project "$P" | grep -q 'doc     : docs/SPEC.md' && ok "status mostra o doc e o frescor" || bad "status mostra doc"
 
+echo "-- S-1809: contrato é o que o doc PROMETE, não todo arquivo que encosta"
+# Medido no NetForge: TRÊS docs canônicos viraram STALE por um commit que só
+# mexeu num .tsv de baseline da catraca. E o caminho "honesto" (`reviewed:`)
+# está barrado de proposito, porque atesta o doc INTEIRO — entao o sinal ficava
+# vermelho sem ninguem poder limpa-lo sem mentir.
+P9="$tmp/p9"; mkdir -p "$P9/src/tests" "$P9/docs" "$P9/.maestro/orders"
+git -C "$P9" init -q
+printf -- "---\ncovers:\n  - src/**\n---\n# arq\n" > "$P9/docs/ARQ.md"
+printf -- "---\ncovers:\n  - src/tests/**\n---\n# testes\n" > "$P9/docs/TESTES.md"
+echo x > "$P9/src/a.py"; echo y > "$P9/src/tests/t.py"
+printf 'docs: [docs/ARQ.md, docs/TESTES.md]\n' > "$P9/.maestro.yaml"
+git -C "$P9" add -A; git -C "$P9" -c user.email=t@t -c user.name=t commit -qm base
+
+echo z >> "$P9/src/tests/t.py"
+git -C "$P9" add -A; git -C "$P9" -c user.email=t@t -c user.name=t commit -qm "so teste"
+out9=$("$BIN" docs --project "$P9" 2>&1)
+grep -q '^docs/ARQ.md: FRESCO' <<<"$out9" \
+  && ok "commit só de TESTE não envelhece o doc de arquitetura" \
+  || bad "teste ainda envelhece arquitetura ($(grep '^docs/ARQ.md' <<<"$out9"))"
+grep -q '^docs/TESTES.md: STALE' <<<"$out9" \
+  && ok "doc que GOVERNA teste continua enxergando teste" \
+  || bad "doc de teste ficou cego ($(grep '^docs/TESTES.md' <<<"$out9"))"
+
+printf 'oversized-file\t9\n' > "$P9/.maestro-habits.tsv"
+printf -- '<!-- maestro-order v1\nid: 001\n-->\n' > "$P9/.maestro/orders/001-x.md"
+git -C "$P9" add -A; git -C "$P9" -c user.email=t@t -c user.name=t commit -qm "bookkeeping"
+out9b=$("$BIN" docs --project "$P9" 2>&1)
+grep -q '^docs/ARQ.md: FRESCO' <<<"$out9b" \
+  && ok "bookkeeping do Maestro (.tsv, ordem) não envelhece doc nenhum" \
+  || bad "bookkeeping envelheceu doc ($(grep '^docs/ARQ.md' <<<"$out9b"))"
+
+# E o sensor não pode ficar cego: mudança em código GOVERNADO ainda envelhece.
+echo w >> "$P9/src/a.py"
+git -C "$P9" add -A; git -C "$P9" -c user.email=t@t -c user.name=t commit -qm "codigo de verdade"
+"$BIN" docs --project "$P9" 2>&1 | grep -q '^docs/ARQ.md: STALE' \
+  && ok "mudança em código governado CONTINUA envelhecendo o doc" \
+  || bad "docs ficou cego para código governado"
+
 exit $fail
