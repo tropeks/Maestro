@@ -345,5 +345,56 @@ chk "sem o commit local, o rollback volta a funcionar" "$RC" "0"
 chk "estado após rollback é o MEDIDO (available)" "$(state "$DIV_HOME" result)" "available"
 chk "prev consumido" "$(state "$DIV_HOME" prev)" ""
 
+# ---------------------------------------------------------------------------
+# v1.11.2 — disclosure (achado do Legatus, 2026-09-01): --check dentro do
+# intervalo não vai à rede e DIZ isso; idade do doctor vem do fetch, não da
+# leitura de cache; dica do doctor ensina --check --force.
+# ---------------------------------------------------------------------------
+echo "-- --check dentro do intervalo: sem rede, e a linha confessa que é cache"
+CLONE3="$SANDBOX/clone3"; git clone -q "$REMOTE" "$CLONE3" 2>/dev/null
+G -C "$CLONE3" checkout -q main 2>/dev/null || :
+next_home; DISC_HOME="$H"
+U "$DISC_HOME" MAESTRO_UPDATE_REPO="$CLONE3" -- --check
+chk "primeira chamada busca (exit 0, em dia)" "$RC" "0"
+chk "fetch=ok" "$(state "$DISC_HOME" fetch)" "ok"
+git -C "$CLONE3" remote set-url origin "$SANDBOX/nao-existe.git"
+U "$DISC_HOME" MAESTRO_UPDATE_REPO="$CLONE3" -- --check
+has "fetch falhou (ainda em dia): a linha confessa" "fetch FALHOU; comparado com o último origin conhecido" "$OUTF"
+git -C "$CLONE3" remote set-url origin "$REMOTE"
+publish 9.0.0
+U "$DISC_HOME" MAESTRO_UPDATE_REPO="$CLONE3" MAESTRO_UPDATE_INTERVAL=86400 -- --check
+chk "dentro do intervalo: exit 0 (não viu a 9.0.0)" "$RC" "0"
+chk "fetch=skipped" "$(state "$DISC_HOME" fetch)" "skipped"
+has "linha diz que é cache" "cache do último fetch; --force consulta o origin" "$OUTF"
+U "$DISC_HOME" MAESTRO_UPDATE_REPO="$CLONE3" MAESTRO_UPDATE_INTERVAL=86400 -- --check --force
+chk "--force vai à rede: exit 1 (9.0.0 disponível)" "$RC" "1"
+has "9.0.0 aparece" "→ v9.0.0 disponível" "$OUTF"
+
+echo "-- doctor: idade vem do último fetch OK, não da última leitura"
+next_home
+cat > "$H/update-state" <<EOF2
+schema=maestro-update-state-v1
+checked=$(date +%s)
+fetched=$(( $(date +%s) - 36000 ))
+fetch=skipped
+result=current
+reason=fast-path
+local=1.0.3
+remote=1.0.3
+behind=0
+ahead=0
+dirty=0
+branch=main
+prev=
+upgraded=
+EOF2
+doctor_out "$H"
+grep -q 'ok   atualização: v1.0.3 em dia (último fetch há 10h)' "$OUTF" \
+  && ok "doctor mostra 10h de fetch (checked era agora)" || bad "idade errada: $(update_line)"
+next_home; doctor_out "$H"
+grep -q 'maestro upgrade --check --force consulta o origin agora' "$OUTF" \
+  && ok "dica do doctor ensina --check --force" || bad "dica ainda manda --check sem --force: $(update_line)"
+
+
 if [[ $fail -eq 0 ]]; then echo "test-upgrade: OK"; else echo "test-upgrade: FALHOU"; fi
 exit $fail

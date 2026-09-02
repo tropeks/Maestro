@@ -234,7 +234,11 @@ maestro conduct --session <session_id>
   plugin). Falha de ambiente (não é clone git, sem `origin`, sem `origin/main` conhecido)
   → `die env`, exit 2.
 - `--check [--force]`: só mede e imprime uma linha; nunca aplica. Exit 0 em dia/desligado,
-  1 disponível/bloqueado, 2 falhou.
+  1 disponível/bloqueado, 2 falhou. Sem `--force` honra o intervalo (não vai à rede) e a
+  linha DIZ isso: `em dia (vX) — cache do último fetch; --force consulta o origin`; fetch
+  falho também é confessado na linha (v1.11.2, achado do Legatus: afirmação sobre o remoto
+  sem consultar o remoto contrariava o princípio "silêncio nunca é atualizado"). No doctor,
+  "último fetch há Nh" conta a partir de `fetched`, nunca de `checked`.
 - `--rollback`: `git reset --keep <prev>` para o SHA gravado pelo último upgrade
   (recusa se perderia alteração local, e recusa — `diverged` — se houver commit local
   depois do upgrade: a ferramenta não desfaz trabalho de gente); evento `upgrade` com

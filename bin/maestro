@@ -742,7 +742,7 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
 check_update_state() { # E19/S-1903: última checagem de atualização — nunca falha
   local f="$MAESTRO_HOME/update-state"
   if [[ ! -f "$f" || ! -r "$f" ]]; then
-    report ok "atualização: ainda não verificada (a primeira sessão verifica; maestro upgrade --check força)"
+    report ok "atualização: ainda não verificada (a primeira sessão verifica; maestro upgrade --check --force consulta o origin agora)"
     return 0
   fi
   local result local_v remote_v behind reason fetched checked fetch
@@ -784,7 +784,7 @@ check_update_state() { # E19/S-1903: última checagem de atualização — nunca
         report warn "atualização: último fetch bem-sucedido há $days dia(s)" \
           "rede? maestro upgrade --check --force"
       else
-        report ok "atualização: v$local_v em dia (verificado há $(( (now - checked) / 3600 ))h)"
+        report ok "atualização: v$local_v em dia (último fetch há $(( (now - fetched) / 3600 ))h)"   # fetched, não checked: só rede conta como verificação
       fi
       ;;
     *)
@@ -2690,7 +2690,13 @@ _upgrade_check() { # --check [--force]: nunca aplica, mesmo com auto_upgrade
   local line="" rc=0
   case "$UPD_STATE" in
     disabled) line="atualização: verificação desligada"; rc=0 ;;
-    current)  line="atualização: em dia (v$UPD_LOCAL)"; rc=0 ;;
+    current)
+      # Sem fetch nesta chamada a afirmação é sobre o ÚLTIMO origin visto, não sobre
+      # o origin de agora — e o humano precisa saber (gstack #1974).
+      line="atualização: em dia (v$UPD_LOCAL)"
+      [[ "$UPD_FETCH" == "skipped" ]] && line+=" — cache do último fetch; --force consulta o origin"
+      [[ "$UPD_FETCH" == "failed" ]] && line+=" — fetch FALHOU; comparado com o último origin conhecido"
+      rc=0 ;;
     available)
       line="atualização: v$UPD_LOCAL → v$UPD_REMOTE_VER disponível ($UPD_BEHIND commit(s)) — maestro upgrade"
       rc=1 ;;
