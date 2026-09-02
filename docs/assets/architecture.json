@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.11.2 — trilhos determinísticos, IA nas bordas",
-    "subtitle": "Camada de roteamento MoE para Claude Code · pós-E19: o plugin se mantém atualizado sem virar dependência de rede",
+    "title": "Maestro v1.12.0 — trilhos determinísticos, IA nas bordas",
+    "subtitle": "Camada de roteamento MoE para Claude Code · pós-E20: auto-update e telemetria atravessam máquina pelo git",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "a8ea5ef2d95c269c01c135dd23a7cc6bd72d2e6b"
+      "revision": "96dd1c7fb9f3f2c0aa655b4b9169d0fd8724a2e0"
     },
     "views": [
       {
@@ -290,7 +290,7 @@
       "type": "messagebus",
       "label": "Ledger + logs",
       "sublabel": "evidência · routing.jsonl",
-      "tag": "só metadados",
+      "tag": "telemetria: git privado (E20)",
       "pos": [
         820,
         550
@@ -347,7 +347,7 @@
       "id": "origin",
       "type": "cloud",
       "label": "origin/main",
-      "sublabel": "GitHub · 1×/24h",
+      "sublabel": "GitHub · update + telemetria",
       "pos": [
         300,
         770

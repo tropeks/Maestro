@@ -8,23 +8,23 @@
   "completeness": "complete",
   "proofLevel": "revision-pinned",
   "base": {
-    "title": "Maestro v1.11.1 — trilhos determinísticos, IA nas bordas",
-    "rawSha256": "a1ef47b511c68a3ae66086ca0e831ba33b3492cc7536cd150216bc3fe6c884b8",
-    "semanticSha256": "daa77e090e4f0c25c3b027f8022b5edcb37afb3c75da49c9fbe74a5a8b3470df",
-    "bytes": 11449,
-    "revision": "522c17614e50936f3ff84453373864a0a118686c"
-  },
-  "head": {
     "title": "Maestro v1.11.2 — trilhos determinísticos, IA nas bordas",
     "rawSha256": "45ad83a3222fcfbef7b4702671b38e3eb5233273b541da003d9e4c6481652cb4",
     "semanticSha256": "79f4480d9d038b867c14f5233d02e28fbdf89cb494a003e0e03295c8ef19eb03",
     "bytes": 11449,
     "revision": "a8ea5ef2d95c269c01c135dd23a7cc6bd72d2e6b"
   },
+  "head": {
+    "title": "Maestro v1.12.0 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "57d9c4342ca3d5c89974d499275fc1f1ef2ce448c4882d805324a5c7c1f3a480",
+    "semanticSha256": "ac54ec63dbd7f54aa36752f37e8c6b64ad365a23c131ce22ad0458e31095cd36",
+    "bytes": 11469,
+    "revision": "96dd1c7fb9f3f2c0aa655b4b9169d0fd8724a2e0"
+  },
   "summary": {
     "components": {
       "added": 0,
-      "changed": 0,
+      "changed": 2,
       "evidenceChanged": 0,
       "removed": 0,
       "moved": 0
@@ -45,7 +45,32 @@
     "provenanceChanged": true
   },
   "changes": {
-    "components": [],
+    "components": [
+      {
+        "id": "ledger",
+        "baseLabel": "Ledger + logs",
+        "headLabel": "Ledger + logs",
+        "status": "changed",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": [
+          "/tag"
+        ]
+      },
+      {
+        "id": "origin",
+        "baseLabel": "origin/main",
+        "headLabel": "origin/main",
+        "status": "changed",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": [
+          "/sublabel"
+        ]
+      }
+    ],
     "connections": [],
     "boundaries": []
   },
@@ -62,8 +87,8 @@
     "Boundary identity is conservatively derived from kind + label."
   ],
   "artifact": {
-    "sha256": "48ed045b1e3576e20fb20286708c8698388112ad3cb4f2acec2507c08fc7cbb3",
-    "bytes": 2077151
+    "sha256": "f5f052cf5d36e244bc206ddfc44e77cb30aec544eb5622cd201b9d3acefc5897",
+    "bytes": 2079139
   },
   "validation": {
     "checksPassed": 28,
