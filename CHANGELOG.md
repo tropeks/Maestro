@@ -6,6 +6,16 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.12.1] — 2026-09-01
+
+### Fixed
+- **Release tags now travel with the auto-update (S-1904, Legatus finding).**
+  The updater fetched `main` only, so a machine that had cloned at v1.11.0 and
+  auto-upgraded to v1.12.0 still had v1.11.0 as its newest tag, and the doctor
+  compared the release portrait against it ("verificado em 96dd1c7, release
+  v1.11.0"). The fetch now carries `--tags`; a test pins that a tag published
+  with a release reaches a clone that only follows `main`.
+
 ## [1.12.0] — 2026-09-01
 
 Epic E20: git as the telemetry bus. With two real machines running Maestro,
