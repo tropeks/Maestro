@@ -330,5 +330,13 @@ run "$H" MAESTRO_UPDATE_INTERVAL=86400 PATH="$FB:$PATH"
 chk "ahead 1 medido" "$(state "$H" ahead)" "1"
 G -C "$CLONE" reset -q --hard "$(git -C "$CLONE" rev-parse refs/remotes/origin/main)"
 
+echo "-- tags viajam com o fetch (S-1904): release tag chega na máquina que só segue main"
+publish 1.0.9
+G -C "$SRC" tag -a v1.0.9 -m "v1.0.9"; G -C "$SRC" push -q "$REMOTE" v1.0.9
+next_home; run "$H"
+chk "atualizou para 1.0.9" "$(state "$H" local)" "1.0.9"
+chk "tag v1.0.9 presente no clone" "$(git -C "$CLONE" tag -l v1.0.9)" "v1.0.9"
+chk "describe vê a release nova" "$(git -C "$CLONE" describe --tags --abbrev=0 2>/dev/null)" "v1.0.9"
+
 if [[ $fail -eq 0 ]]; then echo "test-update-check: OK"; else echo "test-update-check: FALHOU"; fi
 exit $fail

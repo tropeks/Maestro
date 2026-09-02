@@ -40,6 +40,8 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   da última checagem `current`, o hook reaproveita o estado com dois `rev-parse`
   (`reason=fast-path`) — custo medido ~50ms sobre a sessão sem checagem (era ~150ms).
   Leitura de estado/config sem `sed`: lookups em bash puro.
+  **S-1904 (v1.12.1):** o fetch leva `--tags` — máquina que só segue `main` recebe a tag
+  da release junto, e o doctor compara o retrato com a tag certa.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.

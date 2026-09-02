@@ -205,7 +205,10 @@ _upd_run_timed() { # _upd_run_timed <segundos> <comando...> — teto de tempo IN
 }
 
 _upd_fetch() { # a linha de rede do update. rc = do git.
-  _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" "$UPD_BRANCH"
+  # --tags: sem ele a máquina que só recebe `main` fica com as tags do dia do
+  # clone, e o doctor compara o retrato de release com uma tag velha (achado
+  # do Legatus na v1.12.0: "release v1.11.0" numa máquina já em 1.12.0).
+  _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q --tags "$UPD_REMOTE" "$UPD_BRANCH"
 }
 
 _upd_locked() { # _upd_locked <função> — seção crítica NÃO bloqueante (rc 99 = ocupada)
