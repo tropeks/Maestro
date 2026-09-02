@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.12.1 — trilhos determinísticos, IA nas bordas",
+    "title": "Maestro v1.13.0 — trilhos determinísticos, IA nas bordas",
     "subtitle": "Camada de roteamento MoE para Claude Code · pós-E20: auto-update e telemetria atravessam máquina pelo git",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "181e65386ff627edffac27984296eba797620e86"
+      "revision": "cae5fceda16b753ecb595bceb8562f8e10eeedaf"
     },
     "views": [
       {
@@ -131,7 +131,7 @@
         150,
         64
       ],
-      "tag": "+ session-end.sh"
+      "tag": "+ session-end · gate-report (herdr)"
     },
     {
       "id": "gates",
