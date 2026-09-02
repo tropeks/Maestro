@@ -77,6 +77,48 @@ out2=$("$BIN" habits "$PROJ/fp/real.py" "$PROJ/fp/test_real_skip.py" --project "
 grep -q 'too-many-params' <<<"$out2" && ok "seis parâmetros DE VERDADE continuam sendo pegos" || bad "sensor ficou cego para too-many-params"
 grep -q 'skipped-test' <<<"$out2" && ok "skip DE VERDADE continua sendo pego" || bad "sensor ficou cego para skipped-test"
 
+echo "-- S-1808: código GERADO não é slop de ninguém"
+# Medido no NetForge: 66 de 135 migrations disparavam deep-nesting pela estrutura
+# que o próprio `makemigrations` escreve. TODA migration nova estouraria a
+# catraca, e o unico "conserto" seria editar codigo gerado a mao.
+mkdir -p "$PROJ/app/migrations"
+cat > "$PROJ/app/migrations/0002_algo.py" <<'FX'
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [("app", "0001_initial")]
+    operations = [
+        migrations.CreateModel(
+            name="Coisa",
+            fields=[
+                ("id", models.BigAutoField(
+                    auto_created=True,
+                    primary_key=True,
+                    serialize=False,
+                    verbose_name="ID",
+                )),
+            ],
+        ),
+    ]
+FX
+out=$("$BIN" habits "$PROJ/app/migrations/0002_algo.py" --project "$PROJ" 2>&1); rc=$?
+grep -q 'deep-nesting' <<<"$out" && bad "migration gerada ainda vira deep-nesting" || ok "migration gerada não vira deep-nesting"
+chk "migration gerada → exit 0 (limpo)" "$rc" "0"
+# O sensor NÃO pode ficar cego: o mesmo aninhamento em código escrito à mão conta.
+mkdir -p "$PROJ/app/servicos"
+cat > "$PROJ/app/servicos/mao.py" <<'FX'
+def f(xs):
+    for a in xs:
+        for b in a:
+            for c in b:
+                for d in c:
+                    for e in d:
+                        return e
+FX
+out2=$("$BIN" habits "$PROJ/app/servicos/mao.py" --project "$PROJ" 2>&1) || true
+grep -q 'deep-nesting' <<<"$out2" && ok "aninhamento em código ESCRITO À MÃO continua sendo pego" || bad "sensor ficou cego para deep-nesting"
+
 echo "-- diff sujo com smell"
 cat > "$PROJ/novo.py" <<'FX'
 def f(data):

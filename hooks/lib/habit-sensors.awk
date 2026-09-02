@@ -147,7 +147,12 @@ function close_fn(endline,   fn_len) {
   }
 
   # ---- deep-nesting: primeiro estouro do arquivo (código, não comentário) ---
-  if (want("deep-nesting") && !nest_hit && !is_blank && !is_comment && !is_doc && ind > MAXNEST) {
+  # S-1808: `ISGEN` = arquivo GERADO (migration do Django, protobuf...). Não é
+  # escrito nem refatorado por pessoa: `deep-nesting` e `oversized-file` ali não
+  # têm conserto acionável, e obrigariam a editar código gerado à mão — que é
+  # pior que o smell. Medido: 66 de 135 migrations do NetForge disparavam
+  # deep-nesting, então TODA migration nova estouraria a catraca para sempre.
+  if (want("deep-nesting") && !ISGEN && !nest_hit && !is_blank && !is_comment && !is_doc && ind > MAXNEST) {
     nest_hit = 1
     emit("deep-nesting", NR, "indentação nível " ind " (max " MAXNEST ")")
   }
@@ -288,6 +293,6 @@ END {
   close_fn(NR + 1)
   if (comment_run >= 3 && want("dead-code"))
     emit("dead-code", comment_start, comment_run " linhas de código comentado")
-  if (want("oversized-file") && NR > MAXFILE)
+  if (want("oversized-file") && !ISGEN && NR > MAXFILE)   # S-1808: gerado não conta
     emit("oversized-file", 1, NR " linhas (max " MAXFILE ")")
 }

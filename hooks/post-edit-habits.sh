@@ -100,7 +100,11 @@ fi
 # ---------------------------------------------------------------------------
 # sensores por arquivo (awk) + sensor de sessão (test-gap).
 # ---------------------------------------------------------------------------
-findings=$(awk -v EXT="$ext" -v ENABLED="$ENABLED" -v ISTEST="$is_test" \
+# S-1808: mesma classificação de código gerado do CLI — hook e CLI têm de
+# responder igual, senão o gate diverge do relatório.
+is_gen=0
+case "$FILE" in */migrations/*.py|*_pb2.py|*_pb2_grpc.py|*.generated.*|*/gen/*) is_gen=1 ;; esac
+findings=$(awk -v EXT="$ext" -v ENABLED="$ENABLED" -v ISTEST="$is_test" -v ISGEN="$is_gen" \
   -f "$ENGINE" "$FILE" 2>/dev/null | head -50) || findings=""
 
 # test-gap: N edições de src na sessão sem NENHUMA edição de teste. Nunca por

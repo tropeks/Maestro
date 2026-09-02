@@ -2552,7 +2552,15 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
     is_test=0
     case "$base" in test*|*_test.*|*.test.*|*.spec.*|conftest.py) is_test=1 ;; esac
     case "$f" in */tests/*|*/test/*|*/__tests__/*) is_test=1 ;; esac
-    out=$(awk -v EXT="$ext" -v ENABLED="$enabled" -v ISTEST="$is_test" \
+    # S-1808: código GERADO. Migration do Django é escrita pelo `makemigrations`,
+    # nunca refatorada e append-only — `CreateModel(fields=[("id", models.
+    # BigAutoField(...))])` aninha fundo por construção. Medido no NetForge: 66
+    # de 135 migrations disparavam `deep-nesting`, ou seja, TODA migration nova
+    # estouraria a catraca para sempre, e o único "conserto" seria editar código
+    # gerado à mão. Catraca que obriga isso vira obstáculo ao trabalho normal.
+    is_gen=0
+    case "$f" in */migrations/*.py|*_pb2.py|*_pb2_grpc.py|*.generated.*|*/gen/*) is_gen=1 ;; esac
+    out=$(awk -v EXT="$ext" -v ENABLED="$enabled" -v ISTEST="$is_test" -v ISGEN="$is_gen" \
       -f "$engine" "$f" 2>/dev/null | head -50) || out=""
     [[ -n "$out" ]] || continue
     shown="${f#"$proj"/}"
