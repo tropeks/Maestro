@@ -6,6 +6,25 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-09-02
+
+Epic E21: human gates reach the runtime and the phone. The Captain already runs
+sessions inside herdr; Maestro now leaves the gate question where a thin
+transport can read it, and the transport (Legatus vNext, own repo) is a page of
+Python instead of an orchestrator.
+
+### Added
+- **Stop hook `gate-report.sh` (S-2101).** Only inside herdr. When a turn ends
+  with a plan gate pending (`approach: pendente` on a plan-gated workflow) or a
+  ship gate (workflow `ship` without outcome), writes
+  `~/.maestro/herdr/gates/<pane>` with the conducted question — the brief's
+  essence only, never `reason` — and reports `blocked` to herdr best-effort.
+  Measured while designing: for Claude Code herdr's state authority is screen
+  detection and a custom `blocked` report was ignored on a working pane, so the
+  file is the guaranteed channel. Without a pending gate the stale file is
+  removed. `user-prompt-submit.sh` removes the file and releases the authority
+  when the human answers. Doctor expects 6 hook events.
+
 ## [1.12.1] — 2026-09-01
 
 ### Fixed
