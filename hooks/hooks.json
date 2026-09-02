@@ -60,6 +60,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gate-report.sh"
+          }
+        ]
+      }
     ]
   }
 }

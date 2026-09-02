@@ -44,7 +44,7 @@ MAESTRO_HOME="${MAESTRO_HOME:-$HOME/.maestro}"
 MAESTRO_HOME_DEFAULT="$HOME/.maestro"
 MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
-EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd)   # S-1811: 5º evento
+EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd Stop)   # S-1811 SessionEnd · S-2101 Stop
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
 RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags'
 
@@ -213,17 +213,17 @@ check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
     report ok "hooks.json é JSON válido"
   fi
 
-  # 1) os 5 eventos esperados existem (S-1811: SessionEnd)
+  # 1) os 6 eventos esperados existem (S-1811 SessionEnd, S-2101 Stop)
   local events missing=() ev
   events=$(hooks_json_events "$f" || true)
   for ev in "${EXPECTED_EVENTS[@]}"; do
     printf '%s\n' "$events" | grep -qx "$ev" || missing+=("$ev")
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
-    report fail_val "hooks.json registra os 5 eventos esperados" \
+    report fail_val "hooks.json registra os 6 eventos esperados" \
       "faltando: ${missing[*]} (plugin instalado com hook não registrado)"
   else
-    report ok "hooks.json registra os 5 eventos esperados"
+    report ok "hooks.json registra os 6 eventos esperados"
   fi
 
   # 2) matcher do PreToolUse cobre Edit|Write|MultiEdit

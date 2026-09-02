@@ -599,6 +599,31 @@ alguém rodando; o git resolve NAT e ausência).
   quando houver volume; apagar logs de host aposentado é operação manual no repo.
 - **Dependências:** E19 (primitivos e config.yaml), E18 (retro), ADR-008 (log).
 
+### E21 — Gates humanos chegam ao runtime (herdr) e ao telefone (P1, S) — aprovado 2026-09-02
+Origem: o Capitão já opera as sessões dentro do herdr (runtime persistente com detecção
+de `blocked`, API de socket, restore do Claude Code), e o Legatus, nascido como
+adaptador do Telegram, cresceu para um orquestrador de 28 mil linhas fazendo o que o
+herdr e o Claude Code já fazem. Decisão: o Maestro não vira bridge; ele deixa a
+pergunta do gate num lugar que um transporte fino consegue ler, e o Legatus vNext é
+esse transporte — uma página, não um orquestrador. Achado medido no desenho: para o
+Claude Code a autoridade de estado do herdr é a leitura de tela; um report `blocked`
+de fonte custom foi ignorado num pane do Claude em trabalho. Por isso o canal
+garantido é um ARQUIVO, e o report é best-effort.
+- **S-2101 — hook Stop:** `hooks/gate-report.sh` só dentro do herdr; gate plan
+  (approach pendente em workflow plan-gated) ou gate ship (sem desfecho) →
+  `$MAESTRO_HOME/herdr/gates/<pane>` com a pergunta regida (só a essência do brief;
+  `reason` nunca) + `pane report-agent blocked` best-effort. Sem gate, apaga o arquivo.
+  `user-prompt-submit.sh` apaga e libera a autoridade quando o humano responde.
+  Doctor espera 6 eventos. **Entregue 2026-09-02.**
+- **S-2102 — Legatus vNext (repo próprio, `legatus-vnext`):** forwarder Python stdlib
+  que assina `pane.agent_status_changed` no socket do herdr, e em `blocked`/`done`
+  manda ao Telegram a pergunta (arquivo de gate do Maestro se existir, senão as últimas
+  linhas do pane) e devolve a resposta com `pane run`. Modo `--dry-run` sem Telegram.
+  Fora deste repo; citado aqui por ser o consumidor do S-2101.
+- **Fora do épico:** substituir o Legatus atual (decisão de produto, depois do vNext
+  provar-se em uso); notificação por outros canais.
+- **Dependências:** E17 (brief regido: essência), E18 (record com outcome), herdr ≥0.8.
+
 ---
 
 ## Grafo de dependências

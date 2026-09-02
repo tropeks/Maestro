@@ -91,6 +91,24 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   bem-sucedido há mais de 7 dias → warn com `maestro telemetry --push`. Envelope ganha
   `telemetry.{result,host}`.
 
+### `hooks/gate-report.sh` — evento Stop (E21/S-2101, v1.13.0)
+- **Só dentro do herdr** (`HERDR_ENV=1` + `HERDR_PANE_ID` tipado); fora, no-op absoluto.
+- **Lê:** o decision record da sessão (regex, presença + enums). Gate pendente = workflow
+  plan-gated (`feature`/`refactor`) com `approach: pendente` no brief → `plan`; `ship` sem
+  `outcome` → `ship`. Sem gate: apaga o arquivo do pane (resolvido por outro caminho) e sai.
+- **Escreve:** `$MAESTRO_HOME/herdr/gates/<pane>` (`:` vira `_`), chave=valor: `gate`,
+  `session`, `project` (basename do projeto), `ts`, `message` — a pergunta regida em uma
+  linha (`gate plan · <projeto> · <essência> — Aprovo o plano? (aprovo | ajusta: …)` /
+  `gate ship · … — Shipo agora? (shipa | espera)`). Só a essência do brief sai; `reason`
+  nunca.
+- **Reporta (best-effort):** `herdr pane report-agent … --state blocked --message …`, 2s
+  de teto. Para o Claude Code a autoridade de estado é a leitura de tela do herdr, então
+  o report pode ser ignorado — o arquivo é o canal garantido; o forwarder (Legatus vNext)
+  prefere o arquivo ao scrape da tela.
+- **Resposta do humano:** `user-prompt-submit.sh` apaga o arquivo do pane e chama
+  `pane release-agent` (mesmo teto). Sempre exit 0; nada em stdout (Stop hook com JSON no
+  stdout vira decisão do Claude Code).
+
 ### `hooks/log-stop.sh` — evento Stop (opcional, v1.1)
 - Fecha o ciclo no log (`event: session_end`), computa contagens da sessão.
 
@@ -291,6 +309,7 @@ maestro conduct --session <session_id>
   fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
   quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
   é inerte e a linha é `ok`.
+- **Emenda S-2101 (v1.13.0):** hooks esperados passam a ser 6 (Stop).
 - **Emenda S-1811 (v1.11.1):** hooks esperados passam a ser 5 (SessionEnd).
 - **Emenda E9:** hooks esperados passam a ser 4 (PostToolUse do habit hook);
   todo sensor do motor precisa de guia em `config/habit-guides/` (`fail_val` sem).

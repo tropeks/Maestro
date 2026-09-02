@@ -35,6 +35,27 @@ maestro_killswitch
 # Code NÃO injeta no contexto.
 exec 1>&2
 
+# E21/S-2101 — o humano respondeu: o gate deste pane deixa de estar pendente.
+# Apaga o arquivo que o Stop hook deixou para o forwarder e libera a autoridade
+# de estado no herdr (best-effort, 2s). Um teste de arquivo por prompt; fora do
+# herdr, nada.
+if [[ "${HERDR_ENV:-}" == "1" && "${HERDR_PANE_ID:-}" =~ ^[A-Za-z0-9:_-]{1,32}$ ]]; then
+  _gate_file="$MAESTRO_HOME/herdr/gates/${HERDR_PANE_ID//:/_}"
+  if [[ -f "$_gate_file" ]]; then
+    rm -f -- "$_gate_file" 2>/dev/null || :
+    _hb="${HERDR_BIN_PATH:-herdr}"
+    if command -v "$_hb" >/dev/null 2>&1 || [[ -x "$_hb" ]]; then
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 2 "$_hb" pane release-agent "$HERDR_PANE_ID" --source custom:maestro --agent claude \
+          --seq "$(date +%s%N 2>/dev/null || date +%s)" >/dev/null 2>&1 || :
+      else
+        "$_hb" pane release-agent "$HERDR_PANE_ID" --source custom:maestro --agent claude \
+          --seq "$(date +%s%N 2>/dev/null || date +%s)" >/dev/null 2>&1 || :
+      fi
+    fi
+  fi
+fi
+
 # stdin é terminal → não há JSON de hook para ler; não trava esperando.
 if [[ -t 0 ]]; then
   exit 0

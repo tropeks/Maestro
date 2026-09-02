@@ -425,6 +425,23 @@ o clone e agrega a união, excluindo o diretório do próprio host (os eventos l
 estão em `$MAESTRO_LOG_DIR`; contar duas vezes é mentira).
 `# classification: confidential` (metadados de roteamento, repo privado; hostnames)
 
+### 12. Gate pendente para o runtime — `~/.maestro/herdr/gates/<pane>` (E21)
+
+Escrito pelo Stop hook só dentro do herdr; apagado pelo UserPromptSubmit (resposta do
+humano) ou pelo próprio Stop quando o gate já não está pendente. Um arquivo por pane
+(`w1:p1` → `w1_p1`), chave=valor:
+```
+gate=plan|ship
+session=<session_id>
+project=<basename do projeto>
+ts=<epoch>
+message=<pergunta regida em uma linha — só a essência do brief; reason nunca>
+```
+Consumidor: o forwarder (Legatus vNext) prefere este arquivo ao scrape da tela do pane.
+Estado local; nunca sai da máquina pelo Maestro (o forwarder envia a `message` ao
+Telegram do próprio Capitão — decisão dele, fora deste repo).
+`# classification: confidential` (essência do brief)
+
 ---
 
 ## Regras de integridade
