@@ -6,6 +6,32 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-09-01
+
+Epic E20: git as the telemetry bus. With two real machines running Maestro,
+each retro only saw its own box. The log now rides the same rail that already
+crosses machines (upgrade, work orders, docs): a private git repo, no server.
+
+### Added
+- **Telemetry publish on session end (S-2001).** `hooks/lib/telemetry-sync.sh`
+  reuses the update-check primitives (timed network calls, non-blocking lock,
+  fork-free state reads). Opt-in per machine (`telemetry_remote` in
+  `~/.maestro/config.yaml`); once per interval the SessionEnd hook mirrors
+  only `routing*.jsonl` into `logs/<host-id>/` on branch `main` — one writer
+  per file, so rebases are always clean. A failed push leaves the commit and
+  the next round publishes it. State in `~/.maestro/telemetry-state`; silence
+  never means published.
+- **`maestro telemetry` (S-2002)** — `--status`, `--push`, `--pull`,
+  `--remote <url>`, `--off`. **`maestro retro --all`** pulls the bus and
+  aggregates the other hosts (never its own, already local) with a
+  `-- por máquina` line. Doctor `check_telemetry`; envelope gains
+  `telemetry.{result,host}`.
+
+### Changed
+- DATA_MODEL integrity rule "nothing leaves the machine" gains its single,
+  explicit exception: the routing log, metadata by construction, to a private
+  repo, opt-in. Records, briefs, evidence and consents stay local.
+
 ## [1.11.2] — 2026-09-01
 
 ### Fixed
