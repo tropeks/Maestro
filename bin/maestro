@@ -1823,7 +1823,38 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     fi
     case "$st" in
       provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
-      aceita)  echo '  encerrada.' ;;
+      aceita)
+        # S-1805: aceite é sobre um CONTEÚDO, não sobre o nome da ordem. O
+        # S-1803 já grava a árvore provada no carimbo; faltava o outro lado —
+        # avisar quando o branch ANDOU depois do aceite. Sem isto a ordem diz
+        # "encerrada" enquanto cobre commits que ninguém aceitou, que é o
+        # mesmo defeito de narrativa que o S-1803/S-1804 fecharam: a máquina
+        # certa e o texto errado. Ordem aceita antes do S-1803 não tem o campo
+        # e mantém o texto antigo.
+        local _at2 _tip2
+        _at2=$(grep -m1 '^accepted_tree: ' "$of" 2>/dev/null | sed 's/^accepted_tree: //')
+        _tip2=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
+        # Comparar hash de árvore é grosso demais: o PRÓPRIO carimbo do aceite
+        # escreve no arquivo da ordem (rastreado), então comitá-lo já muda a
+        # árvore e dispararia o aviso sozinho — a mesma circularidade que o
+        # S-1803 fechou. Olhamos O QUE mudou: bookkeeping da ordem não conta,
+        # qualquer outro caminho conta.
+        local _mudou=""
+        if [[ -n "$_at2" && "$_at2" != "desconhecida" && -n "$_tip2" && "$_at2" != "$_tip2" ]]; then
+          # `|| true`: sob `pipefail`, o `grep -v` que filtra TUDO sai 1 e o
+          # `set -e` abortaria a função em silêncio — a linha "encerrada."
+          # simplesmente sumia da saída.
+          _mudou=$(git -C "$proj" diff --name-only "$_at2" "$_tip2" 2>/dev/null \
+                   | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ') || true
+        fi
+        if [[ -n "$_mudou" ]]; then
+          printf '  ATENÇÃO: o branch andou DEPOIS do aceite — aceito %s, tip %s.\n' "${_at2:0:12}" "${_tip2:0:12}"
+          printf '           mudou fora do bookkeeping: %s\n' "$_mudou"
+          printf '           o que está no branch NÃO foi aceito; reaceite se for o caso.\n'
+        else
+          echo '  encerrada.'
+        fi
+        ;;
       *)       echo '  próximo : executor abre o branch, entrega e prova via ledger' ;;
     esac
     return 0

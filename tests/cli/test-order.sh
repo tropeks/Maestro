@@ -108,6 +108,18 @@ fi
 
 git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "aceite 001"
 
+# S-1805: aceite é sobre CONTEÚDO. Enquanto o branch não anda, "encerrada".
+"$BIN" order --status 1 --project "$P" | grep -q 'encerrada' \
+  && ok "aceita e parada no lugar → encerrada" || bad "encerrada"
+# Commit APÓS o aceite: a ordem passa a cobrir o que ninguém aceitou.
+echo depois-do-aceite >> "$P/src/app.py"
+git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "andou depois do aceite"
+if "$BIN" order --status 1 --project "$P" | grep -q 'o branch andou DEPOIS do aceite'; then
+  ok "branch que anda depois do aceite é DENUNCIADO, não escondido atrás de 'encerrada'"
+else
+  bad "branch andou e a ordem seguiu dizendo encerrada ($("$BIN" order --status 1 --project "$P" | tail -1))"
+fi
+
 echo "-- S-1804: sem recibo, a sugestão de registro sai normalizada"
 P3=$(mktemp -d); git -C "$P3" init -q
 echo z > "$P3/z.txt"; git -C "$P3" add -A; git -C "$P3" -c user.email=t@t -c user.name=t commit -qm base
