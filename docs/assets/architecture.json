@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.11.1 — trilhos determinísticos, IA nas bordas",
+    "title": "Maestro v1.11.2 — trilhos determinísticos, IA nas bordas",
     "subtitle": "Camada de roteamento MoE para Claude Code · pós-E19: o plugin se mantém atualizado sem virar dependência de rede",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "522c17614e50936f3ff84453373864a0a118686c"
+      "revision": "a8ea5ef2d95c269c01c135dd23a7cc6bd72d2e6b"
     },
     "views": [
       {

@@ -8,23 +8,23 @@
   "completeness": "complete",
   "proofLevel": "revision-pinned",
   "base": {
-    "title": "Maestro v1.11.0 — trilhos determinísticos, IA nas bordas",
-    "rawSha256": "9f7fb6271d2d6c08b73607f98409a0cba9b95f9e44df062e898270d182555a95",
-    "semanticSha256": "343bc54e309bbe0fffc25c7b63532c9ac2b3c13f399f8deeca022551154416ab",
-    "bytes": 11416,
-    "revision": "66cafee22698fda602bd77b2573c52eb13f37333"
-  },
-  "head": {
     "title": "Maestro v1.11.1 — trilhos determinísticos, IA nas bordas",
     "rawSha256": "a1ef47b511c68a3ae66086ca0e831ba33b3492cc7536cd150216bc3fe6c884b8",
     "semanticSha256": "daa77e090e4f0c25c3b027f8022b5edcb37afb3c75da49c9fbe74a5a8b3470df",
     "bytes": 11449,
     "revision": "522c17614e50936f3ff84453373864a0a118686c"
   },
+  "head": {
+    "title": "Maestro v1.11.2 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "45ad83a3222fcfbef7b4702671b38e3eb5233273b541da003d9e4c6481652cb4",
+    "semanticSha256": "79f4480d9d038b867c14f5233d02e28fbdf89cb494a003e0e03295c8ef19eb03",
+    "bytes": 11449,
+    "revision": "a8ea5ef2d95c269c01c135dd23a7cc6bd72d2e6b"
+  },
   "summary": {
     "components": {
       "added": 0,
-      "changed": 1,
+      "changed": 0,
       "evidenceChanged": 0,
       "removed": 0,
       "moved": 0
@@ -45,20 +45,7 @@
     "provenanceChanged": true
   },
   "changes": {
-    "components": [
-      {
-        "id": "sstart",
-        "baseLabel": "session-start.sh",
-        "headLabel": "session-start.sh",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/tag"
-        ]
-      }
-    ],
+    "components": [],
     "connections": [],
     "boundaries": []
   },
@@ -75,8 +62,8 @@
     "Boundary identity is conservatively derived from kind + label."
   ],
   "artifact": {
-    "sha256": "0dac5642f88da44a1d3986d6828f2f42fd257e3f26d755452c369dd3a2379e8c",
-    "bytes": 2077778
+    "sha256": "48ed045b1e3576e20fb20286708c8698388112ad3cb4f2acec2507c08fc7cbb3",
+    "bytes": 2077151
   },
   "validation": {
     "checksPassed": 28,
