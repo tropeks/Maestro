@@ -68,6 +68,14 @@ grep -q 'grant 1' <<<"$out" && ok "consentimentos contados" || bad "consentiment
 grep -q 'sem uso na janela' <<<"$out" && ok "workflows declarados sem uso aparecem" || bad "workflows sem uso"
 grep -q 'override em 33% (≥20%)' <<<"$out" \
   && ok "sinal de calibração dispara com override alto" || bad "sinal de calibração"
+# O sinal de promoção depende do gate.mode CORRENTE, não só da janela: propor
+# warn→block com o gate já em block é ruído que nunca cala. As duas fixtures
+# abaixo são a tabela real com o modo trocado — mesmos bindings e workflows, logo
+# a classificação de roteável (e a taxa de override) não muda; só o modo muda.
+RTWARN="$tmp/rt-warn.yaml";  sed 's/^  mode: block/  mode: warn /' "$REPO/config/routing-table.yaml" > "$RTWARN"
+RTBLOCK="$tmp/rt-block.yaml"; sed 's/^  mode: warn/  mode: block/' "$REPO/config/routing-table.yaml" > "$RTBLOCK"
+
+out=$(MAESTRO_ROUTING_TABLE="$RTWARN" "$BIN" retro --days 7)
 grep -q 'promoção warn→block: ainda não' <<<"$out" \
   && ok "promoção NÃO elegível com 3 decisões (piso é 10)" || bad "promoção não elegível"
 
@@ -75,11 +83,18 @@ echo "-- S-1004: promoção elegível só com critério cheio"
 for i in $(seq 5 16); do
   printf '{"ts":"%s","event":"decision","session_id":"p%s","workflow":"fix","mode":"subagent"}\n' "$TS" "$i" >> "$LOG"
 done
-out=$("$BIN" retro --days 14)
+out=$(MAESTRO_ROUTING_TABLE="$RTWARN" "$BIN" retro --days 14)
 grep -q 'PROMOÇÃO ELEGÍVEL' <<<"$out" \
   && ok "≥14d, ≥10 decisões, override <20% → propõe warn→block" || bad "promoção elegível ($out)"
 grep -q 'exige consentimento ou mão humana' <<<"$out" \
   && ok "a proposta lembra que aplicar exige consent" || bad "proposta lembra do consent"
+
+# critério cheio + gate JÁ em block: o sinal se cala em vez de repetir a proposta
+out=$(MAESTRO_ROUTING_TABLE="$RTBLOCK" "$BIN" retro --days 14)
+grep -q 'promoção warn→block: já aplicada (gate.mode: block)' <<<"$out" \
+  && ok "gate já em block → sinal se cala (não repete a proposta)" || bad "promoção já aplicada ($out)"
+grep -q 'PROMOÇÃO ELEGÍVEL' <<<"$out" \
+  && bad "gate em block ainda propõe promoção ($out)" || ok "gate em block não propõe promoção"
 
 echo "-- honestidade com log vazio"
 rm -f "$LOG"

@@ -2472,7 +2472,18 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   printf -- '-- evidência: %s recibo(s) no ledger, %s de exit 0\n' "$n_ev" "$n_ev_ok"
   printf -- '-- sinais:\n' 
   (( rate >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$rate"
-  if (( days >= 14 && ndec >= 10 && rate < 20 )); then
+  # O critério de janela sozinho não sabe se a promoção JÁ aconteceu: com o gate
+  # em block ele seguia imprimindo "proponha warn→block" em toda ronda. Ler o
+  # modo corrente da MESMA tabela que o retro já resolveu em $rt fecha o laço —
+  # sinal de calibração que não se cala vira ruído e perde credibilidade.
+  local gmode
+  gmode=$(awk '/^gate:/ { g = 1; next }
+               g && /^[a-zA-Z]/ { g = 0 }
+               g && /^  mode:/ { sub(/^  mode:[ \t]*/, ""); sub(/[ \t]*#.*/, ""); print; exit }' \
+               "$rt" 2>/dev/null)
+  if [[ "$gmode" == "block" ]]; then
+    printf '   promoção warn→block: já aplicada (gate.mode: block)\n'
+  elif (( days >= 14 && ndec >= 10 && rate < 20 )); then
     printf '   PROMOÇÃO ELEGÍVEL: %sd de janela, %s decisões, override %s%% (<20%%) — proponha gate.mode warn→block (diff na routing-table; exige consentimento ou mão humana)\n' \
       "$days" "$ndec" "$rate"
   else
