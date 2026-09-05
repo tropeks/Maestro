@@ -8,30 +8,30 @@
   "completeness": "complete",
   "proofLevel": "revision-pinned",
   "base": {
-    "title": "Maestro v1.12.1 — trilhos determinísticos, IA nas bordas",
-    "rawSha256": "928fda733d142292cc47d984366ea1abed608da4802bb8aabe28f692da16805f",
-    "semanticSha256": "ba1c7692f70588cb865fd8abf7fb8a9f3f11c9974fa726e1f03655cfe3803333",
-    "bytes": 11469,
-    "revision": "181e65386ff627edffac27984296eba797620e86"
-  },
-  "head": {
     "title": "Maestro v1.14.0 — trilhos determinísticos, IA nas bordas",
     "rawSha256": "2db6ded4077bf443dbe12ffb28794b7bc78885fd5daec862f564100b2c6f70a2",
     "semanticSha256": "c0eb416d42b9c72fe16062c00ac671426d79f85f98e1a6b8db7778825ac8bbe5",
     "bytes": 11979,
     "revision": "3bd565081c32a60e25937cb41b4e426f5d67321f"
   },
+  "head": {
+    "title": "Maestro v1.14.1 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "b10959a1a7fa5118c3f3103ae2bb27e2a72de66ab4a07afb7122c37b4e12806c",
+    "semanticSha256": "e3b19e2084e0ca7fa1ff292070930d6387c29e60f686d5e3af8c1be435470e00",
+    "bytes": 11979,
+    "revision": "03db7841c0cef7774bf230ab150b5b4dda3235c4"
+  },
   "summary": {
     "components": {
       "added": 0,
-      "changed": 8,
+      "changed": 0,
       "evidenceChanged": 0,
       "removed": 0,
       "moved": 0
     },
     "connections": {
       "added": 0,
-      "changed": 1,
+      "changed": 0,
       "removed": 0,
       "rerouted": 0
     },
@@ -45,130 +45,8 @@
     "provenanceChanged": true
   },
   "changes": {
-    "components": [
-      {
-        "id": "binm",
-        "baseLabel": "bin/maestro",
-        "headLabel": "bin/maestro",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/sublabel",
-          "/tag"
-        ]
-      },
-      {
-        "id": "cli",
-        "baseLabel": "src/cli.ts",
-        "headLabel": "src/cli.ts",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/tag"
-        ]
-      },
-      {
-        "id": "docs",
-        "baseLabel": "Docs canônicos",
-        "headLabel": "Docs canônicos",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/tag"
-        ]
-      },
-      {
-        "id": "ledger",
-        "baseLabel": "Ledger + logs",
-        "headLabel": "Ledger + logs",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/tag"
-        ]
-      },
-      {
-        "id": "origin",
-        "baseLabel": "origin/main",
-        "headLabel": "origin · stable",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/label",
-          "/sublabel"
-        ]
-      },
-      {
-        "id": "record",
-        "baseLabel": "Decision record",
-        "headLabel": "Decision record",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/tag"
-        ]
-      },
-      {
-        "id": "sstart",
-        "baseLabel": "session-start.sh",
-        "headLabel": "session-start.sh",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/sublabel",
-          "/tag"
-        ]
-      },
-      {
-        "id": "update",
-        "baseLabel": "update-check.sh",
-        "headLabel": "update-check.sh",
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/sublabel",
-          "/tag"
-        ]
-      }
-    ],
-    "connections": [
-      {
-        "id": "fetch",
-        "base": {
-          "from": "update",
-          "to": "origin",
-          "label": "fetch · ff-only"
-        },
-        "head": {
-          "from": "update",
-          "to": "origin",
-          "label": "fetch · ff → stable"
-        },
-        "status": "changed",
-        "classifications": [
-          "semantic"
-        ],
-        "changedFields": [
-          "/label"
-        ]
-      }
-    ],
+    "components": [],
+    "connections": [],
     "boundaries": []
   },
   "identity": {
@@ -184,8 +62,8 @@
     "Boundary identity is conservatively derived from kind + label."
   ],
   "artifact": {
-    "sha256": "a85748ed95c16886d1f3e3805ff934047293d0961cd1cd5df30d6e1a9a4bc395",
-    "bytes": 2087072
+    "sha256": "aeb7cc0375d74d4717bf105ef3aff90907adb13e4dffda66edf69a0e15af573d",
+    "bytes": 2078979
   },
   "validation": {
     "checksPassed": 28,
