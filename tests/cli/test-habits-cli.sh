@@ -194,6 +194,50 @@ out=$("$BIN" habits --project "$PROJ" "$PROJ/base.py"); rc=$?
 chk "escopo por caminho IGNORA baseline (régua é do repo inteiro)" "$rc" "0"
 rm -f "$PROJ/.maestro-habits.tsv"
 
+echo "-- E23d: habits_ignore (prefixos fora do --all)"
+# Árvore que existe para ser feia (payload de terceiro, golden gerado) não é
+# dívida de ninguém — mas o filtro é do PROJETO, declarado e visível, nunca
+# supressão inline. Projeto próprio: o filtro se prova num repo sem outra
+# dívida, senão o exit code mede o resto da fixture.
+IGN="$tmp/ign"; mkdir -p "$IGN/fixtures/api"
+git -C "$IGN" init -q
+printf 'x = 1\n' > "$IGN/vivo.py"
+cat > "$IGN/fixtures/api/payload.py" <<'FX'
+def make(a, b, c, d, e, f, g):
+    pass
+FX
+git -C "$IGN" add -A; git -C "$IGN" -c user.email=t@t -c user.name=t commit -qm fx
+out=$("$BIN" habits --all --project "$IGN"); rc=$?
+chk "sem habits_ignore, a fixture entra no --all" "$rc" "1"
+grep -q 'fixtures/api/payload.py' <<<"$out" && ok "achado nomeia o arquivo da fixture" \
+                                            || bad "achado nomeia o arquivo da fixture ($out)"
+printf 'version: 1\nhabits_ignore: [fixtures/]\n' > "$IGN/.maestro.yaml"
+out=$("$BIN" habits --all --project "$IGN"); rc=$?
+chk "habits_ignore: [fixtures/] tira o prefixo do --all" "$rc" "0"
+grep -q 'habits_ignore: 1 arquivo' <<<"$out" && ok "o que saiu do escopo é DITO, não escondido" \
+                                             || bad "o que saiu do escopo é dito ($out)"
+printf 'version: 1\nhabits_ignore: fixtures/ outra/\n' > "$IGN/.maestro.yaml"
+out=$("$BIN" habits --all --project "$IGN"); rc=$?
+chk "lista separada por espaço vale igual ao flow" "$rc" "0"
+printf 'version: 1\nhabits_ignore: [outra/]\n' > "$IGN/.maestro.yaml"
+out=$("$BIN" habits --all --project "$IGN"); rc=$?
+chk "prefixo que não casa não esconde nada" "$rc" "1"
+printf 'version: 1\nhabits_ignore: [fixtures/]\n' > "$IGN/.maestro.yaml"
+out=$("$BIN" habits --project "$IGN" "$IGN/fixtures/api/payload.py"); rc=$?
+chk "caminho pedido por nome é sensoriado mesmo assim" "$rc" "1"
+rm -f "$IGN/.maestro.yaml"
+out=$("$BIN" habits --all --project "$IGN"); rc=$?
+chk "sem a chave, default é vazio (nada ignorado)" "$rc" "1"
+
+echo "-- E23d: a baseline do PRÓPRIO repo passa (é o passo da CI)"
+# `./bin/maestro habits --all --project "$PWD"` é literalmente o step do
+# .github/workflows/ci.yml. Se a baseline ficar atrás do repo, a CI cai — e o
+# lugar de descobrir isso é aqui, não no PR de outra pessoa.
+out=$("$BIN" habits --all --project "$REPO" 2>&1); rc=$?
+chk "maestro habits --all no repo do Maestro → exit 0" "$rc" "0"
+grep -q 'dentro da catraca' <<<"$out" && ok "veredito é 'dentro da catraca'" \
+                                      || bad "veredito é 'dentro da catraca' ($(tail -3 <<<"$out"))"
+
 echo "-- S-904: /maestro:deslop registrado no plugin"
 CMD="$REPO/commands/deslop.md"
 [[ -f "$CMD" ]] && ok "commands/deslop.md existe" || bad "commands/deslop.md existe"

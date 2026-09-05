@@ -2509,6 +2509,16 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
   # o step de review e para CI opcional. Sensor único (hooks/lib/
   # habit-sensors.awk), dois momentos — divergência entre eles seria dois
   # vocabulários de smell. Exit: 0 limpo · 1 achados · 2 ambiente.
+  #
+  # E23d — `habits_ignore:` no .maestro.yaml (DATA_MODEL §perfil): lista de
+  # PREFIXOS de caminho, relativos à raiz do projeto, em flow (`[a/, b/]`) ou
+  # separados por espaço; default VAZIO (nada é ignorado). Vale só no escopo
+  # `--all` (e portanto no `--baseline`, que é o mesmo escopo): a régua e a
+  # leitura da régua têm de ver o mesmo conjunto de arquivos, senão a catraca
+  # mede uma coisa e cobra outra. Caminho explícito continua sendo sensoriado
+  # mesmo se casar o prefixo — pedir por nome é decisão de quem pede.
+  # Serve para árvore de fixture/golden que existe para ser feia (payload
+  # gerado, snapshot de terceiros); NÃO serve para calar smell de código vivo.
   local scope="diff" paths=() proj="${CLAUDE_PROJECT_DIR:-$PWD}" write_baseline=0
   while (( $# )); do
     case "$1" in
@@ -2539,6 +2549,21 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
   fi
   [[ -n "$enabled" ]] || { echo "habits: desligado neste projeto (habits: [])"; return 0; }
 
+  # E23d — `habits_ignore:`: prefixos fora do --all. Flow (`[a/, b/]`) ou
+  # espaço; entrada que não pareça caminho é descartada em silêncio (perfil de
+  # projeto é dado do usuário, não contrato).
+  local ignore_pfx=() iline="" ip
+  if [[ -f "$proj/.maestro.yaml" && -r "$proj/.maestro.yaml" ]]; then
+    iline=$(awk '/^habits_ignore:/ { sub(/^habits_ignore:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
+      "$proj/.maestro.yaml" 2>/dev/null) || iline=""
+    if [[ -n "$iline" ]]; then
+      # shellcheck disable=SC2086  # split deliberado: a lista é de prefixos
+      for ip in $(printf '%s' "$iline" | tr -d "[]\",'" ); do
+        [[ "$ip" =~ ^[A-Za-z0-9._/-]{1,120}$ ]] && ignore_pfx+=("$ip")
+      done
+    fi
+  fi
+
   local files=()
   if [[ "$scope" == "paths" ]]; then
     files=("${paths[@]}")
@@ -2559,11 +2584,18 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
     fi
   fi
 
-  local total=0 shown ext base is_test out smells=''
+  local total=0 shown ext base is_test out smells='' rel skipf ignored=0
   declare -A count=()
   for f in "${files[@]}"; do
     [[ -f "$f" && -r "$f" ]] || continue
     case "$f" in */vendor/*|*/node_modules/*|*/.git/*) continue ;; esac
+    if [[ "$scope" == "all" ]] && (( ${#ignore_pfx[@]} > 0 )); then
+      rel="${f#"$proj"/}"; skipf=0
+      for ip in "${ignore_pfx[@]}"; do
+        [[ "$rel" == "$ip"* ]] && { skipf=1; break; }
+      done
+      (( skipf == 1 )) && { ignored=$(( ignored + 1 )); continue; }
+    fi
     base="${f##*/}"; ext="${base##*.}"
     [[ "$ext" != "$base" ]] || continue
     case "$ext" in
@@ -2593,6 +2625,9 @@ cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
       case " $smells " in *" $smell "*) ;; *) smells+="${smells:+ }$smell" ;; esac
     done <<<"$out"
   done
+
+  # Filtro que esconde em silêncio é armadilha: o que saiu do escopo é dito.
+  (( ignored > 0 )) && printf 'habits_ignore: %s arquivo(s) fora do escopo (.maestro.yaml)\n' "$ignored"
 
   # ---- S-905: a catraca ----------------------------------------------------
   # Baseline = contagem POR SMELL, versionada no projeto (.maestro-habits.tsv).
