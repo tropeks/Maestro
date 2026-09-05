@@ -18,8 +18,16 @@ chk() { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1 (esperado '$3', obtido
 command -v jq >/dev/null || { echo "FAIL jq ausente"; exit 1; }
 command -v bun >/dev/null || { echo "FAIL bun ausente (decide precisa)"; exit 1; }
 
+# E23a/S-2301 — `accepted` em mode subagent|multi exige prova de delegação no
+# log. A prova sai do hook de verdade (integração, não fixture escrita à mão).
+emit_started() { # emit_started <session_id> [agente]
+  printf '{"session_id":"%s","tool_name":"Task","tool_input":{"subagent_type":"%s"}}' \
+    "$1" "${2:-dev-pleno}" | "$REPO/hooks/pre-agent.sh" >/dev/null 2>&1 || true
+}
+
 echo "-- outcome fecha uma decisão existente"
 "$BIN" decide --session out-1 --workflow fix --mode subagent --agents dev-pleno >/dev/null 2>&1
+emit_started out-1
 "$BIN" outcome --session out-1 accepted --suite pass >/dev/null; rc=$?
 chk "outcome sobre record existente → exit 0" "$rc" "0"
 REC="$MAESTRO_HOME/sessions/out-1.json"
@@ -39,6 +47,87 @@ chk "--suite fora do enum → exit 1" "$rc" "1"
 
 LOG="$MAESTRO_HOME/logs/routing.jsonl"
 grep -q '"event":"outcome".*"outcome":"accepted"' "$LOG" && ok "outcome no log (enum)" || bad "outcome no log"
+
+# ---------------------------------------------------------------------------
+echo "-- E23a/S-2301: aceitar trabalho delegado exige prova de delegação"
+# ---------------------------------------------------------------------------
+chk "record com prova ganha delegation_proof=started" \
+    "$(jq -r '.delegation_proof // "AUSENTE"' "$REC")" "started"
+
+"$BIN" decide --session del-a --workflow fix --mode subagent --agents dev-pleno >/dev/null 2>&1
+out=$("$BIN" outcome --session del-a accepted 2>&1); rc=$?
+chk "subagent sem 'delegation phase=started' → accepted recusado (exit 1)" "$rc" "1"
+grep -q 'prova de delegação' <<<"$out" && ok "recusa explica que falta prova" || bad "recusa sem explicação ($out)"
+grep -q 'maestro delegation --session del-a' <<<"$out" \
+  && ok "recusa cita o comando que mostra o funil" || bad "recusa não cita maestro delegation"
+grep -q -- '--unproven' <<<"$out" && ok "recusa cita a válvula honesta" || bad "recusa não cita --unproven"
+chk "record recusado NÃO recebe outcome" "$(jq -r '.outcome // "AUSENTE"' "$MAESTRO_HOME/sessions/del-a.json")" "AUSENTE"
+
+out=$("$BIN" outcome --session del-a accepted --unproven 2>&1); rc=$?
+chk "--unproven passa (exit 0)" "$rc" "0"
+chk "--unproven grava delegation_proof=none" \
+    "$(jq -r '.delegation_proof' "$MAESTRO_HOME/sessions/del-a.json")" "none"
+grep -q 'SEM prova de delegação' <<<"$out" && ok "--unproven avisa o que foi assumido" || bad "--unproven silencioso ($out)"
+
+"$BIN" decide --session del-b --workflow fix --mode multi --agents dev-pleno,revisor >/dev/null 2>&1
+"$BIN" outcome --session del-b accepted >/dev/null 2>&1; rc=$?
+chk "multi sem prova também é recusado" "$rc" "1"
+emit_started del-b revisor
+"$BIN" outcome --session del-b accepted >/dev/null 2>&1; rc=$?
+chk "multi com started → aceito" "$rc" "0"
+chk "multi com started grava delegation_proof=started" \
+    "$(jq -r '.delegation_proof' "$MAESTRO_HOME/sessions/del-b.json")" "started"
+
+"$BIN" decide --session del-c --workflow fix --mode direct >/dev/null 2>&1
+"$BIN" outcome --session del-c accepted >/dev/null 2>&1; rc=$?
+chk "direct não exige prova (exit 0)" "$rc" "0"
+chk "direct NÃO grava delegation_proof" \
+    "$(jq -r 'has("delegation_proof")' "$MAESTRO_HOME/sessions/del-c.json")" "false"
+
+"$BIN" decide --session del-d --workflow fix --mode subagent --agents dev-pleno >/dev/null 2>&1
+"$BIN" outcome --session del-d rework >/dev/null 2>&1; rc=$?
+chk "rework/reverted não passam pelo gate (só accepted)" "$rc" "0"
+chk "rework não grava delegation_proof" \
+    "$(jq -r 'has("delegation_proof")' "$MAESTRO_HOME/sessions/del-d.json")" "false"
+
+echo "-- maestro delegation: o funil"
+out=$("$BIN" delegation --session del-b); rc=$?
+chk "delegation --session → exit 0" "$rc" "0"
+grep -qE 'planned *: *1' <<<"$out" && ok "conta planned (decide --agents)" || bad "planned ($out)"
+grep -qE 'started *: *1' <<<"$out" && ok "conta started (hook pre-agent)" || bad "started ($out)"
+grep -qE 'received *: *0' <<<"$out" && ok "conta received" || bad "received ($out)"
+grep -qE 'accepted *: *0' <<<"$out" && ok "conta accepted" || bad "accepted ($out)"
+printf '{"session_id":"del-b","hook_event_name":"SubagentStop","agent_type":"revisor"}' \
+  | "$REPO/hooks/subagent-stop.sh" >/dev/null 2>&1
+out=$("$BIN" delegation --session del-b)
+grep -qE 'received *: *1' <<<"$out" && ok "subagent-stop entra no funil" || bad "received após stop ($out)"
+grep -q 'delegação provada' <<<"$out" && ok "veredito: delegação provada" || bad "veredito provada ($out)"
+out=$("$BIN" delegation --session del-a)
+grep -q 'planejada e NÃO disparada' <<<"$out" \
+  && ok "veredito: planejada sem disparo" || bad "veredito planned-sem-started ($out)"
+out=$("$BIN" delegation --session sessao-sem-nada)
+grep -q 'sem delegação registrada' <<<"$out" && ok "sessão sem funil é dita, não inventada" || bad "sessão vazia ($out)"
+out=$("$BIN" delegation --all); rc=$?
+chk "delegation --all → exit 0" "$rc" "0"
+grep -q 'del-b' <<<"$out" && ok "--all lista as sessões vistas" || bad "--all sem del-b ($out)"
+grep -qE 'del-b +1 +1 +1 +0' <<<"$out" && ok "--all agrega por sessão" || bad "--all agregação ($out)"
+"$BIN" delegation --session del-b --flag-que-nao-existe >/dev/null 2>&1; rc=$?
+chk "flag desconhecida → exit 1" "$rc" "1"
+"$BIN" delegation >/dev/null 2>&1; rc=$?
+chk "sem --session nem --all → exit 1" "$rc" "1"
+# O funil também lê os rotacionados (DATA_MODEL §4): sessão longa que cruzou uma
+# rotação não pode perder a prova que já tinha.
+ROT="$MAESTRO_HOME/logs/routing-2026-01.jsonl"
+printf '{"ts":"2026-01-02T10:00:00-03:00","event":"delegation","phase":"started","session_id":"del-rot"}\n' > "$ROT"
+"$BIN" decide --session del-rot --workflow fix --mode subagent --agents dev-pleno >/dev/null 2>&1
+"$BIN" outcome --session del-rot accepted >/dev/null 2>&1; rc=$?
+chk "prova em log rotacionado vale (accepted exit 0)" "$rc" "0"
+out=$("$BIN" delegation --session del-rot)
+grep -qE 'started *: *1' <<<"$out" && ok "delegation conta o rotacionado" || bad "rotacionado ($out)"
+rm -f "$ROT"
+
+if grep -q '"event":"delegation"' "$LOG"; then ok "eventos de delegação no log"; else bad "eventos de delegação no log"; fi
+if grep -q '"/' "$LOG"; then bad "log sem caminho"; else ok "log sem caminho de arquivo"; fi
 
 echo "-- retro agrega a janela"
 # fixture: log sintético controlado (hoje, dentro de qualquer janela)

@@ -74,6 +74,12 @@ maestro <comando>
                   TTL 1min–4h — dados na denylist ou infra no guarda; nunca hooks/bin/src,
                   nunca destruição de dados (ops não cobre rm -rf/force push/DROP)
   outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
+                  accepted em mode subagent|multi EXIGE prova de delegação (E23a): ≥1
+                  `delegation phase=started` da sessão no log — `--unproven` passa e
+                  carimba `delegation_proof: none` no record
+  delegation      funil da delegação (E23a): planned (decide --agents) → started (hook
+                  pre-agent) → received (hook subagent-stop) → accepted (order --accept)
+                  --session <id> conta a sessão · --all agrega as últimas 20 sessões
   conduct         regência (E17): muta o decision record existente — --flag
                   "sev|decisao|tradeoff|mitigacao" (repetível, acumula em .flags) e/ou
                   --approach "texto" (fecha o approach: pendente do brief); pelo menos um
@@ -1921,6 +1927,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
         "$(date -Iseconds)" "${sid:-desconhecido}" "$_ptree2" >> "$of"
       log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
+      log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
       printf 'ordem %s REACEITA — o branch andou depois do aceite anterior (%s), e o conteúdo de agora tem prova própria\n' "$oid" "${_mv% }"
       return 0
     fi
@@ -1942,6 +1949,9 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
       "$(date -Iseconds)" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
     log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
+    # E23a/S-2301: última fase do funil — o aceite do diretor é o que fecha
+    # planned → started → received → accepted para esta ordem.
+    log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
     printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
     return 0
   fi
@@ -2177,14 +2187,15 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   # pagou: accepted | rework | reverted (+ suite pass|fail). Sem desfecho não
   # há aprendizado — é ele que o retro cruza com mode/agents para dizer qual
   # tier funciona. Enums no log, jamais texto.
-  local sid="" verdict="" suite=""
+  local sid="" verdict="" suite="" unproven=0
   while (( $# )); do
     case "$1" in
-      --session) sid="${2:-}"; shift ;;
-      --suite)   suite="${2:-}"; shift ;;
+      --session)  sid="${2:-}"; shift ;;
+      --suite)    suite="${2:-}"; shift ;;
+      --unproven) unproven=1 ;;
       accepted|rework|reverted) verdict="$1" ;;
       *) die validation "argumento desconhecido '$1'" \
-           "maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]" 1 ;;
+           "maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail] [--unproven]" 1 ;;
     esac
     shift
   done
@@ -2200,6 +2211,32 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
     "o desfecho fecha uma decisão existente (maestro decide primeiro)" 1
   local tmp="$rec.tmp.$$"
+
+  # E23a/S-2301 — aceitar trabalho DELEGADO exige prova de que a delegação
+  # aconteceu. `mode: subagent|multi` é declaração de intenção do decide; o que
+  # prova o disparo é o `delegation phase=started` que o hook pre-agent.sh emite
+  # ao ver o Task/Agent de verdade. Sem essa linha, "delegou" é palavra — e o
+  # retro passaria a creditar ao tier de agente um resultado que o próprio
+  # diretor executou. `--unproven` é a válvula honesta: passa, mas carimba
+  # `delegation_proof: none` no record para o retro saber o que não foi provado.
+  local proof=""
+  if [[ "$verdict" == "accepted" ]]; then
+    local rmode=""
+    rmode=$(jq -r '.mode // ""' "$rec" 2>/dev/null) || rmode=""
+    if [[ "$rmode" == "subagent" || "$rmode" == "multi" ]]; then
+      local nstarted; nstarted=$(_delegation_n "$sid" started)
+      if [[ "$nstarted" -gt 0 ]]; then
+        proof="started"
+      elif (( unproven == 1 )); then
+        proof="none"
+      else
+        die validation \
+          "sessão $sid decidiu mode=$rmode e não há prova de delegação no log (nenhum 'delegation phase=started')" \
+          "veja o funil com 'maestro delegation --session $sid'; delegue de fato, ou aceite assumindo o custo: maestro outcome --session $sid accepted --unproven" 1
+      fi
+    fi
+  fi
+
   # E13/S-1302: --suite deixa de ser palavra de honra — consulta o ledger.
   local ev="none"
   if [[ -n "$suite" ]]; then
@@ -2207,12 +2244,17 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
       ev="cited"
     fi
   fi
-  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg ts "$(date -Iseconds)" \
+  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg dp "$proof" --arg ts "$(date -Iseconds)" \
        '.outcome = $o | .outcome_ts = $ts
-        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)' \
+        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
+        | (if $dp != "" then .delegation_proof = $dp else . end)' \
        "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+    case "$proof" in
+      started) echo "delegação PROVADA no log (delegation phase=started nesta sessão)" ;;
+      none)    echo "aviso: aceito SEM prova de delegação (--unproven) — record carimbado com delegation_proof: none" ;;
+    esac
     if [[ "$suite" == "pass" ]]; then
       if [[ "$ev" == "cited" ]]; then
         echo "suíte pass CITANDO evidência válida do ledger (mecânico, não honra)"
@@ -2223,6 +2265,115 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   else
     rm -f "$tmp" 2>/dev/null
     die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------ delegation (E23a)
+
+# Os logs que valem para o funil: o corrente e os rotacionados do mês
+# (DATA_MODEL §4). Publica em DELEG_FILES para não pagar um subshell por consulta.
+DELEG_FILES=()
+_delegation_files() {
+  DELEG_FILES=()
+  local f
+  shopt -s nullglob
+  for f in "$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl; do
+    [[ -f "$f" ]] && DELEG_FILES+=("$f")
+  done
+  shopt -u nullglob
+  return 0
+}
+
+_delegation_n() { # _delegation_n <session_id> <fase> → contagem no log
+  local sid="$1" ph="$2" n=""
+  _delegation_files
+  if [[ ${#DELEG_FILES[@]} -gt 0 ]]; then
+    # `index` em vez de regex: os dois emissores (log_event do common.sh e o
+    # JSON.stringify do cli.ts) escrevem JSON compacto, e o sid já vem tipado
+    # pelo chamador — casamento literal é exato e não interpreta o valor.
+    n=$(awk -v sid="$sid" -v ph="$ph" '
+      index($0, "\"event\":\"delegation\"") == 0 { next }
+      index($0, "\"session_id\":\"" sid "\"") == 0 { next }
+      index($0, "\"phase\":\"" ph "\"") > 0 { n++ }
+      END { print n + 0 }
+    ' "${DELEG_FILES[@]}" 2>/dev/null) || n=""
+  fi
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  printf '%s\n' "$n"
+  return 0
+}
+
+cmd_delegation() { # E23a/S-2301: o funil da delegação, contado no log
+  # decide --agents diz que VAI delegar (planned); o hook pre-agent.sh diz que
+  # delegou (started); o subagent-stop.sh diz que colheu (received); o
+  # order --accept diz que o diretor aceitou (accepted). O buraco entre uma fase
+  # e a seguinte é o diagnóstico: planned sem started é aposta que não saiu do
+  # papel; started sem received é subagente que morreu no meio.
+  local sid="" all=0
+  while (( $# )); do
+    case "$1" in
+      --session) sid="${2:-}"; shift ;;
+      --all)     all=1 ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro delegation --session <id> | --all" 1 ;;
+    esac
+    shift
+  done
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+
+  if (( all == 1 )); then
+    _delegation_files
+    if [[ ${#DELEG_FILES[@]} -eq 0 ]]; then
+      echo "delegação: nenhum log em $MAESTRO_LOG_DIR"
+      return 0
+    fi
+    printf 'delegação — últimas sessões (planned → started → received → accepted)\n'
+    printf '  %-28s %7s %7s %8s %8s\n' "sessão" "planned" "started" "received" "accepted"
+    awk '
+      index($0, "\"event\":\"delegation\"") == 0 { next }
+      {
+        sid = ""; ph = ""
+        if (match($0, /"session_id":"[A-Za-z0-9_-]+"/)) sid = substr($0, RSTART + 14, RLENGTH - 15)
+        if (match($0, /"phase":"[a-z]+"/))              ph  = substr($0, RSTART + 9,  RLENGTH - 10)
+        if (sid == "" || ph == "") next
+        if (!(sid in seen)) { seen[sid] = ++n; order[n] = sid }
+        c[sid, ph]++
+      }
+      END {
+        if (n == 0) { print "  (nenhuma delegação registrada)"; exit }
+        start = (n > 20) ? n - 19 : 1
+        for (i = start; i <= n; i++) {
+          s = order[i]
+          printf "  %-28s %7d %7d %8d %8d\n", s, c[s,"planned"] + 0, c[s,"started"] + 0, \
+                 c[s,"received"] + 0, c[s,"accepted"] + 0
+        }
+      }
+    ' "${DELEG_FILES[@]}"
+    return 0
+  fi
+
+  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+    "maestro delegation --session <id> | --all" 1
+  local pl st rc ac
+  pl=$(_delegation_n "$sid" planned)
+  st=$(_delegation_n "$sid" started)
+  rc=$(_delegation_n "$sid" received)
+  ac=$(_delegation_n "$sid" accepted)
+  printf 'delegação — sessão %s\n' "$sid"
+  printf '  planned : %s   (maestro decide --agents)\n'   "$pl"
+  printf '  started : %s   (hook pre-agent — Task/Agent)\n' "$st"
+  printf '  received: %s   (hook subagent-stop)\n'        "$rc"
+  printf '  accepted: %s   (maestro order --accept)\n'    "$ac"
+  if (( pl == 0 && st == 0 && rc == 0 && ac == 0 )); then
+    echo '  sem delegação registrada nesta sessão (mode direct não passa por aqui)'
+  elif (( st == 0 )); then
+    echo '  ATENÇÃO: planejada e NÃO disparada — nenhum subagente saiu do papel nesta sessão'
+  elif (( rc == 0 )); then
+    echo '  ATENÇÃO: disparada sem retorno registrado — subagente ainda em voo ou morto no meio'
+  else
+    echo '  delegação provada: disparo e retorno no log'
   fi
   return 0
 }

@@ -60,12 +60,25 @@ chk "expires_at = ts + 4h (14400s)" "$((ex_e - ts_e))" "14400"
 echo "-- decide: linha decision no JSONL"
 LOG="$MAESTRO_HOME/logs/routing.jsonl"
 [[ -f "$LOG" ]] && ok "routing.jsonl criado" || bad "routing.jsonl criado"
-chk "1 linha no log" "$(wc -l < "$LOG")" "1"
-jq -e . "$LOG" >/dev/null 2>&1 && ok "linha do log é JSON válido" || bad "linha do log é JSON válido"
-chk "event=decision"          "$(jq -r .event "$LOG")" "decision"
-chk "log: session_id"         "$(jq -r .session_id "$LOG")" "sess-A"
-chk "log: agents como array"  "$(jq -r '.agents|type' "$LOG")" "array"
-chk "log NÃO contém reason (sem texto de prompt)" "$(jq -r 'has("reason")' "$LOG")" "false"
+# E23a/S-2301: decide com `agents` emite DUAS linhas — `decision` (a aposta) e
+# `delegation phase=planned` (a primeira fase do funil que o hook pre-agent.sh
+# fecha com `started`).
+chk "2 linhas no log (decision + delegation planned)" "$(wc -l < "$LOG")" "2"
+DEC=$(head -1 "$LOG")
+jq -e . <<<"$DEC" >/dev/null 2>&1 && ok "linha do log é JSON válido" || bad "linha do log é JSON válido"
+chk "event=decision"          "$(jq -r .event <<<"$DEC")" "decision"
+chk "log: session_id"         "$(jq -r .session_id <<<"$DEC")" "sess-A"
+chk "log: agents como array"  "$(jq -r '.agents|type' <<<"$DEC")" "array"
+chk "log NÃO contém reason (sem texto de prompt)" "$(jq -r 'has("reason")' <<<"$DEC")" "false"
+
+echo "-- decide: linha delegation phase=planned (E23a/S-2301)"
+PLAN=$(sed -n '2p' "$LOG")
+chk "event=delegation"        "$(jq -r .event <<<"$PLAN")" "delegation"
+chk "phase=planned"           "$(jq -r .phase <<<"$PLAN")" "planned"
+chk "planned: session_id"     "$(jq -r .session_id <<<"$PLAN")" "sess-A"
+chk "planned: agents como array" "$(jq -r '.agents|type' <<<"$PLAN")" "array"
+chk "planned: agente declarado"  "$(jq -r '.agents[0]' <<<"$PLAN")" "golang-pro"
+chk "planned NÃO carrega reason" "$(jq -r 'has("reason")' <<<"$PLAN")" "false"
 if grep -q '"/' "$LOG"; then bad "log sem caminho de arquivo"; else ok "log sem caminho de arquivo"; fi
 # E3: com agents/*.md instalado, o decide acima já validou 'golang-pro' contra o
 # roster real. O que esta asserção provava — instalação SEM roster avisa em vez
@@ -94,7 +107,11 @@ chk "record de mode=direct não tem agents" "$(jq -r 'has("agents")' "$REC")" "f
 chk "record de mode=direct sem reason quando não informado" "$(jq -r 'has("reason")' "$REC")" "false"
 chk "campos de mode=direct" "$(jq -c 'keys_unsorted' "$REC")" \
     '["session_id","ts","expires_at","workflow","mode"]'
-chk "log é append-only (2 linhas após 2 decisões)" "$(wc -l < "$LOG")" "2"
+# A segunda decisão é mode=direct (sem agents): só `decision`, sem `delegation`
+# — o funil não existe para trabalho que o diretor faz com as próprias mãos.
+chk "log é append-only (3 linhas: decision+planned, depois decision)" "$(wc -l < "$LOG")" "3"
+chk "decide sem agents não emite delegation" \
+    "$(jq -r 'select(.event=="delegation")|.phase' "$LOG" | wc -l | tr -d ' ')" "1"
 chk_grep "saída avisa que a decisão foi atualizada" "$OUT" 'decisão atualizada'
 
 # ---------------------------------------------------------------------------
