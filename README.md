@@ -139,9 +139,11 @@ be backed:
   `maestro outcome accepted` refuses a subagent/multi session with no `started`.
 - **Receipts match the declared command.** `.maestro.yaml` declares
   `verifications` (area → paths → labels) and `commands` (label → canonical
-  command). `maestro verify` lists what the change requires; `order --accept`
-  and `outcome accepted` refuse without valid receipts for every touched area.
-  `maestro evidence --record -- true` no longer proves anything.
+  command). `maestro verify` lists what the change requires (`--check` exits 1
+  when proof is missing); `order --accept` and `outcome accepted` refuse without
+  valid receipts for every touched area. A receipt now records whether it ran the
+  declared command, so `maestro evidence --record -- true` no longer proves
+  anything. A project that declares no `verifications` owes nothing.
 - **Updates follow a CI-approved tag.** CI moves the `stable` tag only after a
   green suite on a `v*` tag, and the auto-update fast-forwards to `stable`,
   never to `origin/main` (`update_channel: main` keeps the old path).
@@ -228,15 +230,18 @@ Maestro keeps itself current. The plugin runs straight from the clone, so every
 session start does a `git fetch` (5s timeout, at most once a day, silent on failure)
 and fast-forwards to the `stable` tag — moved by CI only after a green suite on a
 `v*` tag — when that is strictly safe: clean tree, no local commits ahead, on `main`.
-`update_channel: main` follows `origin/main` instead. The session is then born on the new version — the new hook
-re-executes itself. A development machine (dirty tree or unpushed commits) is never
-overwritten; the session just gets a one-line "push, don't pull" notice.
+`update_channel: main` follows `origin/main` instead. The session is then born on the new
+version — the new hook re-executes itself. A development machine (dirty tree or unpushed
+commits) is never overwritten; the session just gets a one-line "push, don't pull" notice.
+While the remote has no `stable` tag yet, the state is `no-stable`: nothing is applied,
+nothing is announced, and that is the intended fail-safe — a broken approval channel
+leaves the machine on the version it already proved.
 
 ```bash
 maestro upgrade                     # fetch + fast-forward now, show the CHANGELOG delta, run doctor
 maestro upgrade --check             # measure only: exit 0 current · 1 available/blocked · 2 failed
 maestro upgrade --rollback          # git reset --keep to the previous version
-maestro upgrade --channel main     # one-off: follow origin/main instead of the stable tag
+maestro upgrade --channel main      # one-off: follow origin/main instead of the stable tag
 maestro upgrade --set auto_upgrade=false   # notify only; also update_check, update_interval_hours, update_channel
 ```
 
