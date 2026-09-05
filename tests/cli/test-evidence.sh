@@ -77,6 +77,43 @@ grep -q 'CITANDO evidência válida' <<<"$out" && ok "pass com ledger válido �
 chk "record carrega suite_evidence=cited" "$(jq -r .suite_evidence "$MAESTRO_HOME/sessions/evt.json")" "cited"
 cd "$REPO"
 
+echo "-- E23b: o recibo casa com o COMANDO DECLARADO (.maestro.yaml)"
+PV="$tmp/verif"; mkdir -p "$PV"; git -C "$PV" init -q
+echo base > "$PV/f"; git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm x
+EFV="$MAESTRO_HOME/evidence/$(basename "$("$BIN" brief --path --project "$PV")" .md)-suite"
+# 1) projeto SEM commands: nada a casar — o recibo nasce `free` e vale como antes.
+"$BIN" evidence --record --project "$PV" -- true >/dev/null
+chk "sem commands declarado → cmd_match=free" "$(awk -F= '/^cmd_match=/{print $2}' "$EFV")" "free"
+grep -q 'VÁLIDA' <<<"$("$BIN" evidence --project "$PV")" && ok "free segue VÁLIDA (regra antiga intacta)" || bad "free VÁLIDA"
+# 2) com commands.suite declarado, `-- true` deixa de valer como prova da suíte.
+printf 'commands:\n  suite: bash tests/run-all.sh\n' > "$PV/.maestro.yaml"
+out=$("$BIN" evidence --record --project "$PV" -- true)
+chk "comando diferente do declarado → cmd_match=no" "$(awk -F= '/^cmd_match=/{print $2}' "$EFV")" "no"
+grep -q 'não é o comando declarado' <<<"$out" && ok "a gravação AVISA na hora" || bad "aviso na gravação ($out)"
+out=$("$BIN" evidence --project "$PV")
+grep -q 'VENCIDA — comando diferente do declarado' <<<"$out" \
+  && ok "leitura: comando errado é VENCIDA (o buraco do \`-- true\` fechado)" || bad "VENCIDA por comando ($out)"
+grep -q 'regrave: maestro evidence --record --label suite -- bash tests/run-all.sh' <<<"$out" \
+  && ok "e diz o comando exato para regravar" || bad "sugestão com o comando declarado ($out)"
+"$BIN" evidence --check --project "$PV" >/dev/null 2>&1; chk "--check com comando errado → 1" "$?" "1"
+# 3) o comando declarado casa e prova.
+mkdir -p "$PV/tests"; printf 'exit 0\n' > "$PV/tests/run-all.sh"
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm suite
+"$BIN" evidence --record --project "$PV" -- bash tests/run-all.sh >/dev/null
+chk "comando idêntico ao declarado → cmd_match=yes" "$(awk -F= '/^cmd_match=/{print $2}' "$EFV")" "yes"
+grep -q 'VÁLIDA' <<<"$("$BIN" evidence --project "$PV")" && ok "yes → VÁLIDA" || bad "yes VÁLIDA"
+# 4) recibo ANTERIOR ao E23b (sem a linha) continua válido: ausência = free.
+grep -v '^cmd_match=' "$EFV" > "$EFV.old" && mv -f "$EFV.old" "$EFV"
+grep -q 'cmd_match' "$EFV" && bad "fixture de recibo antigo" || ok "fixture: recibo sem a linha cmd_match"
+grep -q 'VÁLIDA' <<<"$("$BIN" evidence --project "$PV")" \
+  && ok "recibo antigo (sem a linha) segue VÁLIDA quando o hash bate" || bad "recibo antigo VÁLIDA"
+# 5) ...mas o hash, que sempre foi gravado e nunca comparado, agora vale:
+#    recibo velho de OUTRO comando não sobrevive à declaração de commands.suite.
+sed -i 's/^cmd_hash=.*/cmd_hash=0123456789abcdef/' "$EFV"
+out=$("$BIN" evidence --project "$PV")
+grep -q 'VENCIDA — comando do recibo ≠ commands.suite' <<<"$out" \
+  && ok "cmd_hash divergente do declarado → VENCIDA" || bad "hash divergente ($out)"
+
 echo "-- fronteiras: nada vaza para o routing.jsonl"
 grep -q 'evidence\|wtree_' "$MAESTRO_HOME/logs/routing.jsonl" 2>/dev/null \
   && bad "ledger não aparece no log" || ok "ledger não aparece no log"

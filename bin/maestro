@@ -74,6 +74,10 @@ maestro <comando>
   evidence        recibo de execução amarrado a conteúdo (E13): --record -- <cmd> grava
                   wtree antes/depois + hash do comando + exit; leitura dá VÁLIDA/VENCIDA
                   nomeando o motivo — "testes passaram" vira checagem mecânica
+  verify          verificações obrigatórias por área (E23b): cruza o diff contra a base
+                  (--base REF; default merge-base main/master) com o bloco `verifications:`
+                  do .maestro.yaml e diz, por rótulo exigido, VÁLIDA/VENCIDA/NENHUMA —
+                  --check sai 1 se algum exigido não estiver VÁLIDA
   graph           freshness do grafo graphify (E11): mtime do graphify-out/graph.json vs
                   último commit — --check sai 1 se STALE (para a rotina de refresh)
   consent         consentimento escopado (E10): --grant/--revoke routing-table|roster|ops,
@@ -86,6 +90,8 @@ maestro <comando>
   delegation      funil da delegação (E23a): planned (decide --agents) → started (hook
                   pre-agent) → received (hook subagent-stop) → accepted (order --accept)
                   --session <id> conta a sessão · --all agrega as últimas 20 sessões
+                  accepted RECUSA (E23b) quando o changeset toca área com verificação
+                  obrigatória sem recibo válido; --unproven passa e carimba a falta
   conduct         regência (E17): muta o decision record existente — --flag
                   "sev|decisao|tradeoff|mitigacao" (repetível, acumula em .flags) e/ou
                   --approach "texto" (fecha o approach: pendente do brief); pelo menos um
@@ -1958,6 +1964,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
 
   # shellcheck source=hooks/lib/common.sh
   source "$REPO_DIR/hooks/lib/common.sh"
+  maestro_verif_load   # E23b: carrega AQUI — dentro de $(...) a lib morreria no subshell
 
   if [[ "$action" == "create" ]]; then
     [[ -n "$title" ]] || die validation "--title obrigatório" "o título é o contrato em uma linha" 1
@@ -2076,6 +2083,60 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       [[ -n "$ev_w" && "$ev_w" == "$tip_tree" ]] && { printf '%s' "$ev_w"; return 0; }
     done
     return 0
+  }
+
+  # E23b/S-2302: verificação obrigatória por área ----------------------------
+  # A ordem é aceita sobre um CONTEÚDO (o tip do branch), então a pergunta é a
+  # mesma do _order_status, só que por rótulo exigido: existe recibo com exit 0,
+  # wtree_after == árvore do tip e comando casando com o declarado? A leitura é
+  # do arquivo do recibo (não do `evidence` ao vivo) de propósito: o aceite
+  # julga o tip do branch, não o working tree de quem aceita.
+  _order_verif_areas() { # <arquivo> → áreas tocadas pelo branch (uma por linha)
+    local f="$1" br base
+    br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
+    git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 || return 0
+    maestro_verif_load
+    base=$(verif_base_ref "$proj" "" "$br"); [[ -n "$base" ]] || return 0
+    maestro_verif_touched "$proj" "$base" "$br"
+    return 0
+  }
+  _order_verif_state() { # <rótulo> <árvore-do-tip> → "VÁLIDA" | "NENHUMA" | "VENCIDA (motivo)"
+    local lb="$1" tip="$2" ef ev_w ev_m
+    ef=$(maestro_evidence_file "$proj" "$lb" 2>/dev/null) || ef=""
+    [[ -n "$ef" && -f "$ef" && -r "$ef" ]] || { printf 'NENHUMA'; return 0; }
+    if ! grep -q '^exit=0$' "$ef" 2>/dev/null; then printf 'VENCIDA (a execução falhou)'; return 0; fi
+    ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ef" 2>/dev/null) || ev_w=""
+    if [[ -z "$tip" || "$ev_w" != "$tip" ]]; then printf 'VENCIDA (não é o conteúdo do tip)'; return 0; fi
+    ev_m=$(awk -F= '/^cmd_match=/ { print $2; exit }' "$ef" 2>/dev/null) || ev_m=""
+    if [[ "$ev_m" == "no" ]]; then printf 'VENCIDA (comando ≠ o declarado)'; return 0; fi
+    printf 'VÁLIDA'
+    return 0
+  }
+  _order_verif_report() { # <arquivo> → uma linha por rótulo exigido (vazio = nada exigido)
+    local f="$1" areas labels lb tip br
+    areas=$(_order_verif_areas "$f"); [[ -n "$areas" ]] || return 0
+    # shellcheck disable=SC2086
+    labels=$(maestro_verif_labels "$proj" $areas); [[ -n "$labels" ]] || return 0
+    br=$(_order_field "$f" branch)
+    tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
+    for lb in $labels; do
+      printf '%s: %s\n' "$lb" "$(_order_verif_state "$lb" "$tip")"
+    done
+    return 0
+  }
+  _order_verif_gate() { # <arquivo> <id> — recusa (exit 1) o aceite sem o conjunto exigido
+    local f="$1" id="$2" rep falta="" lb st
+    rep=$(_order_verif_report "$f"); [[ -n "$rep" ]] || return 0
+    while IFS= read -r st; do
+      [[ -n "$st" ]] || continue
+      [[ "$st" == *": VÁLIDA" ]] && continue
+      lb="${st%%:*}"
+      falta+="  ${st} — $(verif_record_hint "$proj" "$lb")"$'\n'
+    done <<<"$rep"
+    [[ -n "$falta" ]] || return 0
+    printf 'ordem %s toca área com verificação obrigatória e falta prova:\n%s' "$id" "$falta" >&2
+    die validation "ordem $id sem o conjunto de verificações exigido pelo .maestro.yaml" \
+      "rode os comandos acima NO TIP DO BRANCH e aceite de novo" 1
   }
 
   _order_moved_since_accept() { # <arquivo> → caminhos mudados (vazio = nao andou)
@@ -2207,6 +2268,15 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
         fi
       fi
     fi
+    # E23b: o que o CONTEÚDO desta ordem exige de verificação, e quanto disso
+    # existe. Linha muda: sem áreas tocadas a ordem segue na regra do order-N.
+    local _vrep _vl; _vrep=$(_order_verif_report "$of")
+    if [[ -n "$_vrep" ]]; then
+      printf '  verif   : áreas %s\n' "$(_order_verif_areas "$of" | tr '\n' ' ' | sed 's/ $//')"
+      while IFS= read -r _vl; do
+        [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"
+      done <<<"$_vrep"
+    fi
     local _od; _od=$(_order_field "$of" doc)
     if [[ -n "$_od" ]]; then
       printf '  doc     : %s — ' "$_od"
@@ -2269,6 +2339,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
         die validation "ordem $oid andou depois do aceite e não tem prova do conteúdo atual" \
           "mudou fora do bookkeeping: ${_mv}— re-rode e regrave: maestro evidence --record --label order-$((10#$oid)) -- <suíte>" 1
       fi
+      _order_verif_gate "$of" "$oid"
       printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
         "$(date -Iseconds)" "${sid:-desconhecido}" "$_ptree2" >> "$of"
       _order_stamp_intent "$of"
@@ -2282,6 +2353,10 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
         "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
     fi
     _order_intent_gate "$of"
+    # E23b: o recibo `order-N` prova que ALGO rodou verde no tip; a verificação
+    # por área prova que rodou o que a ÁREA TOCADA exige. Ordem que não toca
+    # área declarada segue exatamente na regra anterior.
+    _order_verif_gate "$of" "$oid"
     # S-1803: o carimbo do aceite ESCREVE no arquivo da ordem, que é rastreado
     # (E15: "work order versionada"). Sem o carimbo da árvore, o próprio
     # --accept faz o conteúdo andar depois da prova e o recibo — que é amarrado
@@ -2303,6 +2378,61 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
     return 0
   fi
+}
+
+# ------------------------------------------------- verificações por área (E23b)
+
+maestro_verif_load() { # carrega hooks/lib/verifications.sh — uma vez, degradando
+  # Fronteira do plugin: falta da lib NUNCA vira erro de fluxo. Sem ela nada é
+  # exigido e nada casa (stubs), que é exatamente o comportamento do Maestro
+  # antes do E23b — o gate degrada para o sistema de honra, não para um crash.
+  declare -f maestro_verif_areas >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/hooks/lib/verifications.sh" ]]; then
+    # shellcheck source=hooks/lib/verifications.sh
+    source "$REPO_DIR/hooks/lib/verifications.sh" && return 0
+  fi
+  maestro_verif_areas()   { return 0; }
+  maestro_verif_touched() { return 0; }
+  maestro_verif_labels()  { return 0; }
+  maestro_verif_cmd()     { return 0; }
+  maestro_verif_hash()    { printf 'none'; }
+  return 0
+}
+
+verif_base_ref() { # <projeto> [ref-explícita] → base do changeset (vazio = sem base)
+  # A base default é o ponto onde o trabalho saiu da linha principal:
+  # merge-base com main, e com master quando o repo é da era anterior. Sem git,
+  # sem main/master ou sem ancestral comum → vazio, e quem chama trata como
+  # "nada tocado" (nunca como erro).
+  local proj="${1:-$PWD}" want="${2:-}" tip="${3:-HEAD}" b="" m
+  git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [[ -n "$want" ]]; then
+    b=$(git -C "$proj" rev-parse --verify --quiet "$want" 2>/dev/null) || b=""
+    printf '%s' "$b"; return 0
+  fi
+  for m in main master; do
+    b=$(git -C "$proj" merge-base "$m" "$tip" 2>/dev/null) || b=""
+    [[ -n "$b" ]] && { printf '%s' "$b"; return 0; }
+  done
+  return 0
+}
+
+verif_required() { # <projeto> <base> [tip] → rótulos exigidos, um por linha
+  local proj="$1" base="${2:-}" tip="${3:-}" areas
+  maestro_verif_load
+  areas=$(maestro_verif_touched "$proj" "$base" "$tip") || areas=""
+  [[ -n "$areas" ]] || return 0
+  # shellcheck disable=SC2086
+  maestro_verif_labels "$proj" $areas
+  return 0
+}
+
+verif_record_hint() { # <projeto> <rótulo> → comando sugerido para registrar o recibo
+  local proj="$1" label="$2" decl
+  maestro_verif_load
+  decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+  printf 'maestro evidence --record --label %s -- %s' "$label" "${decl:-<comando>}"
+  return 0
 }
 
 # -------------------------------------------------------------- evidence (E13)
@@ -2343,6 +2473,15 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
       w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"
     cmd_str="${cmd_args[*]}"
     cmd_hash=$(printf '%s' "$cmd_str" | sha256sum 2>/dev/null | head -c 16) || cmd_hash="none"
+    # E23b: o recibo passa a dizer se rodou O COMANDO DECLARADO. Sem isto,
+    # `evidence --record -- true` valia como prova da suíte — a assinatura era
+    # de execução, não de verificação.
+    maestro_verif_load
+    local decl cmd_match="free"
+    decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+    if [[ -n "$decl" ]]; then
+      [[ "$decl" == "$cmd_str" ]] && cmd_match="yes" || cmd_match="no"
+    fi
     # set -e: exit != 0 é DADO (a falha é o que mais precisa de recibo), não
     # aborto — o || rc=$? blinda a captura.
     ( cd "$proj" && "${cmd_args[@]}" ) || rc=$?
@@ -2355,6 +2494,7 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
       printf 'label=%s\nts=%s\nepoch=%s\n' "$label" "$(date -Iseconds)" "$(maestro_now_epoch)"
       printf 'cmd_hash=%s\nexit=%s\n' "$cmd_hash" "$rc"
       printf 'wtree_before=%s\nwtree_after=%s\n' "$w_before" "$w_after"
+      printf 'cmd_match=%s\n' "$cmd_match"
     } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null \
       || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar recibo" "cheque permissões" 2; }
     if [[ "$w_before" != "$w_after" ]]; then
@@ -2362,22 +2502,30 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
     else
       printf 'evidência gravada: %s — exit %s, conteúdo %s\n' "$label" "$rc" "${w_after:0:12}"
     fi
+    if [[ "$cmd_match" == "no" ]]; then
+      printf '  ATENÇÃO: não é o comando declarado em .maestro.yaml (commands.%s: %s) — este recibo NÃO conta como verificação\n' \
+        "$label" "$decl"
+    fi
     return "$rc"
   fi
 
   # --- leitura: o veredito ---------------------------------------------------
+  maestro_verif_load
   if [[ ! -f "$ef" || ! -r "$ef" ]]; then
-    echo "evidência ($label): NENHUMA — registre com: maestro evidence --record --label $label -- <comando>"
+    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
     (( check == 1 )) && return 1 || return 0
   fi
-  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash=""
-  eval "$(awk -F= 'NR>10 { exit }
+  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match=""
+  eval "$(awk -F= 'NR>12 { exit }
     /^epoch=/        { if ($2 ~ /^[0-9]+$/)          print "e_epoch=" $2 }
     /^exit=/         { if ($2 ~ /^[0-9]+$/)          print "e_exit="  $2 }
     /^cmd_hash=/     { if ($2 ~ /^([0-9a-f]{16}|none)$/) print "e_hash=\047" $2 "\047" }
+    /^cmd_match=/    { if ($2 ~ /^(yes|no|free)$/)   print "e_match=\047" $2 "\047" }
     /^wtree_before=/ { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wb=\047" $2 "\047" }
     /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }' \
     "$ef" 2>/dev/null)" 2>/dev/null || :
+  # Recibo anterior ao E23b não tem a linha: `free` (nada era declarado então).
+  [[ -n "$e_match" ]] || e_match="free"
   if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
     echo "evidência ($label): recibo ilegível — regrave"
     (( check == 1 )) && return 1 || return 0
@@ -2393,12 +2541,101 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
   [[ "$w_now" != "none" && "$e_wa" != "none" && "$w_now" != "$e_wa" ]] \
     && reasons+="${reasons:+; }conteúdo mudou desde a prova"
   [[ "$e_exit" != "0" ]] && reasons+="${reasons:+; }a execução provou FALHA (exit $e_exit)"
+  # E23b: prova é do COMANDO que o projeto declara, não de um comando qualquer.
+  local decl_r; decl_r=$(maestro_verif_cmd "$proj" "$label") || decl_r=""
+  if [[ "$e_match" == "no" ]]; then
+    reasons+="${reasons:+; }comando diferente do declarado em .maestro.yaml"
+  elif [[ -n "$decl_r" && -n "$e_hash" && "$e_hash" != "none" ]] \
+    && [[ "$e_hash" != "$(maestro_verif_hash "$decl_r")" ]]; then
+    # O hash sempre foi gravado, só nunca comparado: recibo velho (ou de outro
+    # comando) deixa de valer quando o projeto passa a declarar commands.<label>.
+    reasons+="${reasons:+; }comando do recibo ≠ commands.$label (.maestro.yaml)"
+  fi
   if [[ -z "$reasons" ]]; then
     printf 'evidência (%s): VÁLIDA — exit 0 há %smin, conteúdo byte-idêntico ao provado\n' "$label" "$(( age / 60 ))"
     return 0
   fi
-  printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave.\n' "$label" "$reasons"
+  if [[ -n "$decl_r" ]]; then
+    printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave: %s\n' "$label" "$reasons" \
+      "$(verif_record_hint "$proj" "$label")"
+  else
+    printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave.\n' "$label" "$reasons"
+  fi
   (( check == 1 )) && return 1 || return 0
+}
+
+# ---------------------------------------------------------------- verify (E23b)
+
+cmd_verify() { # S-2302: que prova ESTE changeset deve ter, e quanto dela existe
+  # `evidence` responde "este rótulo está provado?"; `verify` responde a
+  # pergunta que vem antes: "quais rótulos ESTE trabalho exige?". A resposta sai
+  # do diff contra a base (áreas do .maestro.yaml casadas por prefixo), nunca da
+  # memória de quem entrega. Sem declaração no projeto, nada é exigido — o
+  # Maestro não inventa dever para quem não o declarou.
+  local proj="${CLAUDE_PROJECT_DIR:-$PWD}" base_ref="" check=0
+  while (( $# )); do
+    case "$1" in
+      --base)    base_ref="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      --check)   check=1 ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro verify [--base REF] [--project P] [--check]" 1 ;;
+    esac
+    shift
+  done
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  maestro_verif_load
+
+  local areas="" base=""
+  if [[ -z "$(maestro_verif_areas "$proj")" ]]; then
+    echo "verificações: nenhuma declarada em .maestro.yaml (bloco verifications:) — nada é exigido"
+    return 0
+  fi
+  base=$(verif_base_ref "$proj" "$base_ref")
+  if [[ -n "$base_ref" && -z "$base" ]]; then
+    die validation "base '$base_ref' não existe neste repositório" "use um ref válido (git rev-parse)" 1
+  fi
+  areas=$(maestro_verif_touched "$proj" "$base" "") || areas=""
+  if [[ -z "$base" ]]; then
+    printf 'base: nenhuma (sem git ou sem main/master) — comparando só o working tree\n'
+  else
+    printf 'base: %s\n' "$(git -C "$proj" rev-parse --short=7 "$base" 2>/dev/null || printf '%s' "$base")"
+  fi
+  if [[ -z "$areas" ]]; then
+    echo "áreas tocadas: nenhuma — nenhuma verificação obrigatória"
+    log_event verify n=0
+    return 0
+  fi
+  printf 'áreas tocadas: %s\n' "$(printf '%s' "$areas" | tr '\n' ' ' | sed 's/ $//')"
+  local labels lb line falta=0
+  # shellcheck disable=SC2086
+  labels=$(maestro_verif_labels "$proj" $areas)
+  if [[ -z "$labels" ]]; then
+    echo "  (áreas sem rótulo declarado — nada exigido)"
+    log_event verify n=0
+    return 0
+  fi
+  for lb in $labels; do
+    if line=$(cmd_evidence --check --label "$lb" --project "$proj" 2>/dev/null); then
+      printf '  %s\n' "$line"
+    else
+      # A própria linha do evidence já traz o comando para registrar (E23b: com
+      # commands.<rótulo> declarado, ela sai com o comando real, não com um
+      # placeholder) — repetir aqui seria ruído.
+      falta=$((falta + 1))
+      printf '  %s\n' "$line"
+    fi
+  done
+  log_event verify n="$falta"
+  if (( falta > 0 )); then
+    printf 'faltam %s verificação(ões) obrigatória(s).\n' "$falta"
+    (( check == 1 )) && return 1
+    return 0
+  fi
+  echo "todas as verificações obrigatórias estão VÁLIDAS."
+  return 0
 }
 
 # ----------------------------------------------------------------- graph (E11)
@@ -2538,9 +2775,9 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   local sid="" verdict="" suite="" unproven=0
   while (( $# )); do
     case "$1" in
-      --session)  sid="${2:-}"; shift ;;
-      --suite)    suite="${2:-}"; shift ;;
-      --unproven) unproven=1 ;;
+      --session) sid="${2:-}"; shift ;;
+      --suite)   suite="${2:-}"; shift ;;
+      --unproven) unproven=1 ;;   # E23b: fecha SEM a prova exigida, e o record diz isso
       accepted|rework|reverted) verdict="$1" ;;
       *) die validation "argumento desconhecido '$1'" \
            "maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail] [--unproven]" 1 ;;
@@ -2585,17 +2822,48 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
     fi
   fi
 
+  local proj="${CLAUDE_PROJECT_DIR:-$PWD}"
   # E13/S-1302: --suite deixa de ser palavra de honra — consulta o ledger.
   local ev="none"
   if [[ -n "$suite" ]]; then
-    if cmd_evidence --check --label suite --project "${CLAUDE_PROJECT_DIR:-$PWD}" >/dev/null 2>&1; then
+    if cmd_evidence --check --label suite --project "$proj" >/dev/null 2>&1; then
       ev="cited"
     fi
   fi
-  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg dp "$proof" --arg ts "$(date -Iseconds)" \
+  # E23b/S-2302: aceitar é afirmar que a entrega serve. Se o que está no working
+  # tree toca área com verificação obrigatória, o aceite exige o conjunto — ou
+  # o `--unproven` explícito, que passa mas CARIMBA a falta no record (o retro
+  # precisa distinguir "provado" de "aceito no grito").
+  local vf="" lb base labels
+  local vmiss=()
+  if [[ "$verdict" == "accepted" ]]; then
+    maestro_verif_load
+    base=$(verif_base_ref "$proj" "")
+    labels=$(verif_required "$proj" "$base" "") || labels=""
+    if [[ -n "$labels" ]]; then
+      for lb in $labels; do
+        cmd_evidence --check --label "$lb" --project "$proj" >/dev/null 2>&1 || vmiss+=("$lb")
+      done
+      if [[ ${#vmiss[@]} -gt 0 ]]; then
+        if (( unproven == 0 )); then
+          printf 'maestro: sem verificação obrigatória: %s\n' "$(join_semi "${vmiss[@]}")" >&2
+          for lb in "${vmiss[@]}"; do
+            printf '  %s\n' "$(verif_record_hint "$proj" "$lb")" >&2
+          done
+          die validation "o changeset toca área com verificação obrigatória (.maestro.yaml) sem prova válida" \
+            "rode os comandos acima — ou registre a exceção com 'maestro outcome ... accepted --unproven'" 1
+        fi
+        vf="missing"
+      else
+        vf="cited"
+      fi
+    fi
+  fi
+  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg ts "$(date -Iseconds)" \
        '.outcome = $o | .outcome_ts = $ts
-        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
-        | (if $dp != "" then .delegation_proof = $dp else . end)' \
+        | (if $vf != "" then .verifications = $vf else . end)
+        | (if $dp != "" then .delegation_proof = $dp else . end)
+        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)' \
        "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
@@ -2603,6 +2871,12 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
       started) echo "delegação PROVADA no log (delegation phase=started nesta sessão)" ;;
       none)    echo "aviso: aceito SEM prova de delegação (--unproven) — record carimbado com delegation_proof: none" ;;
     esac
+    if [[ "$vf" == "missing" ]]; then
+      printf 'aviso: aceito SEM a verificação obrigatória (%s) — o record carimba verifications=missing\n' \
+        "$(join_semi "${vmiss[@]}")"
+    elif [[ "$vf" == "cited" ]]; then
+      echo "verificações obrigatórias da área: todas VÁLIDAS no ledger (mecânico, não honra)"
+    fi
     if [[ "$suite" == "pass" ]]; then
       if [[ "$ev" == "cited" ]]; then
         echo "suíte pass CITANDO evidência válida do ledger (mecânico, não honra)"

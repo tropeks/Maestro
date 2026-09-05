@@ -5,3 +5,16 @@
 experts: [dev-junior, dev-pleno, engenheiro, typescript-pro, qa, revisor]
 memory_container: sm_project_Maestro
 docs: [docs/architecture/ARCHITECTURE.md, docs/architecture/DATA_MODEL.md, docs/architecture/API_SPEC.md, docs/architecture/EPICS.md]
+
+# E23b/S-2302 — verificações obrigatórias por área. Tocou o caminho, deve o
+# recibo: o Maestro dogfooda a própria regra. A suíte é a verificação de tudo
+# aqui porque ela É o exame do plugin inteiro (hooks + CLI + doctor).
+verifications:
+  hooks:
+    paths: [hooks/]
+    labels: [suite]
+  cli:
+    paths: [bin/, src/]
+    labels: [suite]
+commands:
+  suite: bash tests/run-all.sh

@@ -13,6 +13,10 @@ fail=0
 run() { echo "== $1"; bash "$1" || fail=1; }
 
 for t in "$ROOT"/tests/hooks/test-*.sh; do [[ -e "$t" ]] && run "$t"; done
+# tests/lib/ (E23b): teste de biblioteca sourceável — não é hook nem CLI, e a
+# enumeração é por diretório, então sem esta linha o arquivo existiria sem nunca
+# rodar (a CI só o veria no shellcheck).
+for t in "$ROOT"/tests/lib/test-*.sh;   do [[ -e "$t" ]] && run "$t"; done
 for t in "$ROOT"/tests/cli/test-*.sh;   do [[ -e "$t" ]] && run "$t"; done
 
 echo "== doctor"
