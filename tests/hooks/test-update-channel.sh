@@ -112,7 +112,9 @@ chk "HEAD intacto (main nova é ignorada)" "$(head_of "$C1")" "$BEFORE"
 chk "estado no-stable" "$(state "$H" result)" "no-stable"
 chk "canal registrado" "$(state "$H" channel)" "stable"
 chk "motivo nomeado" "$(state "$H" reason)" "no-stable-tag"
-hasnt "sem aviso na injeção (não é erro nem update)" "atualização:" "$OUTF"
+# Review E23c: no-stable é auto-update PARADO — a sessão precisa saber, senão é a
+# staleness muda que o update-check existe para fechar.
+has "injeção avisa que o auto-update está parado (no-stable)" "auto-update parado" "$OUTF"
 chk "fetch foi ok (a tag ausente não é falha de rede)" "$(state "$H" fetch)" "ok"
 
 echo "-- CLI no canal stable sem a tag: exit 0 e a explicação, nunca um erro"
@@ -270,8 +272,8 @@ upgraded=
 EOF
 doctor_out "$H" "$C5"
 chk "doctor sai 0 com no-stable" "$RC" "0"
-grep -q "^ok .*atualização: canal stable, e o origin ainda não tem a tag 'stable'" "$OUTF" \
-  && ok "doctor explica o no-stable sem alarme" \
+grep -q "^warn .*atualização: canal stable, e o origin ainda não tem a tag 'stable'" "$OUTF" \
+  && ok "doctor avisa (warn, não fail) o no-stable" \
   || bad "doctor não explicou no-stable ($(grep -E '^(ok|warn) .*atualiza' "$OUTF" | head -1))"
 
 next_home; doctor_out "$H" "$C1"     # C1 está exatamente na tag stable

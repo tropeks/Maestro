@@ -88,12 +88,20 @@ function flush_dead() {
 # Abertura: `<<` ou `<<-`, delimitador nu, entre aspas ou escapado. Exclui
 # `<<<` (here-string, onipresente nos testes deste repo) e `a<<b` (shift)
 # exigindo espaço/tab antes do `<<`.
-function hd_scan(l,   s, pre, d) {
+function hd_scan(l,   s, pre, d, orig, off, before, opens, closes) {
+  orig = l; off = 0
   while (match(l, /<<-?[ \t]*("[A-Za-z_][A-Za-z0-9_]*"|\x27[A-Za-z_][A-Za-z0-9_]*\x27|\\?[A-Za-z_][A-Za-z0-9_]*)/)) {
     s   = substr(l, RSTART, RLENGTH)
     pre = (RSTART > 1) ? substr(l, RSTART - 1, 1) : " "
+    before = substr(orig, 1, off + RSTART - 1)
+    off += RSTART + RLENGTH - 1
     l   = substr(l, RSTART + RLENGTH)
     if (pre != " " && pre != "\t") continue
+    # `$(( 1 << passo ))` é shift aritmético, não heredoc: um `<<` com mais
+    # `((` do que `))` antes dele está dentro de aritmética — sem isto o
+    # estado ligaria até uma linha igual a `passo` e cegaria os sensores.
+    opens = gsub(/\(\(/, "&", before); closes = gsub(/\)\)/, "&", before)
+    if (opens > closes) continue
     d = s
     sub(/^<<-?[ \t]*/, "", d)
     gsub(/["\x27\\]/, "", d)

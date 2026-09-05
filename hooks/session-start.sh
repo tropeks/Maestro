@@ -407,7 +407,7 @@ write_gate_policy() {
     printf 'MAESTRO_GATE_DENY_SELF="%s"\n'   "$self"
     # E15/S-1504 — frozen zones das work orders NÃO-aceitas do projeto (BMAD).
     # Compiladas AQUI (start, barato) para o gate não ler ordens no hot path.
-    local _ofz="" _of
+    local _ofz="" _of _fz
     if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
       shopt -s nullglob
       for _of in "$PROJECT_DIR/.maestro/orders"/*.md; do
@@ -470,6 +470,10 @@ update_notice_for_state() { # → UPDATE_NOTICE (uma linha, sem caminho)
   # não geram linha: a sessão não tem o que fazer com isso. O estado fica no
   # update-state e o doctor é quem cobra.
   case "$UPD_STATE" in
+    no-stable)
+      # E23c: canal stable sem a tag no origin = auto-update PARADO. Silêncio
+      # aqui seria a staleness muda que o update-check existe para fechar.
+      UPDATE_NOTICE="atualização: canal stable, e o origin ainda não tem a tag 'stable' — auto-update parado; maestro upgrade --channel main pega o topo" ;;
     available)
       (( UPD_SNOOZED == 1 )) && return 0
       UPDATE_NOTICE="atualização: v$UPD_LOCAL → v$UPD_REMOTE_VER ($UPD_BEHIND commit(s) no origin) — maestro upgrade aplica; --snooze adia" ;;
@@ -648,7 +652,7 @@ build_and_emit() {
   # trabalhar sem direção é legítimo, fingir que há direção não é.
   local _if="$PROJECT_DIR/.maestro/INTENT.md" _iv=""
   if [[ -f "$_if" && -r "$_if" ]]; then
-    _iv=$(awk 'NR>8 || /^-->$/ { exit }
+    _iv=$(awk 'NR>20 || /^-->$/ { exit }
       /^version: / { v = substr($0, 10); if (v ~ /^[0-9]+$/) print v; exit }' "$_if" 2>/dev/null) || _iv=""
     if [[ -n "$_iv" ]]; then
       sec_project+="direção: INTENT v$_iv (.maestro/INTENT.md) → plano cita a seção da direção que serve"$'\n'

@@ -240,6 +240,9 @@ _upd_fetch() { # a linha de rede do update. rc = do git.
   # remoto ainda não tem a tag; a refspec literal seria `fatal: couldn't find
   # remote ref` e a ausência viraria "rede falhou". As tags `v*` continuam
   # viajando (é delas que o doctor tira o retrato de release).
+  # O curinga em `stable*` existe SÓ para a refspec não falhar quando a tag
+  # ainda não existe; `stable-<algo>` que alguém crie no futuro viaja junto,
+  # mas o canal lê exatamente `refs/tags/stable` (_upd_ref) e ignora o resto.
   if [[ "$UPD_CHANNEL" == "stable" ]]; then
     _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" \
       "+refs/tags/stable*:refs/tags/stable*" "+refs/tags/v*:refs/tags/v*" "$UPD_BRANCH"

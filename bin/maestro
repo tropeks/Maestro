@@ -87,11 +87,11 @@ maestro <comando>
                   accepted em mode subagent|multi EXIGE prova de delegação (E23a): ≥1
                   `delegation phase=started` da sessão no log — `--unproven` passa e
                   carimba `delegation_proof: none` no record
+                  accepted RECUSA (E23b) quando o changeset toca área com verificação
+                  obrigatória sem recibo válido; --unproven passa e carimba a falta
   delegation      funil da delegação (E23a): planned (decide --agents) → started (hook
                   pre-agent) → received (hook subagent-stop) → accepted (order --accept)
                   --session <id> conta a sessão · --all agrega as últimas 20 sessões
-                  accepted RECUSA (E23b) quando o changeset toca área com verificação
-                  obrigatória sem recibo válido; --unproven passa e carimba a falta
   conduct         regência (E17): muta o decision record existente — --flag
                   "sev|decisao|tradeoff|mitigacao" (repetível, acumula em .flags) e/ou
                   --approach "texto" (fecha o approach: pendente do brief); pelo menos um
@@ -798,7 +798,7 @@ check_update_state() { # E19/S-1903: última checagem de atualização — nunca
     available)
       report warn "atualização disponível: v$local_v → v$remote_v ($behind commit(s), canal $channel)" "maestro upgrade" ;;
     no-stable)
-      report ok "atualização: canal stable, e o origin ainda não tem a tag 'stable'" \
+      report warn "atualização: canal stable, e o origin ainda não tem a tag 'stable' — auto-update parado" \
         "nada a aplicar — a CI move a tag quando a suíte passa numa tag v*; maestro upgrade --channel main ignora o canal" ;;
     blocked)
       local det=""
@@ -898,7 +898,7 @@ _report_update_channel() { # E23c/S-2303: canal do auto-update e onde está a ta
     return 0
   fi
   if ! git -C "$repo" rev-parse --verify -q refs/tags/stable >/dev/null 2>&1; then
-    report ok "canal de atualização: stable — a tag ainda não existe neste clone" \
+    report warn "canal de atualização: stable — a tag ainda não existe neste clone (auto-update parado)" \
       "a CI a move na primeira tag v* com a suíte verde; até lá o auto-update não aplica nada"
     return 0
   fi
@@ -1733,7 +1733,7 @@ _intent_body_hash() { # <arquivo> → 8 hex ou vazio
 }
 
 _intent_stamp_field() { # <arquivo> <chave> → valor do carimbo
-  awk -F': ' -v k="$2" 'NR>12 || /^-->$/ { exit } $1 == k { print substr($0, length(k)+3); exit }' \
+  awk -F': ' -v k="$2" 'NR>20 || /^-->$/ { exit } $1 == k { print substr($0, length(k)+3); exit }' \
     "$1" 2>/dev/null || true
 }
 
@@ -2112,9 +2112,10 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     printf 'VÁLIDA'
     return 0
   }
-  _order_verif_report() { # <arquivo> → uma linha por rótulo exigido (vazio = nada exigido)
-    local f="$1" areas labels lb tip br
-    areas=$(_order_verif_areas "$f"); [[ -n "$areas" ]] || return 0
+  _order_verif_report() { # <arquivo> [áreas] → uma linha por rótulo exigido (vazio = nada exigido)
+    local f="$1" areas="${2-}" labels lb tip br
+    [[ -n "$areas" || $# -ge 2 ]] || areas=$(_order_verif_areas "$f")   # 2º arg = áreas já calculadas (evita um git diff)
+    [[ -n "$areas" ]] || return 0
     # shellcheck disable=SC2086
     labels=$(maestro_verif_labels "$proj" $areas); [[ -n "$labels" ]] || return 0
     br=$(_order_field "$f" branch)
@@ -2270,9 +2271,10 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     fi
     # E23b: o que o CONTEÚDO desta ordem exige de verificação, e quanto disso
     # existe. Linha muda: sem áreas tocadas a ordem segue na regra do order-N.
-    local _vrep _vl; _vrep=$(_order_verif_report "$of")
+    local _vrep _vl _vareas; _vareas=$(_order_verif_areas "$of")
+    _vrep=$(_order_verif_report "$of" "$_vareas")
     if [[ -n "$_vrep" ]]; then
-      printf '  verif   : áreas %s\n' "$(_order_verif_areas "$of" | tr '\n' ' ' | sed 's/ $//')"
+      printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
       while IFS= read -r _vl; do
         [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"
       done <<<"$_vrep"
