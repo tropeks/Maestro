@@ -184,6 +184,117 @@ out2=$(awk -v EXT=sh -v ENABLED=oversized-function -v ISTEST=0 \
                  || bad "helpers de uma linha não abrem função no sensor ($out2)"
 
 # ---------------------------------------------------------------------------
+echo "-- E23d: corpo de heredoc em shell é DADO, não código"
+# ---------------------------------------------------------------------------
+# As fixtures DESTE arquivo (os heredocs acima, que existem para provar que o
+# sensor dispara) eram contadas como slop do próprio Maestro. Sensor que acusa
+# a própria prova ensina a apagar a prova.
+{
+  cat <<'HD'
+setup_fixtures() {
+  cat > "$T/a.ts" <<'FX'
+// @ts-ignore
+it.skip("um dia eu volto", () => {});
+expect(true).toBe(true);
+// for i in range(10):
+//     total = compute(i);
+//     acc += total;
+// In a real implementation, this would call the API
+FX
+  cat > "$T/b.ts" <<"DQ"
+// @ts-ignore
+DQ
+HD
+  # `<<-` fecha com tabs à esquerda; tab literal via printf para o caso não
+  # depender de o editor preservar o caractere.
+  printf '\tcat > "$T/c.ts" <<-TABS\n\tit.skip("com tabs", () => {});\n\tTABS\n'
+  cat <<'HD'
+  return 0
+}
+# @ts-ignore
+HD
+} > "$PROJ/heredocs.sh"
+out2=$(awk -v EXT=sh -v ENABLED=all -v ISTEST=1 -f "$ENGINE" "$PROJ/heredocs.sh")
+grep -q 'skipped-test' <<<"$out2" && bad "it.skip dentro de heredoc ('FX' e <<- com tabs) não é teste pulado ($out2)" \
+                                  || ok "it.skip dentro de heredoc ('FX' e <<- com tabs) não é teste pulado"
+grep -q 'dead-code'    <<<"$out2" && bad "código comentado dentro de heredoc não é dead-code ($out2)" \
+                                  || ok "código comentado dentro de heredoc não é dead-code"
+grep -q 'slop-comment' <<<"$out2" && bad "frase de slop dentro de heredoc não é slop-comment ($out2)" \
+                                  || ok "frase de slop dentro de heredoc não é slop-comment"
+n_ls=$(grep -c 'lint-suppression' <<<"$out2" || true)
+chk "delimitador entre aspas ('FX' e \"DQ\") silencia igual" "$n_ls" "1"
+grep -q '^lint-suppression	19	' <<<"$out2" \
+  && ok "linha DEPOIS do fechamento volta a contar" || bad "linha após o fechamento volta a contar ($out2)"
+grep -q 'oversized-function' <<<"$out2" && bad "linhas de heredoc não incham a função ($out2)" \
+                                        || ok "linhas de heredoc não incham a função"
+
+# O mesmo texto num arquivo NÃO-shell não muda de comportamento: heredoc é
+# construção do shell, e a regra não pode vazar para .ts/.py.
+out2=$(awk -v EXT=ts -v ENABLED=all -v ISTEST=1 -f "$ENGINE" "$PROJ/heredocs.sh")
+grep -q 'skipped-test' <<<"$out2" && ok "arquivo não-shell segue sensoriado linha a linha" \
+                                  || bad "arquivo não-shell segue sensoriado linha a linha ($out2)"
+
+# `<<<` é here-string, não heredoc — e é onipresente nos testes deste repo.
+cat > "$PROJ/herestring.sh" <<'HD'
+check() {
+  grep -q "x" <<<"$OUT" && ok "y"
+}
+# @ts-ignore
+HD
+out2=$(awk -v EXT=sh -v ENABLED=lint-suppression -v ISTEST=1 -f "$ENGINE" "$PROJ/herestring.sh")
+grep -q '^lint-suppression	4	' <<<"$out2" && ok "here-string (<<<) não liga estado de heredoc" \
+                                            || bad "here-string (<<<) não liga estado de heredoc ($out2)"
+
+# Heredoc escrito DENTRO de string citada (padrão de test-guarda-destrutiva.sh)
+# fecha com `EOF'`; sem a válvula o sensor ficaria cego até o fim do arquivo.
+cat > "$PROJ/hd-em-string.sh" <<'HD'
+run_cmd 'cat <<EOF > deploy.sh
+git push --force origin main
+EOF'
+# @ts-ignore
+HD
+out2=$(awk -v EXT=sh -v ENABLED=lint-suppression -v ISTEST=1 -f "$ENGINE" "$PROJ/hd-em-string.sh")
+grep -q '^lint-suppression	4	' <<<"$out2" && ok "heredoc dentro de string citada fecha em EOF'" \
+                                            || bad "heredoc dentro de string citada fecha em EOF' ($out2)"
+
+# oversized-FILE é tamanho de arquivo mesmo: heredoc conta.
+{
+  printf 'carrega() {\n'
+  printf '  cat > "$T/fix.json" <<%sJ%s\n' "'" "'"
+  for i in $(seq 1 90); do printf 'linha de dado %s\n' "$i"; done
+  printf 'J\n'
+  printf '}\n'
+} > "$PROJ/fixturao.sh"
+out2=$(awk -v EXT=sh -v ENABLED=oversized-file,oversized-function -v MAXFILE=80 -v ISTEST=1 \
+  -f "$ENGINE" "$PROJ/fixturao.sh")
+grep -q 'oversized-file' <<<"$out2" && ok "heredoc CONTA para oversized-file (é tamanho de arquivo)" \
+                                    || bad "heredoc conta para oversized-file ($out2)"
+grep -q 'oversized-function' <<<"$out2" && bad "90 linhas de fixture não fazem função gigante ($out2)" \
+                                        || ok "90 linhas de fixture não fazem função gigante"
+
+# Tabela de doc no cabeçalho (`VAR=1   descrição`) é prosa em colunas, não
+# atribuição comentada — era o dead-code de hooks/lib/update-check.sh.
+cat > "$PROJ/tabela.sh" <<'HD'
+# Overrides de ambiente:
+#   MAESTRO_NO_UPDATE_CHECK=1   desliga tudo
+#   UPD_MANUAL=1                ação explícita do humano
+#   MAESTRO_AUTO_UPGRADE=0|1    sobrepõe a config
+echo real
+HD
+out2=$(awk -v EXT=sh -v ENABLED=dead-code -v ISTEST=0 -f "$ENGINE" "$PROJ/tabela.sh")
+[[ -z "$out2" ]] && ok "tabela de doc no cabeçalho não é código comentado" \
+                 || bad "tabela de doc no cabeçalho não é código comentado ($out2)"
+cat > "$PROJ/morto.sh" <<'HD'
+# total = compute(i);
+# acc = total;
+# saida = acc;
+echo real
+HD
+out2=$(awk -v EXT=sh -v ENABLED=dead-code -v ISTEST=0 -f "$ENGINE" "$PROJ/morto.sh")
+grep -q 'dead-code' <<<"$out2" && ok "código comentado DE VERDADE continua sendo pego" \
+                               || bad "sensor ficou cego para dead-code ($out2)"
+
+# ---------------------------------------------------------------------------
 echo "-- cooldown: refatoração em curso não é reincidência"
 # ---------------------------------------------------------------------------
 run_hook "$PROJ/a.py" Edit cool-1

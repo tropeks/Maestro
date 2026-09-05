@@ -22,6 +22,10 @@
 #    olha shell; `shellcheck disable` justificado é idioma, não supressão.
 #  - Heurística de função é POR EXTENSÃO e só conta o que reconhece com
 #    segurança; assinatura multilinha escapa — aceito.
+#  - Em shell, CORPO DE HEREDOC é dado, não código (E23d): não alimenta sensor
+#    nenhum e não conta para `oversized-function` (conta para `oversized-file`,
+#    que é tamanho de arquivo mesmo). A extensão vem em EXT, então o motor sabe
+#    quando aplicar a regra.
 
 BEGIN {
   if (MAXFILE   == 0) MAXFILE   = 400
@@ -31,7 +35,8 @@ BEGIN {
   split("", on)
   if (ENABLED == "" || ENABLED == "all") all = 1
   else { n = split(ENABLED, a, ","); for (i = 1; i <= n; i++) on[a[i]] = 1 }
-  fn_line = 0; fn_indent = -1
+  fn_line = 0; fn_indent = -1; fn_hd = 0
+  in_hd = 0; hd_delim = ""; hd_dash = 0; hd_lines = 0
   comment_run = 0; comment_start = 0
   nest_hit = 0; pending_except = 0; pending_catch = 0
   pending_bare = 0; pending_pydef = 0; prev_abstract = 0
@@ -60,14 +65,74 @@ function indent_of(line,   sp, i, c) {
 
 function close_fn(endline,   fn_len) {
   if (fn_line > 0 && want("oversized-function")) {
-    fn_len = endline - fn_line
+    # E23d: linhas de heredoc dentro da função são DADO (fixture, template,
+    # payload) — uma função que só carrega 80 linhas de fixture não é função
+    # gigante, e "quebrar" seria picar o dado, não o código.
+    fn_len = (endline - fn_line) - (hd_lines - fn_hd)
+    if (fn_len < 0) fn_len = 0
     if (fn_len > MAXFN) emit("oversized-function", fn_line, fn_len " linhas (max " MAXFN ")")
   }
   fn_line = 0; fn_indent = -1
 }
 
+# dead-code é o único sensor com estado de MÚLTIPLAS linhas: a corrida de
+# comentário-que-parece-código precisa ser fechada em todo ponto de corte
+# (linha comum, heredoc, fim do arquivo), senão a corrida atravessa o corte.
+function flush_dead() {
+  if (comment_run >= 3 && want("dead-code"))
+    emit("dead-code", comment_start, comment_run " linhas de código comentado")
+  comment_run = 0
+}
+
+# ---- heredoc (E23d) --------------------------------------------------------
+# Abertura: `<<` ou `<<-`, delimitador nu, entre aspas ou escapado. Exclui
+# `<<<` (here-string, onipresente nos testes deste repo) e `a<<b` (shift)
+# exigindo espaço/tab antes do `<<`.
+function hd_scan(l,   s, pre, d) {
+  while (match(l, /<<-?[ \t]*("[A-Za-z_][A-Za-z0-9_]*"|\x27[A-Za-z_][A-Za-z0-9_]*\x27|\\?[A-Za-z_][A-Za-z0-9_]*)/)) {
+    s   = substr(l, RSTART, RLENGTH)
+    pre = (RSTART > 1) ? substr(l, RSTART - 1, 1) : " "
+    l   = substr(l, RSTART + RLENGTH)
+    if (pre != " " && pre != "\t") continue
+    d = s
+    sub(/^<<-?[ \t]*/, "", d)
+    gsub(/["\x27\\]/, "", d)
+    hd_delim = d
+    hd_dash  = (substr(s, 3, 1) == "-")
+    return 1
+  }
+  return 0
+}
+
+# Fechamento: linha IGUAL ao delimitador; com `<<-`, tabs à esquerda são do
+# idioma e não contam. Válvula deliberada: heredoc escrito dentro de string
+# citada (`run_cmd 'cat <<EOF … EOF'`, padrão dos testes deste repo) fecha com
+# `EOF'` — sem ela o estado ficaria ligado até o fim do arquivo e cegaria todos
+# os sensores dali para baixo, que é pior do que fechar cedo demais.
+function hd_is_close(l,   s) {
+  s = l
+  if (hd_dash) sub(/^\t+/, "", s)
+  if (s == hd_delim) return 1
+  return (s ~ "^" hd_delim "[\"\x27`)]+$")
+}
+
 {
   line = $0
+
+  # ---- corpo de heredoc: DADO, não código (E23d) ---------------------------
+  # Medido neste repo: as fixtures de tests/hooks/test-habits.sh — heredocs que
+  # existem justamente para PROVAR que o sensor dispara — eram contadas como
+  # slop do próprio Maestro (skipped-test, dead-code, lint-suppression,
+  # slop-comment), e a catraca cobrava do repo a dívida da sua própria prova.
+  # Sensor que acusa a prova ensina a apagar a prova. Vale para shell porque
+  # heredoc é construção do shell; em outras extensões nada muda.
+  if (sh && in_hd) {
+    hd_lines++
+    flush_dead()
+    if (hd_is_close(line)) in_hd = 0
+    next
+  }
+
   ind = indent_of(line)
   stripped = line; sub(/^[ \t]+/, "", stripped)
   is_blank   = (stripped == "")
@@ -114,7 +179,7 @@ function close_fn(endline,   fn_len) {
     if (stripped ~ /\}[ \t]*(#.*)?$/ && stripped ~ /\{/) {
       fn_start = 0
     } else {
-      fn_line = NR; fn_indent = ind
+      fn_line = NR; fn_indent = ind; fn_hd = hd_lines
     }
   }
   if (fn_start) {
@@ -254,6 +319,13 @@ function close_fn(endline,   fn_len) {
       # item de LISTA é prosa, mesmo citando código que termina em `;` — o
       # rodapé de limitações do pre-bash-guard era falso positivo (2026-08-29)
       if (body ~ /^[-•*] /) body = ""
+      # TABELA de documentação no cabeçalho (`MAESTRO_UPDATE_TIMEOUT=5   segundos
+      # de timeout`) é prosa em colunas, não atribuição comentada: o que a
+      # denuncia é o espaço LARGO separando o valor da descrição, que ninguém
+      # escreve em código. Sem isto, o bloco "Overrides de ambiente" do
+      # hooks/lib/update-check.sh (E19) era dead-code — e o "conserto" seria
+      # apagar documentação para calar um sensor (o anti-hábito nº 1).
+      if (body ~ /[^ ]  +[^ ]/ && body !~ /[;{}]$/) body = ""
       if (body ~ /[;{}]$/ ||
           body ~ /^(if|for|while|return|const|let|var|def|func|fn|import|from|class) / ||
           body ~ /^[A-Za-z_][A-Za-z0-9_]* *=[^=]/)
@@ -262,10 +334,7 @@ function close_fn(endline,   fn_len) {
     if (codeish) {
       if (comment_run == 0) comment_start = NR
       comment_run++
-    } else {
-      if (comment_run >= 3) emit("dead-code", comment_start, comment_run " linhas de código comentado")
-      comment_run = 0
-    }
+    } else flush_dead()
   }
 
   # ---- skipped-test / asserção que não afirma nada (só em teste) ------------
@@ -287,12 +356,15 @@ function close_fn(endline,   fn_len) {
     if (EXT == "rs" && !ISTEST && line ~ /\.unwrap\(\)/)
       emit("risky-shortcut", NR, ".unwrap() fora de teste")
   }
+
+  # ---- abertura de heredoc: a LINHA que abre é código e já foi sensoriada;
+  # o estado só vale da próxima em diante (E23d).
+  if (sh && !is_comment && hd_scan(line)) in_hd = 1
 }
 
 END {
   close_fn(NR + 1)
-  if (comment_run >= 3 && want("dead-code"))
-    emit("dead-code", comment_start, comment_run " linhas de código comentado")
+  flush_dead()
   if (want("oversized-file") && !ISGEN && NR > MAXFILE)   # S-1808: gerado não conta
     emit("oversized-file", 1, NR " linhas (max " MAXFILE ")")
 }
