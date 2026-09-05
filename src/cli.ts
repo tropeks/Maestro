@@ -806,6 +806,20 @@ function cmdDecide(args: Args): number {
     ...(project ? { project } : {}),
   });
 
+  // E23a/S-2301 — primeira fase do funil de delegação. `decision` já diz que a
+  // aposta foi feita; `delegation phase=planned` é o que o `maestro delegation`
+  // (e o gate do `outcome accepted`) compara com o `started` que o hook
+  // pre-agent.sh emite no disparo real. Sem agents não há delegação a provar.
+  if (agents) {
+    appendLog({
+      ts,
+      event: "delegation",
+      session_id: session,
+      phase: "planned",
+      agents,
+    });
+  }
+
   const alvo = agents ? ` agentes=${agents.join(",")}` : "";
   process.stdout.write(
     `${existed ? "decisão atualizada" : "decisão registrada"}: ` +
