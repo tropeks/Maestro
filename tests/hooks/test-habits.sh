@@ -245,6 +245,17 @@ out2=$(awk -v EXT=sh -v ENABLED=lint-suppression -v ISTEST=1 -f "$ENGINE" "$PROJ
 grep -q '^lint-suppression	4	' <<<"$out2" && ok "here-string (<<<) não liga estado de heredoc" \
                                             || bad "here-string (<<<) não liga estado de heredoc ($out2)"
 
+# Shift aritmético com operando nomeado (`$(( 1 << passo ))`) NÃO é heredoc:
+# sem a guarda o estado ligaria até uma linha igual a `passo` e cegaria tudo.
+cat > "$PROJ/shift.sh" <<'HD'
+x=$(( 1 << passo ))
+y=$(( n<<2 ))
+# @ts-ignore
+HD
+out2=$(awk -v EXT=sh -v ENABLED=lint-suppression -v ISTEST=1 -f "$ENGINE" "$PROJ/shift.sh")
+grep -q '^lint-suppression	3	' <<<"$out2" && ok "shift aritmético (<< dentro de (( ))) não liga heredoc" \
+                                            || bad "shift aritmético não liga heredoc ($out2)"
+
 # Heredoc escrito DENTRO de string citada (padrão de test-guarda-destrutiva.sh)
 # fecha com `EOF'`; sem a válvula o sensor ficaria cego até o fim do arquivo.
 cat > "$PROJ/hd-em-string.sh" <<'HD'
