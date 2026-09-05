@@ -1,7 +1,7 @@
 ---
 covers:
   - docs/architecture/**
-reviewed: e47661a
+reviewed: fdd20e9
 ---
 # EPICS.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
@@ -237,6 +237,10 @@ guia é config versionada, não corpo de agente — método ≠ executor.
   smoke). Comparação SÓ no escopo --all: régua do repo não mede diff. *AC: igual passa;
   exceder reprova nomeando smell e contagens; untracked conta; regravar desce; escopo por
   caminho ignora baseline.* **Entregue 2026-08-21** (test-habits-cli.sh, 34 asserções).
+- **S-2304 (E23d, 2026-09-05):** corpo de heredoc em arquivo shell deixa de alimentar os
+  sensores e `habits_ignore:` entra no perfil — a story vive no E23 ("prova em vez de
+  palavra"), porque o que ela consertou foi a catraca cobrando do repo a dívida da sua
+  própria prova.
 - **Dependências:** E2 (hooks/CLI), E8 (padrão de config por projeto).
 
 ### E10 — Loop de calibração: o Maestro aprende em lote (P1, M) — emenda 2026-08-23, plano aprovado
@@ -571,6 +575,9 @@ quando não há trabalho local.
   desenvolvimento: commits sem push e `main` sem upstream viram warn — a fresta
   encontrada no dia). Envelope `capabilities.json` ganha `update.{result,local,remote}`.
   **Entregue 2026-09-01.**
+- **S-2303 (E23c, 2026-09-05):** o canal do auto-update passa a ser a tag `stable` que
+  só a CI verde move (`update_channel`, estado `no-stable`, `upgrade --channel`). A story
+  vive no E23; a decisão de desenho é a emenda E23c do ADR-001.
 - **Fora do épico:** atualização da cópia em cache do Claude Code (o marketplace de
   diretório executa o repo, S-710 já vigia divergência); notificação ativa (push) —
   a linha na injeção e o doctor bastam para single-user.
@@ -630,22 +637,45 @@ não sabe PARA ONDE o projeto vai"). Ordens citam `--doc` opcional; a direção 
 público, resultado, prioridades, limites, fora de escopo — vivia na cabeça do Capitão e
 não tinha versão. Consequência medida: plano aprovado contra uma direção que já mudou
 segue como se nada tivesse mudado. Decisão: a direção é um ARTEFATO versionado no repo do
-projeto (`.maestro/INTENT.md`, DATA_MODEL §10), a ordem nasce carimbada com a versão que
-a autorizou, e mudar a direção marca cada ordem viva para revisão do plano.
-- **S-2201 — `maestro intent`:** `--init` (template com as 6 seções), `--show`,
-  `--check` (6 seções não-vazias + carimbo), `--bump` (só com conteúdo mudado — a versão
-  é o número que as ordens citam, não um contador de saves). Log `intent n=<versão>`.
+projeto (`.maestro/INTENT.md`, DATA_MODEL §13), a ordem nasce carimbada com a versão que
+a autorizou, e mudar a direção marca cada ordem viva para revisão do plano. Mesmo desenho
+da work order do E15: viaja com o git, tem carimbo, e o que a cita carrega a versão sob a
+qual nasceu.
+- **S-2201 — `maestro intent`:** `--init` (template com as seis seções obrigatórias),
+  `--show` (default), `--check` (carimbo + seções não-vazias, listando o que falta),
+  `--bump` (versão +1, RECUSA se o conteúdo não mudou desde o carimbo anterior);
+  `--project`/`--session`. Carimbo `<!-- maestro-intent v1` com `version`/`ts`/`head`/
+  `author_session`/`hash`; `intent_hash` = 8 hex do sha256 do corpo SEM o carimbo (o
+  mesmo em CLI e em quem consome — carimbar não é mudar conteúdo). Decisões tomadas onde
+  a partitura era ambígua: seção com título e sem texto conta como AUSENTE (o template
+  põe as instruções ANTES da primeira seção, senão o `--check` passaria em direção
+  vazia); direção ausente no `--show` sai **exit 0** (trabalhar sem direção é legítimo,
+  fingir que há direção não é) e no `--check`/`--bump` sai 1; conteúdo editado sem bump é
+  NOTA, nunca reprovação. Log: evento `intent` com `n=<versão>` e `via=manual`, só nas
+  mutações — jamais título, hash ou caminho. *AC: 45 asserções em test-intent.sh.*
   **Entregue 2026-09-05.**
 - **S-2202 — ordem vinculada à direção:** `order --create` carimba `intent_version`/
-  `intent_hash`; `--status`/`--list` acusam `direção mudou`; `--accept` recusa direção
-  desatualizada sem `--intent-reviewed` e carimba `accepted_intent`. Leitores de
-  cabeçalho passam de 14 para 20 linhas. **Entregue 2026-09-05.**
-- **S-2203 — injeção:** o bloco "## Projeto" do session-start diz `direção: INTENT vN`
-  (ou `sem carimbo` / `nenhuma → maestro intent --init`) e o gate plan pede que o plano
-  cite a seção da direção que serve. Só awk no cabeçalho; <100ms. **Entregue 2026-09-05.**
+  `intent_hash` quando há direção CITÁVEL e avisa "ordem sem direção" quando não há
+  (cria mesmo assim — o Maestro nunca bloqueia trabalho); `--status` mostra `direção: vN`
+  e denuncia direção que subiu de versão depois da ordem (edição sem bump vira nota);
+  `--list` marca `[direção mudou]`; `--accept` RECUSA sob direção desatualizada a não ser
+  com `--intent-reviewed` (o diretor declara que releu o plano), e todo aceite carimba
+  `accepted_intent`. Ordem sem carimbo de direção NUNCA é acusada. Janela dos leitores de
+  cabeçalho sobe de 14 para 20 linhas (`_order_field` e o awk das frozen zones no
+  session-start): o cabeçalho cresceu, a garantia é a mesma — parar antes do corpo.
+  *AC: 27 asserções novas em test-order.sh.* **Entregue 2026-09-05.**
+- **S-2203 — injeção:** o bloco `## Projeto` do session-start ganha a linha `direção:`
+  em três formas — `INTENT vN (.maestro/INTENT.md) → plano cita a seção da direção que
+  serve` · `INTENT sem carimbo → maestro intent --check` · `nenhuma → maestro intent
+  --init (E22)`. Só awk sobre as 8 primeiras linhas (nada de sha256 no hot path); o gate
+  plan passa a cobrar "o plano cita a direção (INTENT vN, seção) — sem direção, diga que
+  não há". Ratchet da injeção bumpado 6930 → 7080B no mesmo commit. *AC: 6 asserções em
+  test-brief-injection.sh.* **Entregue 2026-09-05.**
 - **Fora do épico:** gerar a direção por interrogatório (fica com o office-hours);
-  múltiplas direções por repo (monorepo) — uma emenda quando aparecer o caso.
-- **Dependências:** E15 (ordens), E8 (injeção), E16 (docs como contrato).
+  validar o CONTEÚDO da direção (o CLI valida forma, nunca julga texto); múltiplas
+  direções por repo (monorepo) — uma emenda quando aparecer o caso; migrar ordens antigas.
+- **Dependências:** E15 (ordens e o padrão de carimbo), E8 (injeção), E16 (docs como
+  contrato), ADR-008 (log só metadados).
 
 ### E23 — Prova em vez de palavra (P1, M) — aprovado 2026-09-05
 Origem: o mesmo review de 06e64c2 listou quatro lugares onde o Maestro aceitava
@@ -656,30 +686,81 @@ código e a baseline de CI estava vermelha. Decisão: fechar os quatro no mesmo 
 o mesmo critério do ADR-003 — mecânico onde o trilho alcança, honra declarada como tal
 onde não alcança (ADR-010).
 - **S-2301 — funil de delegação:** evento `delegation` com `phase ∈ planned|started|
-  received|accepted`: `planned` no decide com agentes, `started` por `hooks/pre-agent.sh`
-  (PreToolUse `Agent|Task`, só `subagent_type` saneado, nunca o prompt), `received` por
-  `hooks/subagent-stop.sh` (SubagentStop), `accepted` no `order --accept`. `maestro
-  delegation --session` mostra o funil; `outcome accepted` em subagent/multi exige
-  `started` no log (`--unproven` grava `delegation_proof: none`). **Entregue 2026-09-05.**
+  received|accepted`, correlacionado por `session_id`: `planned` no decide com agentes,
+  `started` por `hooks/pre-agent.sh` (PreToolUse `Agent|Task`, timeout 5, só
+  `subagent_type` sem o prefixo `maestro:` e casando `^[a-z0-9-]+$`, nunca o prompt),
+  `received` por `hooks/subagent-stop.sh` (SubagentStop, mesma disciplina, `agent_type`
+  quando o payload traz), `accepted` no `order --accept`. Os dois hooks são
+  OBSERVADORES: bash puro, sem jq, janela de 4096 bytes no stdin, nada em stdout, sempre
+  exit 0. `maestro delegation --session <id>` conta o funil no log corrente e nos
+  rotacionados, com veredito de uma linha; `--all` agrega as últimas 20 sessões.
+  `maestro outcome accepted` com `mode ∈ subagent|multi` passa a EXIGIR ≥1 `started` da
+  sessão (exit 1 citando `maestro delegation --session`); `--unproven` é a válvula
+  honesta e carimba `delegation_proof: none` (senão `started`); em `direct` o campo não
+  existe. `src/cli.ts` sincroniza `EVENTS` com os 19 eventos do `common.sh` — o summary
+  do `maestro log` deixa de jogar evento real em `unknownEvent`. O doctor passa a exigir
+  **7 eventos** em `hooks.json` (SubagentStop). *AC: 75 asserções em test-delegation.sh
+  (payloads Agent/Task/SubagentStop, prefixo `maestro:`, tipo inválido não vira chave,
+  sem prompt no log, <100ms) + casos em test-e10-cli.sh.* **Entregue 2026-09-05.**
 - **S-2302 — verificações obrigatórias por área:** `.maestro.yaml` declara
-  `verifications` (área → paths → labels) e `commands` (rótulo → comando canônico);
-  `maestro verify` lista o que a mudança exige e o estado de cada recibo; o recibo grava
-  `cmd_match` e o leitor compara `cmd_hash` com o comando declarado (o `true` deixa de
-  provar); `order --accept` e `outcome accepted` recusam sem o conjunto exigido
-  (`--unproven` grava `verifications: missing`). **Entregue 2026-09-05.**
-- **S-2303 — auto-update por tag aprovada:** a CI, só numa tag `v*` com suíte verde,
-  move a tag `stable`; `update_channel: stable` (default) faz o fetch/ff mirar esse
-  commit, nunca `origin/main`; `stable` ausente = estado `no-stable`, sem update e sem
-  erro; `maestro upgrade --channel main` mantém o caminho antigo. **Entregue 2026-09-05.**
-- **S-2304 — sensores ignoram fixture:** corpo de heredoc em shell não alimenta sensor;
-  `habits_ignore:` no perfil; dead-code real de `update-check.sh` corrigido; baseline
-  `.maestro-habits.tsv` refeita e o step de CI `habits --all` volta a verde.
-  **Entregue 2026-09-05.**
-- **Fora do épico:** medir custo por tarefa aceita (precisa do E20 acumular dados);
-  cobrança de verificação por área em projetos que ainda não declaram `verifications`
-  (fica em honra, como hoje, até o projeto declarar).
+  `verifications` (área → paths → labels) e `commands` (rótulo → comando canônico), lidos
+  por `hooks/lib/verifications.sh` (bash+awk, sem yq/Bun/jq); as áreas TOCADAS saem do
+  diff por prefixo de caminho, nunca da memória de quem entrega. `maestro verify [--base
+  REF] [--check]` lista base, áreas e o estado de cada recibo; o recibo grava
+  `cmd_match=yes|no|free` e o leitor compara também o `cmd_hash` com o comando declarado
+  hoje (o hash sempre foi gravado, nunca comparado — era por isso que `evidence --record
+  -- true` valia como prova). `order --accept` exige, por rótulo, recibo com `exit=0`,
+  `wtree_after` == árvore do tip e `cmd_match ≠ no`; `outcome accepted` exige recibo
+  VÁLIDA para os rótulos das áreas tocadas pelo working tree, e `--unproven` passa
+  carimbando `verifications: missing`. Decisões de fronteira: área sem path válido é
+  ignorada; config malformada ou lib ausente degradam para "nada exigido"; projeto sem
+  `verifications:` não deve nada; ordem/changeset que não toca área declarada segue na
+  regra anterior. O Maestro dogfooda a própria regra (áreas `hooks` e `cli` → rótulo
+  `suite`, `commands.suite: bash tests/run-all.sh`), e `tests/run-all.sh` passou a
+  enumerar `tests/lib/` (os testes de biblioteca eram invisíveis ao runner). *AC: 32
+  asserções em test-verifications.sh (parser) + 27 em test-verify.sh + casos novos em
+  test-evidence/test-order/test-e10-cli.* **Entregue 2026-09-05.**
+- **S-2303 — auto-update por tag aprovada:** job `approve` na CI (`needs: [shellcheck,
+  suite]`, só em `refs/tags/v*`, `contents: write` restrito a ele — a ÚNICA escrita desta
+  CI no repositório) move a tag `stable` para o commit verde; `update_channel: stable`
+  (default) faz fetch forçado de `refs/tags/stable*` e `refs/tags/v*` e mira o commit da
+  tag, nunca o topo do `origin/main`; `stable` ausente no remoto = estado novo
+  `no-stable`, sem update, sem erro e sem linha na injeção; `maestro upgrade --channel
+  main` (ou `--set update_channel=main`) mantém o caminho antigo. Evento `upgrade` ganha
+  `channel`; o doctor nomeia o canal, diz onde está `stable` em relação ao HEAD e avisa
+  valor de canal inválido; `check_release_diagram` passa a casar só `v*`, para o ponteiro
+  móvel não sequestrar o retrato de arquitetura. Garantia nova do épico: **nenhuma
+  máquina recebe automaticamente um commit que a CI não provou.** *AC: 64 asserções em
+  test-update-channel.sh.* **Entregue 2026-09-05.**
+- **S-2304 — sensores ignoram fixture:** corpo de heredoc em arquivo shell é DADO, não
+  código (abertura `<<`/`<<-` com delimitador nu, entre aspas ou escapado; fechamento na
+  linha igual ao delimitador, com tabs à esquerda só no `<<-`; `<<<` e `a<<b` não abrem
+  estado); o corpo não alimenta sensor nenhum, é descontado de `oversized-function` e
+  segue contando para `oversized-file`. Válvula declarada: heredoc dentro de string
+  citada fecha em `EOF'` — cegueira até o fim do arquivo seria pior que fechar cedo.
+  Motivo medido: as fixtures de test-habits.sh e test-habits-cli.sh, que existem para
+  PROVAR que o sensor dispara, eram contadas como slop do próprio Maestro (`skipped-test`
+  5, `dead-code` 1, `lint-suppression` 1, `slop-comment` 2) — a catraca cobrava do repo a
+  dívida da sua própria prova. No mesmo pacote: `habits_ignore:` no perfil (prefixos fora
+  do `--all`, default vazio, e o que foi filtrado é DITO na saída) e o falso positivo de
+  `dead-code` em tabela de doc no cabeçalho (`VAR=1␣␣␣descrição` é prosa em colunas), que
+  era o achado real de `hooks/lib/update-check.sh:48`. Baseline refeita: `deep-nesting 10
+  · oversized-file 12 · oversized-function 6 · skipped-test 1` — os outros três smells
+  zeraram e saíram do arquivo, logo qualquer ocorrência nova deles reprova contra 0. *AC:
+  casos de heredoc em test-habits.sh (66 asserções no total), `habits_ignore` em
+  test-habits-cli.sh, e a baseline do próprio repo asserida pela suíte.* **Entregue
+  2026-09-05.**
+- **Fora do épico:** medir o que o subagente PRODUZIU (o funil prova disparo e retorno,
+  não qualidade — quem julga conteúdo é `evidence`/`order`); correlacionar o `started`
+  com o `agents` planejado (o payload nem sempre nomeia o agente, e nome divergente é
+  sinal de julgamento, não de fraude); retro cruzando funil com desfecho (quando houver
+  volume); medir custo por tarefa aceita (precisa do E20 acumular dados); cobrança de
+  verificação por área em projetos que ainda não declaram `verifications` (fica em honra,
+  como hoje, até o projeto declarar); o falso positivo conhecido de `skipped-test` em
+  `tests/cli/test-habits-cli.sh:44` (comentário em prosa citando `@pytest.mark.skip`),
+  deixado fora do escopo de propósito.
 - **Dependências:** E13 (ledger), E15 (ordens), E18 (outcome), E19 (auto-update), E9
-  (sensores), E20 (telemetria, para o custo por tarefa).
+  (sensores), E2 (log e `log_event`), E20 (telemetria, para o custo por tarefa).
 
 ### E24 — Core, adaptadores e configuração (P2, M) — proposto 2026-09-05
 Origem: o mesmo review apontou `bin/maestro` (>3.000 linhas) e `src/cli.ts` (>1.200)
@@ -690,6 +771,39 @@ herdr, Telegram via Legatus, QM) e a configuração (routing table, perfil). Pro
 separa parsing de gravação; hooks continuam bash puro. Critério de entrada: E23 provado
 em uso por ≥1 semana (funil de delegação com `started` real, `verify` recusando de
 verdade) — refatorar antes disso seria mover código sem evidência de fronteira.
+
+**Dívida herdada, medida no branch integrado em 2026-09-05.** A baseline nova ABSORVE
+doze arquivos acima de `MAXFILE` (400 linhas); nenhum é fixture, todos são split de
+verdade:
+
+| arquivo | linhas |
+|---|---|
+| `src/cli.ts` | 1271 |
+| `hooks/session-start.sh` | 787 |
+| `hooks/pre-bash-guard.sh` | 632 |
+| `hooks/lib/update-check.sh` | 527 |
+| `tests/hooks/test-session-start.sh` | 490 |
+| `tests/hooks/test-roster-filtro.sh` | 471 |
+| `hooks/pre-tool-gate.sh` | 463 |
+| `tests/hooks/test-guarda-destrutiva.sh` | 452 |
+| `tests/hooks/test-doctor.sh` | 445 |
+| `tests/hooks/test-habits.sh` | 441 |
+| `tests/eval/prescribe.ts` | 432 |
+| `tests/hooks/test-gate.sh` | 417 |
+
+O conjunto é o mesmo que a frente E23d mediu; três arquivos engordaram depois dela, no
+próprio E22/E23 (`update-check.sh` 458 → 527 pelo canal, `session-start.sh` 765 → 787
+pela linha de direção, `src/cli.ts` 1257 → 1271 pelo vocabulário de eventos).
+`tests/hooks/test-habits.sh` cruzou o limite NESTE changeset (330 → 441), pelos casos
+novos de heredoc — é o único da lista que o E23 criou, e está registrado em vez de
+escondido. Restam ainda, dentro da catraca: `deep-nesting` 10, `oversized-function` 6,
+`skipped-test` 1.
+
+**`bin/maestro` (4043 linhas) NÃO aparece na lista porque não é sensoriado:** hook e CLI
+só olham arquivo com extensão reconhecida (`base="${f##*/}"; ext="${base##*.}"` e
+`[[ "$ext" != "$base" ]] || continue`), e `bin/maestro` não tem ponto no nome. E24, se
+quiser cobrar o split do CLI bash, precisa antes ensinar o filtro a reconhecer executável
+por shebang — decidir isso é deste épico.
 - **Fora do épico:** trocar bash por outra linguagem nos hooks (fronteira inviolável).
 - **Dependências:** E23.
 

@@ -6,6 +6,147 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-09-05
+
+Epics E22 and E23: direction becomes a versioned artifact, and the bet has to be
+backed. An outside reading of v1.13.0 landed the sentence this release answers —
+*"Maestro records the bet, it does not prove the execution"*. Four places accepted a
+declaration where proof was possible: `--agents` was a field no hook ever checked,
+`maestro evidence --record -- true` produced a valid receipt, the auto-update
+fast-forwarded onto a `main` that CI had not blessed, and the habit sensors counted the
+fixtures that exist to prove the sensors as the repo's own slop. A fifth hole was older:
+the project had no declared direction, so a plan approved against a direction that had
+since moved kept flowing as if nothing had changed. All five close here, under one
+criterion (ADR-010): mechanical where the rail reaches, honor declared *as* honor where
+it does not.
+
+### Added
+- **Versioned project direction — `maestro intent` (E22/S-2201).** A project's direction
+  becomes an artifact instead of a sentence in a prompt: `<project>/.maestro/INTENT.md`
+  is versioned in the repo, stamped (`<!-- maestro-intent v1`,
+  `version`/`ts`/`head`/`author_session`/`hash`) and carries six mandatory sections —
+  Problema, Público, Resultado, Prioridades, Limites, Fora de escopo. A heading with no
+  text under it counts as missing: an empty section is the intention to write direction,
+  not direction. `--init` writes the template, `--check` lists what is missing, `--bump`
+  raises the version and **refuses when the content did not change** — the version is the
+  number work orders cite, not a save counter. `intent_hash` is 8 hex of the sha256 of
+  the body without the stamp, so stamping is not changing. Logs `intent` with
+  `n=<version>` and `via=manual`; never the title, the hash or the path.
+- **Work orders are born citing the direction (E22/S-2202).** `order --create` stamps
+  `intent_version:`/`intent_hash:` when the project has a citable direction, and says
+  "ordem sem direção" when it does not — the order is still created, since Maestro never
+  blocks work. `--status` shows `direção: vN` and denounces a direction that moved on
+  afterwards; `--list` marks `[direção mudou]`; `--accept` refuses under a stale direction
+  unless the director declares the re-read with `--intent-reviewed`, and every acceptance
+  stamps `accepted_intent:`. An order with no direction stamp is never accused.
+- **The session knows which direction it works under (E22/S-2203).** The `## Projeto`
+  block of the SessionStart injection carries one of three lines: `direção: INTENT vN
+  (.maestro/INTENT.md) → plano cita a seção da direção que serve`, `INTENT sem carimbo →
+  maestro intent --check`, or `nenhuma → maestro intent --init (E22)`. Absence is a
+  reported fact, never silence. The hook only awks `version:` out of the stamp — no
+  sha256 on the hot path — and points at the file instead of dumping its content. The
+  plan gate now asks the plan to cite the direction (INTENT vN, section) and to say so
+  when there is none. Injection ratchet deliberately bumped 6930 → 7080 bytes.
+- **Delegation funnel: `planned → started → received → accepted` (E23/S-2301).**
+  `--agents` was a declaration nobody checked: no hook ever saw a subagent start, so the
+  retro credited an agent tier for work the director had typed himself. Two new pure-bash
+  hooks close the loop — `pre-agent.sh` (PreToolUse, matcher `Agent|Task`) logs
+  `delegation phase=started` on the real dispatch, `subagent-stop.sh` (SubagentStop) logs
+  `phase=received` when the subagent comes back. `maestro decide` emits `phase=planned`
+  when the record carries `agents`, and `order --accept` emits `phase=accepted`. Both
+  hooks read a 4096-byte window, never touch the Task `prompt`/`description`, write
+  nothing to stdout and always exit 0 — they observe, they never gate.
+- **`maestro delegation`.** `--session <id>` counts the funnel for one session across the
+  current log and the rotated ones, with a one-line verdict (planned but never dispatched
+  · dispatched without return · proven). `--all` aggregates the last 20 sessions seen.
+- **Mandatory verifications per area (E23/S-2302).** `.maestro.yaml` gains
+  `verifications:` (area → `paths` + `labels`) and `commands:` (canonical command per
+  label), parsed by `hooks/lib/verifications.sh` — bash + awk, no yq, no Bun, no jq.
+  Touched areas come from the diff (path prefix), never from memory. A project that
+  declares nothing owes nothing.
+- **`maestro verify [--base REF] [--project P] [--check]`.** Shows the base, the touched
+  areas and, per required label, whether the receipt is VÁLIDA/VENCIDA/NENHUMA together
+  with the command that produces it. `--check` exits 1 when anything required is missing;
+  logs `verify n=<missing>`.
+- **Auto-update follows the `stable` tag CI moves (E23/S-2303).** New config
+  `update_channel: stable|main` in `~/.maestro/config.yaml` (default `stable`), env
+  `MAESTRO_UPDATE_CHANNEL`, and a per-call override `maestro upgrade --channel
+  stable|main`. On the `stable` channel the fetch force-carries `refs/tags/stable*` and
+  `refs/tags/v*`, and the ff-only target is the commit that tag points at — so a machine
+  only ever moves onto a commit that shellcheck and the suite already passed on.
+- **CI job `approve` (`needs: [shellcheck, suite]`, tags `v*` only).** Moves the `stable`
+  tag onto the green commit. It is the single thing this CI writes; `contents: write` is
+  scoped to that job alone and the workflow default stays `contents: read`.
+- **State `no-stable`.** Channel `stable` with no such tag on the remote is neither a
+  failure nor an update: nothing is applied, nothing is injected into the session, and
+  the doctor explains it with the command that opts back into `main`.
+- **`.maestro.yaml`: `habits_ignore:`** — path prefixes kept out of `maestro habits
+  --all` (and `--baseline`, which is the same scope); empty by default, and whatever it
+  filters is reported, never hidden.
+- **Two record fields, both enum, both only alongside `outcome`:** `delegation_proof`
+  (`started|none`) and `verifications` (`cited|missing`), validated by the doctor's
+  `record_schema_ok`.
+
+### Changed
+- **`maestro outcome accepted` now demands proof for delegated work.** With a record in
+  `mode: subagent|multi`, accepting requires at least one `delegation phase=started` for
+  that session; otherwise it exits 1 and points at `maestro delegation --session <id>`.
+  `--unproven` is the honest valve: it accepts and stamps `delegation_proof: none` on the
+  record, against `started` when the log proves the dispatch. `direct` is untouched and
+  stores no field.
+- **`outcome accepted` also refuses without the required verifications.** Areas touched
+  by the working tree against `merge-base(main, HEAD)`; `--unproven` passes and stamps
+  `verifications: missing` (otherwise `cited`). `rework`/`reverted` are never blocked —
+  only acceptance claims the work serves.
+- **`order --accept` refuses without the required set.** Areas touched by
+  `merge-base(main, branch)..branch`; each required label needs a receipt with `exit=0`,
+  `wtree_after` equal to the branch tip tree and `cmd_match ≠ no`. `--status` shows the
+  same verdict. Orders that touch no declared area keep the previous rule.
+- **Receipts now match the declared command.** `evidence --record` writes
+  `cmd_match=yes|no|free`; reading rejects `cmd_match=no` and a `cmd_hash` that diverges
+  from today's `commands.<label>` — the hash was always recorded, it just was never
+  compared. `maestro evidence --record -- true` no longer counts as proof of the suite.
+  Schema stays `maestro-evidence-v1`; pre-1.14 receipts read as `free` and remain valid.
+- **Order header readers scan 20 lines instead of 14** (the CLI's `_order_field` and the
+  frozen-zone awk in session-start): the header grew with the direction stamp, the
+  guarantee is the same — stop before the body, where a hand-written `branch:` must never
+  become a field.
+- **`upgrade` log events now carry `channel`** (`stable|main`) on all three paths
+  (`auto`, `manual`, `rollback`), and the state file records `channel=`; the S-1810 fast
+  path only reuses a measurement taken on the current channel.
+- **Doctor.** Expects **7 hook events** now (SubagentStop). `check_upstream` reports the
+  update channel and where `stable` sits relative to HEAD, and warns on an invalid
+  `update_channel`; `check_update_state` speaks the channel and accepts `no-stable`;
+  `check_release_diagram` matches `v*` only, so the movable `stable` tag cannot hijack the
+  release portrait.
+- **Operational note for this release:** until CI moves the first `stable` tag — which
+  happens when the `v1.14.0` tag is pushed — installations on the default `stable`
+  channel sit in `no-stable` and do not update. That is the intended fail-safe: a broken
+  approval channel leaves a machine on the version it already proved. `maestro upgrade
+  --channel main` takes the tip meanwhile.
+- **Maestro dogfoods the rule:** its own `.maestro.yaml` declares areas `hooks`
+  (`hooks/`) and `cli` (`bin/`, `src/`), both requiring `suite`, with `commands.suite:
+  bash tests/run-all.sh`.
+- `tests/run-all.sh` also enumerates `tests/lib/` — library tests were invisible to the
+  runner.
+- `src/cli.ts` knows the full event vocabulary (19 events), so `maestro log --summary`
+  stops filing real events under `unknownEvent`.
+
+### Fixed
+- **Habit sensors: heredoc bodies in shell files are data, not code (E23/S-2304).** The
+  fixtures that exist to prove the sensors fire were counted as the repo's own slop —
+  `skipped-test`, `dead-code`, `lint-suppression` and `slop-comment` all dropped to zero.
+  The opening line is still sensed; the body is excluded from `oversized-function` and
+  still counted by `oversized-file`, which is file size for real.
+- **Habit sensors: a doc table in a file header (`VAR=1   description`) is prose in
+  columns, not commented-out code** — kills the `dead-code` false positive on
+  `hooks/lib/update-check.sh`, where the "fix" the sensor asked for was deleting
+  documentation.
+- **`.maestro-habits.tsv` rebaselined with the new sensor** (`deep-nesting 10 ·
+  oversized-file 12 · oversized-function 6 · skipped-test 1`); `maestro habits --all`,
+  the CI ratchet step, is green again and the CI command is now asserted by the suite
+  itself.
+
 ## [1.13.0] — 2026-09-02
 
 Epic E21: human gates reach the runtime and the phone. The Captain already runs

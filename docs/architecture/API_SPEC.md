@@ -2,9 +2,10 @@
 covers:
   - bin/maestro
   - hooks/*.sh
+reviewed: fdd20e9
 ---
 # API_SPEC.md
-**Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
+**Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.2 — 2026-09-05 (emendas E22/E23: hooks `pre-agent`/`subagent-stop`, `maestro intent`, `maestro verify`, `maestro delegation`, canal do `upgrade`)
 **Consome:** ARCHITECTURE.md, DATA_MODEL.md | **Consumido por:** security-architect, vibe-code
 
 > Sem HTTP. As "APIs" do Maestro são dois contratos: **CLI** (`maestro-decide` e utilitários)
@@ -42,6 +43,18 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   Leitura de estado/config sem `sed`: lookups em bash puro.
   **S-1904 (v1.12.1):** o fetch leva `--tags` — máquina que só segue `main` recebe a tag
   da release junto, e o doctor compara o retrato com a tag certa.
+  **S-2303 (E23c):** no canal `stable` (default) o candidato do ff-only é o commit da
+  tag `stable`, não o topo do `origin/main`; sem a tag no remoto o estado é `no-stable`
+  e **nenhuma linha entra na injeção** (nada a aplicar não é aviso).
+- **Emenda E22 (S-2203):** a seção `## Projeto` ganha a linha `direção:`, em três
+  formas: `INTENT vN (.maestro/INTENT.md) → plano cita a seção da direção que serve` ·
+  `INTENT sem carimbo → maestro intent --check` · `nenhuma → maestro intent --init
+  (E22)`. Um awk sobre as 8 primeiras linhas do arquivo (só `version:`); nenhum sha256
+  no hot path; ponteiro, nunca o conteúdo da direção. Ausência é FATO reportado, nunca
+  silêncio. O texto do gate plan passa a cobrar "o plano cita a direção (INTENT vN,
+  seção) — sem direção, diga que não há". Ratchet da injeção deliberadamente bumpado
+  6930 → 7080 bytes. As frozen zones de ordens pendentes passam a ser lidas em 20
+  linhas de cabeçalho (E22/S-2202), não 14.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
@@ -57,6 +70,33 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   3. existe `~/.maestro/sessions/<session_id>.json` válido e **não expirado (TTL 4h)** → exit 0 + log `gate_pass`
   4. senão → conforme `gate.mode` na config: **`warn`** (exit 0 + log `gate_warn` + mensagem) ou **`block`** (exit 2). Default inicial: `warn`; promoção a `block` após 1 semana de dados.
 - **Latência:** < 50ms.
+
+### `hooks/pre-agent.sh` — evento PreToolUse, matcher `Agent|Task` (E23a/S-2301)
+- **Lê:** os primeiros 4096 bytes do stdin. `session_id` por regex
+  (`CLAUDE_SESSION_ID` como fallback) e `subagent_type` do payload
+  (`"subagent_type":"([^"]{1,64})"`), sem o prefixo `maestro:`, aceito só se casar
+  `^[a-z0-9-]+$`. O `prompt` e a `description` do Task **nunca** são lidos — nem para
+  log, nem para decisão.
+- **Emite:** `delegation phase=started session_id=<id> [agents=<agente>]`. Sem
+  `session_id` tipado não há evento (o funil correlaciona por sessão; logar solto seria
+  ruído).
+- **Erros:** sempre exit 0 — observador, nunca gate. Kill-switch, stdin em
+  tty/vazio/lixo, sessão fora do tipo, lib ausente: sem evento, sem ruído. Nada em
+  stdout (stdout de PreToolUse é canal de decisão do Claude Code). Bash puro, sem jq,
+  sem Bun, sem rede; NFR <100ms. Registrado em `hooks/hooks.json` com `timeout: 5`.
+- **Degradação declarada:** prompt gigante pode empurrar o `subagent_type` para fora da
+  janela de 4096 bytes — o evento sai sem `agents`, nunca com pedaço de texto.
+
+### `hooks/subagent-stop.sh` — evento SubagentStop (E23a/S-2301)
+- **Lê:** mesma janela e mesma extração de sessão; `agent_type` (ou `subagent_type`,
+  por simetria com o PreToolUse) quando o payload traz. Nunca o transcript nem o
+  resultado do subagente.
+- **Emite:** `delegation phase=received session_id=<id> [agents=<agente>]`. Sempre exit
+  0, nada em stdout, `timeout: 5` no `hooks.json`.
+- **Doctor:** `check_hooks_registry` passa a exigir **7 eventos** (SessionStart,
+  PreToolUse, UserPromptSubmit, PostToolUse, SessionEnd, SubagentStop, Stop) e os dois
+  hooks novos entram na contagem de `commands` que precisam resolver para script
+  executável.
 
 ### `hooks/user-prompt-submit.sh` — evento UserPromptSubmit (ADR-008)
 - Prompt inicia com `/` → log `override_manual` com **apenas o nome do comando** (vocabulário fechado). Sempre exit 0; nunca altera o prompt.
@@ -166,6 +206,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 - Os mesmos sensores do hook pós-edição (motor único `hooks/lib/habit-sensors.awk`),
   sobre o diff vs HEAD + untracked (default), `--all` (repo inteiro, exige git) ou
   caminhos explícitos. Respeita `habits:` do `.maestro.yaml`.
+- **Emenda E23d/S-2304:** no escopo `--all`/`--baseline`, respeita também
+  `habits_ignore:` (prefixos relativos à raiz; default vazio). Caminho explícito não é
+  filtrado — pedir por nome é decisão de quem pede. Quando algo é filtrado, a saída ganha
+  `habits_ignore: N arquivo(s) fora do escopo (.maestro.yaml)` antes do veredito: filtro
+  que esconde em silêncio é armadilha. O motor não emite achado em corpo de heredoc de
+  arquivo shell — vale igual para o hook `post-edit-habits.sh`, que é o mesmo awk. O
+  contrato de exit não muda (0 limpo · 1 achados · 2 ambiente).
 - Achado sai como `arquivo:linha: smell — detalhe`, com os guias dos smells distintos
   ao final (sensor + guia, sempre juntos). Exit: 0 limpo · 1 achados · 2 ambiente.
 - **S-905 (catraca):** `--baseline` grava `.maestro-habits.tsv` (smell → contagem,
@@ -180,8 +227,20 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   operacionais (privilege_escalation, container_destructive, kubectl_delete) — destruição
   de dados bloqueia integral mesmo com consent. hooks/bin/src jamais consentíveis
   (ADR-003 v1.2). Fail closed; auditado.
-- `outcome --session <id> <accepted|rework|reverted> [--suite pass|fail]` — fecha a
-  decisão com o desfecho (DATA_MODEL §3 v1.5). Exige record existente.
+- `outcome --session <id> <accepted|rework|reverted> [--suite pass|fail] [--unproven]`
+  — fecha a decisão com o desfecho (DATA_MODEL §3 v1.5). Exige record existente e `jq`.
+  **Emenda E23a/S-2301:** `accepted` com record em `mode ∈ subagent|multi` exige ≥1
+  `delegation phase=started` da sessão no log; sem ela, **exit 1** citando `maestro
+  delegation --session <id>` e a alternativa `--unproven`, e o record não é tocado. Com
+  prova, carimba `delegation_proof: started`; com `--unproven`, `none`. `mode: direct`
+  não exige nada e não grava o campo.
+  **Emenda E23b/S-2302:** `accepted` também recusa (exit 1, `sem verificação
+  obrigatória: …` + o comando de cada rótulo faltante) quando o working tree contra
+  `merge-base(main|master, HEAD)` toca área com verificação obrigatória sem recibo
+  VÁLIDA. `--unproven` passa e grava `verifications: "missing"`; o caso normal com áreas
+  exigidas grava `"cited"`; sem áreas exigidas o campo não existe. `rework`/`reverted`
+  nunca são barrados — só o aceite afirma que a entrega serve. O aviso de honra do
+  `--suite pass` continua para o rótulo `suite` quando ele não é exigido por área.
 - `retro [--days N]` — relatório determinístico de calibração (override rate, gates,
   smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
@@ -207,6 +266,88 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   git + ledger (§8) + aceite; `--accept` exige `provada` (exit 1 sem prova). O
   session-start compila frozen zones de ordens pendentes na política do gate:
   autônomo bloqueia na zona, direto avisa; aceite descongela.
+
+**Emenda E22/S-2202 (2026-09-05) — a ordem cita a direção.** `--create` carimba
+`intent_version:`/`intent_hash:` quando há direção citável (DATA_MODEL §13) e anuncia
+`direção: INTENT vN carimbada na ordem`; sem direção citável cria assim mesmo e imprime
+`AVISO: ordem sem direção` com o comando que resolve (`maestro intent --init` quando não
+há arquivo, `--check` quando há e está incompleto). O contrato gerado ganha a linha
+"Direção vigente na criação: INTENT vN — o plano cita a seção da direção que autoriza
+esta ordem". `--status N` mostra `direção : vN` e, se a direção subiu de versão,
+`ATENÇÃO: a direção mudou (vA → vB) depois desta ordem — revise o plano contra
+.maestro/INTENT.md`; mesma versão com conteúdo outro (edição sem bump) vira nota
+apontando `maestro intent --bump`. `--list` marca `[direção mudou]` ao lado do status.
+`--accept N` RECUSA (exit 1) sob direção desatualizada, ensinando `--intent-reviewed` —
+aceitar sob direção nova é decisão NOVA do diretor, não repetição; com a flag, aceita
+dizendo sob qual versão. Todo aceite (inclusive o re-aceite do S-1806) carimba
+`accepted_intent: <vN>`. Ordem sem carimbo de direção nunca é acusada.
+
+**Emenda E23b/S-2302 (2026-09-05) — o aceite exige a verificação da área.** `--accept N`
+recusa (exit 1) quando o branch toca área com verificação obrigatória (`.maestro.yaml`,
+DATA_MODEL §2) sem o conjunto exigido, listando `rótulo: NENHUMA|VENCIDA (motivo)` e o
+comando que registra o recibo. Por rótulo: `exit=0`, `wtree_after` == árvore do tip do
+branch e `cmd_match ≠ no`. `--status N` ganha `verif   : áreas <…>` e um estado por
+rótulo exigido. Ordem que não toca área declarada segue na regra anterior.
+
+**Emenda E23a/S-2301 (2026-09-05):** todo `--accept` emite também `delegation
+phase=accepted` com `n` = id da ordem — a última fase do funil.
+
+### `maestro intent` (E22/S-2201)
+```
+maestro intent [--show|--check|--init|--bump] [--project d] [--session s]
+```
+- `--init`: cria `<projeto>/.maestro/INTENT.md` (v1) com o template das seis seções
+  VAZIAS e o carimbo `maestro-intent v1` (`version`/`ts`/`head`/`author_session`/`hash`).
+  Recusa se já existe (exit 1). O template **não passa** no `--check` de propósito:
+  título não é direção.
+- `--show` (default): versão, `intent_hash`, carimbo (ts/head/sessão) e o estado de cada
+  uma das seis seções (`N linha(s)` ou `VAZIA`), mais a nota "conteúdo editado desde o
+  carimbo vN → maestro intent --bump" quando o hash do corpo difere do carimbado. Sem
+  arquivo: `sem direção — maestro intent --init`, **exit 0** (trabalhar sem direção é
+  legítimo; fingir que há direção não é). Carimbo ilegível: nomeia o defeito e sai 0.
+- `--check`: valida carimbo + seis seções não-vazias e lista o que falta (`direção
+  INCOMPLETA (N de 6 seções): falta …`). Exit 0 ok · 1 se falta qualquer coisa
+  (inclusive arquivo ausente ou carimbo ilegível). Conteúdo editado sem bump é nota, não
+  reprovação — quem decide versionar é gente.
+- `--bump`: conteúdo mudado → `version+1` com `ts`/`head`/`author_session`/`hash` novos e
+  o CORPO copiado byte a byte; conteúdo igual ao do carimbo → recusa (exit 1) explicando
+  que a versão é o que as ordens citam. Bump com direção ainda incompleta passa,
+  avisando, e diz que "ordens novas nascem citando vN; as antigas passam a pedir revisão
+  do plano".
+- Escrita atômica (`> tmp && mv -f`). Log: evento `intent` (`n=<versão>`, `via=manual`,
+  `session_id` quando informado) só nas MUTAÇÕES (`--init`/`--bump`); leitura não loga.
+- **Exit codes:** 0 ok · 1 validação (direção ausente no `--check`/`--bump`, `--init`
+  sobre arquivo existente, `--bump` sem mudança, carimbo ilegível no `--bump`, flag
+  desconhecida) · 2 ambiente quebrado (não consigo gravar).
+
+### `maestro verify` (E23b/S-2302)
+```
+maestro verify [--base REF] [--project P] [--check]
+```
+- Cruza o diff contra a base (default `merge-base main HEAD`, depois `master`; sem git
+  ou sem ancestral → "base: nenhuma", comparando só o working tree) com o bloco
+  `verifications:` do `.maestro.yaml` e imprime: a base, as áreas tocadas e, por rótulo
+  exigido, a linha do `evidence` (VÁLIDA/VENCIDA/NENHUMA nomeando o motivo e o comando
+  que registra o recibo — com `commands.<rótulo>` declarado, o comando REAL, não um
+  placeholder).
+- Projeto sem `verifications:` → uma linha dizendo isso, exit 0 (o Maestro não inventa
+  dever para quem não o declarou). Nenhuma área tocada, ou área sem rótulo → idem.
+- `--base` com ref inexistente → exit 1 (validação). Sem `--check` é relatório: exit 0
+  mesmo faltando prova. `--check` → exit 1 se algum rótulo exigido não está VÁLIDA.
+- Log: evento `verify` com `n = <faltantes>` (0 inclusive). Nunca rótulo, área ou
+  caminho.
+
+### `maestro delegation` (E23a/S-2301)
+```
+maestro delegation --session <id> | --all
+```
+- `--session <id>`: imprime o funil da sessão — `planned` / `started` / `received` /
+  `accepted` — contado no `routing.jsonl` **e nos rotacionados** (`routing-*.jsonl`),
+  cada linha nomeando quem a emite, mais um veredito: sem delegação registrada ·
+  planejada e NÃO disparada · disparada sem retorno · delegação provada. Exit 0.
+- `--all`: agrega por sessão as **últimas 20 sessões vistas** no log (ordem de primeira
+  aparição), uma tabela por sessão. Exit 0.
+- Sem `--session` nem `--all`, ou flag desconhecida: exit 1 com o uso.
 
 ### `maestro decide` — flags de orçamento (E14)
 - `--max-steps N` (1–500) · `--max-min N` (1–1440) · `--max-cents N` (1–100000): caps
@@ -255,6 +396,13 @@ maestro conduct --session <session_id>
   VÁLIDA/VENCIDA nomeando o motivo; `--check` sai 1 quando não-válida.
 - Consumidor: `outcome --suite pass` cita evidência válida ou avisa "palavra de honra"
   (`suite_evidence` no record). Live-dispatch E2E em `tests/e2e/` (tier manual/pago).
+- **Emenda E23b/S-2302 — o recibo casa o comando.** `--record` grava
+  `cmd_match=yes|no|free` (DATA_MODEL §8) e, quando o comando não é o declarado em
+  `commands.<rótulo>`, avisa na hora que "este recibo NÃO conta como verificação" — o
+  exit do CLI continua sendo o do comando. A leitura reprova `cmd_match=no` ("comando
+  diferente do declarado em .maestro.yaml") e `cmd_hash` divergente do sha16 do comando
+  declarado hoje; com declaração, a linha de VENCIDA traz o comando exato para regravar.
+  Recibo anterior ao E23b (sem a linha) é lido como `free`.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
@@ -289,7 +437,22 @@ maestro conduct --session <session_id>
 - `--snooze`: adia o aviso da versão remota atual (24h → 48h → 7 dias, escalonado por
   versão); não muda o estado.
 - `--set chave=valor`: `update_check` (true|false), `auto_upgrade` (true|false),
-  `update_interval_hours` (1..720) em `$MAESTRO_HOME/config.yaml`.
+  `update_interval_hours` (1..720) e `update_channel` (stable|main) em
+  `$MAESTRO_HOME/config.yaml`.
+- **Emenda E23c/S-2303 — canal.** `--channel stable|main` sobrepõe o canal **só nesta
+  chamada** (via `MAESTRO_UPDATE_CHANNEL` no próprio processo; não escreve o
+  `config.yaml` — para gravar, `--set update_channel=…`); valor fora do domínio → exit 1;
+  combina com qualquer modo (`--check`, `--rollback`, `--snooze`, sem flag). Canal
+  `stable` sem a tag no remoto: `maestro upgrade` e `--check` saem **0** com "canal
+  stable: o origin ainda não tem a tag 'stable' — nada a aplicar (a CI a move quando
+  shellcheck + suíte passam numa tag `v*`; `maestro upgrade --channel main` segue o topo
+  da main)"; `--snooze` responde "nada a adiar". As linhas de estado nomeiam o canal:
+  `atualização: em dia (vX, canal stable)`, `atualização: vX → vY disponível (N
+  commit(s), canal stable) — maestro upgrade`, `Maestro vX → vY (N commit(s), canal
+  stable)`; em dia sem flags, `já é a última versão (tag stable)`. Bloqueio por `ahead`
+  no canal `stable` diz "à frente da tag stable (ainda não aprovados pela CI)" em vez de
+  "push, não pull". O evento `upgrade` sai com `channel` nas três vias. Costura de teste
+  nova: `MAESTRO_UPDATE_CHANNEL`.
 - `update_check: false` e `MAESTRO_NO_UPDATE_CHECK=1` desligam só a checagem automática:
   o comando manual sempre roda (`UPD_MANUAL=1`). Costuras de teste: `MAESTRO_UPDATE_REPO`,
   `MAESTRO_UPDATE_REMOTE`, `MAESTRO_UPDATE_BRANCH`, `MAESTRO_UPDATE_INTERVAL`.
@@ -309,6 +472,7 @@ maestro conduct --session <session_id>
   fato vai ao envelope em `install.{registered,divergent,repo_is_live}`. A severidade segue
   quem executa: com marketplace `source: directory` apontando para o repo, a cópia em cache
   é inerte e a linha é `ok`.
+- **Emenda S-2301 (E23a):** hooks esperados passam a ser **7** (SubagentStop).
 - **Emenda S-2101 (v1.13.0):** hooks esperados passam a ser 6 (Stop).
 - **Emenda S-1811 (v1.11.1):** hooks esperados passam a ser 5 (SessionEnd).
 - **Emenda E9:** hooks esperados passam a ser 4 (PostToolUse do habit hook);
@@ -323,6 +487,14 @@ maestro conduct --session <session_id>
   desenvolvimento; ausente → ok ("a primeira sessão verifica"). `check_upstream` (sem rede):
   commits à frente de `origin/main` sem push e `main` sem upstream viram warn. O envelope
   `capabilities.json` ganha `update.{result,local,remote}`. Nunca falha o doctor.
+- **Emenda E23c (S-2303):** `check_update_state` aceita `result=no-stable` (ok, com o
+  comando que ignora o canal) e nomeia o canal nas linhas de `available` e `current`;
+  estado sem `channel` é lido como `main`. `check_upstream` abre com o canal e a posição
+  do HEAD em relação à tag `stable` (exatamente na tag · N atrás · N à frente · divergiu
+  · tag ainda não existe neste clone) e emite warn quando `update_channel` do
+  `config.yaml` está fora do domínio — tudo sem rede. `check_release_diagram` passa a
+  usar `describe --tags --abbrev=0 --match 'v*'`: `stable` é ponteiro de canal, não
+  release, e sem o filtro sequestraria o retrato de arquitetura.
 
 ## 3. Envelope de erro (CLI)
 

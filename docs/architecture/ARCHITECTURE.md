@@ -3,7 +3,7 @@ covers:
   - hooks/**
   - bin/**
   - src/**
-reviewed: e47661a
+reviewed: fdd20e9
 ---
 # ARCHITECTURE.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
@@ -46,6 +46,35 @@ frente/branch). `maestro upgrade` é a versão manual, com `--rollback` (`git re
 para o SHA anterior). Config por máquina em `$MAESTRO_HOME/config.yaml`
 (`update_check`, `auto_upgrade`, `update_interval_hours`); `MAESTRO_NO_UPDATE_CHECK=1`
 desliga.
+
+**Emenda E23c (2026-09-05) — o auto-update segue prova, não ponteiro de branch:** a
+emenda E19 fez o SessionStart puxar o topo de `origin/main`. Isso trocava staleness por
+outro risco: a `main` é verde *em média*, não *sempre* — entre o push e o fim da CI (e
+sempre que a CI reprova) o topo da `main` é um commit não provado, e o auto-update o
+distribuiria para todas as máquinas em minutos, sem ninguém pedir. O canal default passa
+a ser a tag móvel **`stable`**, que só o job `approve` da CI move (uma tag leve
+reapontada para o `$GITHUB_SHA` e publicada com push forçado na ref
+`refs/tags/stable`), e só depois de shellcheck + suíte verdes numa tag `v*`. Config por
+máquina `update_channel: stable|main` (DATA_MODEL §10), env `MAESTRO_UPDATE_CHANNEL`,
+override pontual `maestro upgrade --channel`.
+
+Alternativas descartadas: (a) seguir a última tag `v*` — imutável e honesta, mas amarra o
+update ao ritual de release e deixa correção urgente parada; (b) consultar a API do
+GitHub pelo status do commit — rede virando dependência de decisão, contra a regra da
+casa (a rede só pode falhar em silêncio); (c) `main` protegida com merge só verde —
+depende de configuração do servidor, não do repositório, e não sobrevive a um push
+forçado administrativo. A tag móvel resolve com o mesmo transporte que já existe (git),
+sem rede nova e sem serviço novo: `merge --ff-only refs/tags/stable` é, por construção,
+"só o que já foi provado".
+
+Consequências assumidas: a tag é **móvel por desenho** (o fetch dela é forçado dos dois
+lados — sem `+` na refspec, o git recusa reescrever uma tag existente e a máquina
+congelaria na primeira `stable` que viu); a CI ganha a permissão de escrita mais estreita
+que dá para escrever (um job, uma ref, só em `refs/tags/v*`, com o topo do workflow em
+`contents: read`); enquanto a tag não existir, o estado é `no-stable` — **nada é
+aplicado, o que é o fail-safe certo**: um canal de aprovação quebrado deixa a máquina
+parada na versão que ela já provou, nunca a empurra para uma não provada. Quem quiser a
+ponta viva pede: `update_channel: main` ou `maestro upgrade --channel main`.
 
 ### ADR-002 — Roteamento de intenção: LLM da sessão guiado por routing table declarativa
 **Status:** Aceito.
@@ -183,7 +212,8 @@ comando declarado** em `.maestro.yaml` (`commands.<label>`), e o projeto declara
 **verificações obrigatórias por área** (`verifications`): `order --accept` e `outcome
 accepted` recusam sem o conjunto exigido. (4) O auto-update segue a **tag móvel
 `stable`**, que só a CI move depois da suíte verde numa tag `v*`; `main` continua
-disponível como canal explícito. (5) Sensores de hábito **ignoram corpo de heredoc** e a
+disponível como canal explícito (o desenho do canal, com as alternativas descartadas,
+está na emenda E23c do ADR-001 — um lugar só). (5) Sensores de hábito **ignoram corpo de heredoc** e a
 baseline é refeita — a CI deixa de estar vermelha por fixture.
 **Onde o trilho alcança e onde não:** mecânico = hooks `pre-agent`/`subagent-stop`
 (disparo e retorno do subagente são interceptados pelo Claude Code), `verify`/`accept`/
