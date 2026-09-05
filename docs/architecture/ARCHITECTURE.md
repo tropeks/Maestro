@@ -3,7 +3,7 @@ covers:
   - hooks/**
   - bin/**
   - src/**
-reviewed: fdd20e9
+reviewed: 31eaf87
 ---
 # ARCHITECTURE.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
@@ -72,7 +72,8 @@ lados — sem `+` na refspec, o git recusa reescrever uma tag existente e a máq
 congelaria na primeira `stable` que viu); a CI ganha a permissão de escrita mais estreita
 que dá para escrever (um job, uma ref, só em `refs/tags/v*`, com o topo do workflow em
 `contents: read`); enquanto a tag não existir, o estado é `no-stable` — **nada é
-aplicado, o que é o fail-safe certo**: um canal de aprovação quebrado deixa a máquina
+aplicado, mas a parada é ANUNCIADA** (linha na injeção e warn no doctor: staleness
+muda é o que o auto-update existe para fechar), e é o fail-safe certo: um canal de aprovação quebrado deixa a máquina
 parada na versão que ela já provou, nunca a empurra para uma não provada. Quem quiser a
 ponta viva pede: `update_channel: main` ou `maestro upgrade --channel main`.
 

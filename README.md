@@ -234,7 +234,8 @@ and fast-forwards to the `stable` tag — moved by CI only after a green suite o
 version — the new hook re-executes itself. A development machine (dirty tree or unpushed
 commits) is never overwritten; the session just gets a one-line "push, don't pull" notice.
 While the remote has no `stable` tag yet, the state is `no-stable`: nothing is applied,
-nothing is announced, and that is the intended fail-safe — a broken approval channel
+the session gets a one-line "auto-update parado" notice and the doctor warns, and that
+is the intended fail-safe — a broken approval channel
 leaves the machine on the version it already proved.
 
 ```bash

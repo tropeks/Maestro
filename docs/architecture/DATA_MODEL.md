@@ -3,7 +3,7 @@ covers:
   - config/routing-table.yaml
   - hooks/lib/common.sh
   - agents/**
-reviewed: fdd20e9
+reviewed: 31eaf87
 ---
 # DATA_MODEL.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.8 — 2026-09-05 (emendas E22/E23: §13 direção versionada, §9 ordem carimbada, §3 `delegation_proof`/`verifications`, §4 vocabulário completo, §8 `cmd_match`, §2 `verifications`/`commands`/`habits_ignore`, §10 `update_channel`)
@@ -617,8 +617,8 @@ head=<sha que o upgrade produziu — o rollback recusa (`diverged`) se o HEAD j�
 upgraded=<epoch>
 ```
 `result=no-stable` (E23c) = canal `stable` e o remoto ainda não tem a tag: **não é
-falha** (o fetch pode ter ido bem) e **não é update**. Nada é aplicado, nada entra na
-injeção, o doctor diz `ok` explicando — e é o fail-safe certo: canal de aprovação
+falha** (o fetch pode ter ido bem) e **não é update**. Nada é aplicado; a injeção avisa
+"auto-update parado" e o doctor diz `warn` explicando — e é o fail-safe certo: canal de aprovação
 quebrado deixa a máquina parada na versão que ela já provou, nunca a empurra para uma
 não provada.
 Motivos que só a API devolve (nunca gravados como `result`): `raced` — o HEAD mudou entre

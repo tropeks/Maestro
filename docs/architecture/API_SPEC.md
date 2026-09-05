@@ -2,7 +2,7 @@
 covers:
   - bin/maestro
   - hooks/*.sh
-reviewed: fdd20e9
+reviewed: 31eaf87
 ---
 # API_SPEC.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.2 — 2026-09-05 (emendas E22/E23: hooks `pre-agent`/`subagent-stop`, `maestro intent`, `maestro verify`, `maestro delegation`, canal do `upgrade`)
@@ -45,7 +45,9 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   da release junto, e o doctor compara o retrato com a tag certa.
   **S-2303 (E23c):** no canal `stable` (default) o candidato do ff-only é o commit da
   tag `stable`, não o topo do `origin/main`; sem a tag no remoto o estado é `no-stable`
-  e **nenhuma linha entra na injeção** (nada a aplicar não é aviso).
+  e a injeção diz `atualização: canal stable, e o origin ainda não tem a tag 'stable' —
+  auto-update parado; maestro upgrade --channel main pega o topo` (auto-update parado
+  é fato que a sessão precisa saber; silêncio seria a staleness muda do E19).
 - **Emenda E22 (S-2203):** a seção `## Projeto` ganha a linha `direção:`, em três
   formas: `INTENT vN (.maestro/INTENT.md) → plano cita a seção da direção que serve` ·
   `INTENT sem carimbo → maestro intent --check` · `nenhuma → maestro intent --init
@@ -487,8 +489,9 @@ maestro conduct --session <session_id>
   desenvolvimento; ausente → ok ("a primeira sessão verifica"). `check_upstream` (sem rede):
   commits à frente de `origin/main` sem push e `main` sem upstream viram warn. O envelope
   `capabilities.json` ganha `update.{result,local,remote}`. Nunca falha o doctor.
-- **Emenda E23c (S-2303):** `check_update_state` aceita `result=no-stable` (ok, com o
-  comando que ignora o canal) e nomeia o canal nas linhas de `available` e `current`;
+- **Emenda E23c (S-2303):** `check_update_state` aceita `result=no-stable` (**warn**,
+  nunca fail — "auto-update parado", com o comando que ignora o canal; `check_upstream`
+  também avisa quando o clone ainda não tem a tag) e nomeia o canal nas linhas de `available` e `current`;
   estado sem `channel` é lido como `main`. `check_upstream` abre com o canal e a posição
   do HEAD em relação à tag `stable` (exatamente na tag · N atrás · N à frente · divergiu
   · tag ainda não existe neste clone) e emite warn quando `update_channel` do

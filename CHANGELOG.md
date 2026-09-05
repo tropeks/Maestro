@@ -78,8 +78,9 @@ it does not.
   tag onto the green commit. It is the single thing this CI writes; `contents: write` is
   scoped to that job alone and the workflow default stays `contents: read`.
 - **State `no-stable`.** Channel `stable` with no such tag on the remote is neither a
-  failure nor an update: nothing is applied, nothing is injected into the session, and
-  the doctor explains it with the command that opts back into `main`.
+  failure nor an update: nothing is applied, the session gets a one-line "auto-update
+  parado" notice, and the doctor warns (never fails) with the command that opts back
+  into `main` — a stopped updater is announced, never silent.
 - **`.maestro.yaml`: `habits_ignore:`** — path prefixes kept out of `maestro habits
   --all` (and `--baseline`, which is the same scope); empty by default, and whatever it
   filters is reported, never hidden.
@@ -116,7 +117,7 @@ it does not.
   path only reuses a measurement taken on the current channel.
 - **Doctor.** Expects **7 hook events** now (SubagentStop). `check_upstream` reports the
   update channel and where `stable` sits relative to HEAD, and warns on an invalid
-  `update_channel`; `check_update_state` speaks the channel and accepts `no-stable`;
+  `update_channel`; `check_update_state` speaks the channel and warns on `no-stable`;
   `check_release_diagram` matches `v*` only, so the movable `stable` tag cannot hijack the
   release portrait.
 - **Operational note for this release:** until CI moves the first `stable` tag — which

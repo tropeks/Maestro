@@ -1,7 +1,7 @@
 ---
 covers:
   - docs/architecture/**
-reviewed: fdd20e9
+reviewed: 31eaf87
 ---
 # EPICS.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.1 — 2026-08-08 (emendas review Opus)
@@ -725,7 +725,8 @@ onde não alcança (ADR-010).
   CI no repositório) move a tag `stable` para o commit verde; `update_channel: stable`
   (default) faz fetch forçado de `refs/tags/stable*` e `refs/tags/v*` e mira o commit da
   tag, nunca o topo do `origin/main`; `stable` ausente no remoto = estado novo
-  `no-stable`, sem update, sem erro e sem linha na injeção; `maestro upgrade --channel
+  `no-stable`, sem update, sem erro, com linha na injeção e warn no doctor (auto-update
+  parado é anunciado, não mudo); `maestro upgrade --channel
   main` (ou `--set update_channel=main`) mantém o caminho antigo. Evento `upgrade` ganha
   `channel`; o doctor nomeia o canal, diz onde está `stable` em relação ao HEAD e avisa
   valor de canal inválido; `check_release_diagram` passa a casar só `v*`, para o ponteiro
