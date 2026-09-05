@@ -624,6 +624,75 @@ garantido é um ARQUIVO, e o report é best-effort.
   provar-se em uso); notificação por outros canais.
 - **Dependências:** E17 (brief regido: essência), E18 (record com outcome), herdr ≥0.8.
 
+### E22 — Direção versionada do projeto (P1, S) — aprovado 2026-09-05
+Origem: review externo de 06e64c2 ("o Maestro sabe QUEM decide e COMO registra, mas
+não sabe PARA ONDE o projeto vai"). Ordens citam `--doc` opcional; a direção — problema,
+público, resultado, prioridades, limites, fora de escopo — vivia na cabeça do Capitão e
+não tinha versão. Consequência medida: plano aprovado contra uma direção que já mudou
+segue como se nada tivesse mudado. Decisão: a direção é um ARTEFATO versionado no repo do
+projeto (`.maestro/INTENT.md`, DATA_MODEL §10), a ordem nasce carimbada com a versão que
+a autorizou, e mudar a direção marca cada ordem viva para revisão do plano.
+- **S-2201 — `maestro intent`:** `--init` (template com as 6 seções), `--show`,
+  `--check` (6 seções não-vazias + carimbo), `--bump` (só com conteúdo mudado — a versão
+  é o número que as ordens citam, não um contador de saves). Log `intent n=<versão>`.
+  **Entregue 2026-09-05.**
+- **S-2202 — ordem vinculada à direção:** `order --create` carimba `intent_version`/
+  `intent_hash`; `--status`/`--list` acusam `direção mudou`; `--accept` recusa direção
+  desatualizada sem `--intent-reviewed` e carimba `accepted_intent`. Leitores de
+  cabeçalho passam de 14 para 20 linhas. **Entregue 2026-09-05.**
+- **S-2203 — injeção:** o bloco "## Projeto" do session-start diz `direção: INTENT vN`
+  (ou `sem carimbo` / `nenhuma → maestro intent --init`) e o gate plan pede que o plano
+  cite a seção da direção que serve. Só awk no cabeçalho; <100ms. **Entregue 2026-09-05.**
+- **Fora do épico:** gerar a direção por interrogatório (fica com o office-hours);
+  múltiplas direções por repo (monorepo) — uma emenda quando aparecer o caso.
+- **Dependências:** E15 (ordens), E8 (injeção), E16 (docs como contrato).
+
+### E23 — Prova em vez de palavra (P1, M) — aprovado 2026-09-05
+Origem: o mesmo review de 06e64c2 listou quatro lugares onde o Maestro aceitava
+declaração no lugar de prova: `--agents` era declarativo (nenhum hook via o disparo de
+um subagente); `maestro evidence --record -- true` produzia recibo válido; o auto-update
+seguia `origin/main` sem CI verde; os habit sensors contavam heredoc de fixture como
+código e a baseline de CI estava vermelha. Decisão: fechar os quatro no mesmo épico, com
+o mesmo critério do ADR-003 — mecânico onde o trilho alcança, honra declarada como tal
+onde não alcança (ADR-010).
+- **S-2301 — funil de delegação:** evento `delegation` com `phase ∈ planned|started|
+  received|accepted`: `planned` no decide com agentes, `started` por `hooks/pre-agent.sh`
+  (PreToolUse `Agent|Task`, só `subagent_type` saneado, nunca o prompt), `received` por
+  `hooks/subagent-stop.sh` (SubagentStop), `accepted` no `order --accept`. `maestro
+  delegation --session` mostra o funil; `outcome accepted` em subagent/multi exige
+  `started` no log (`--unproven` grava `delegation_proof: none`). **Entregue 2026-09-05.**
+- **S-2302 — verificações obrigatórias por área:** `.maestro.yaml` declara
+  `verifications` (área → paths → labels) e `commands` (rótulo → comando canônico);
+  `maestro verify` lista o que a mudança exige e o estado de cada recibo; o recibo grava
+  `cmd_match` e o leitor compara `cmd_hash` com o comando declarado (o `true` deixa de
+  provar); `order --accept` e `outcome accepted` recusam sem o conjunto exigido
+  (`--unproven` grava `verifications: missing`). **Entregue 2026-09-05.**
+- **S-2303 — auto-update por tag aprovada:** a CI, só numa tag `v*` com suíte verde,
+  move a tag `stable`; `update_channel: stable` (default) faz o fetch/ff mirar esse
+  commit, nunca `origin/main`; `stable` ausente = estado `no-stable`, sem update e sem
+  erro; `maestro upgrade --channel main` mantém o caminho antigo. **Entregue 2026-09-05.**
+- **S-2304 — sensores ignoram fixture:** corpo de heredoc em shell não alimenta sensor;
+  `habits_ignore:` no perfil; dead-code real de `update-check.sh` corrigido; baseline
+  `.maestro-habits.tsv` refeita e o step de CI `habits --all` volta a verde.
+  **Entregue 2026-09-05.**
+- **Fora do épico:** medir custo por tarefa aceita (precisa do E20 acumular dados);
+  cobrança de verificação por área em projetos que ainda não declaram `verifications`
+  (fica em honra, como hoje, até o projeto declarar).
+- **Dependências:** E13 (ledger), E15 (ordens), E18 (outcome), E19 (auto-update), E9
+  (sensores), E20 (telemetria, para o custo por tarefa).
+
+### E24 — Core, adaptadores e configuração (P2, M) — proposto 2026-09-05
+Origem: o mesmo review apontou `bin/maestro` (>3.000 linhas) e `src/cli.ts` (>1.200)
+acima do limite do próprio sensor `oversized-file`, e a ausência de fronteira explícita
+entre o núcleo (record, ledger, ordens, direção), os adaptadores (hooks do Claude Code,
+herdr, Telegram via Legatus, QM) e a configuração (routing table, perfil). Proposta:
+`bin/maestro` vira despachante fino que sourceia `lib/cmd-*.sh` por comando; `src/cli.ts`
+separa parsing de gravação; hooks continuam bash puro. Critério de entrada: E23 provado
+em uso por ≥1 semana (funil de delegação com `started` real, `verify` recusando de
+verdade) — refatorar antes disso seria mover código sem evidência de fronteira.
+- **Fora do épico:** trocar bash por outra linguagem nos hooks (fronteira inviolável).
+- **Dependências:** E23.
+
 ---
 
 ## Grafo de dependências
@@ -641,6 +710,7 @@ E6 (paralelo após E1)
 | Fase 1a (dias) | E1, E2 **em modo warn** | dogfood ativo: gate logando warns/decisões no dia a dia real |
 | Fase 1b (1 semana de warn) | promoção warn→block (decisão com dados), E5 (S-502 em paralelo), E3 | primeira semana com roteamento p/ subagentes tierizados; escapes medidos |
 | Fase 1c (≤2 semanas de uso) | E4 (routing table calibrada nos logs reais), E6, S-501 (só após especificar mecanismo de aprovação) | `maestro log --summary` mostra <20% override manual; ADR-007 travado |
+| Fase 1d (set/2026) | E22, E23 (direção versionada + prova em vez de palavra); E24 só depois de E23 provado em uso por ≥1 semana | `maestro delegation` mostra `started` real; `verify --check` recusa de verdade; `stable` movida pela CI |
 | Fase 2 (futuro) | task-observer no loop; camada MCP `activate()` no [[orchestrator]]; QM (**só após dogfood provar redução de override**) | novo brief/delta |
 
 **Guarda de escopo:** nada fora destes épicos entra sem emenda documentada aqui.

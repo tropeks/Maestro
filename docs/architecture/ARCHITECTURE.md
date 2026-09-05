@@ -161,6 +161,44 @@ tem componente de memória — a memória é do ambiente do Romulo, e o Maestro 
 
 **Consequência:** claude-mem não é ruim — é incompatível com uma camada cujo valor é trilho determinístico imperceptível. Reverter é um edit aqui e `npx claude-mem install`.
 
+### ADR-010 — Direção versionada e prova em vez de palavra (E22, E23)
+**Status:** Aceito (partitura `docs/designs/e22-e23-direcao-e-prova.md`, 2026-09-05;
+origem: leitura fria externa de 06e64c2 + mandato do Capitão).
+**Contexto:** o Maestro chegou à v1.13 registrando a APOSTA de cada sessão (record com
+`agents`, ordem com `--doc`, recibo com `exit=0`, auto-update que segue `origin/main`) e
+tratando o registro como se fosse a execução. Quatro buracos concretos: nenhum hook via
+o disparo de um subagente, então `--agents` era declaração; `maestro evidence --record
+-- true` gerava recibo válido porque o `cmd_hash` era gravado e nunca comparado; o
+auto-update fazia fast-forward para um `main` sem CI verde; e a direção do projeto
+(problema, público, resultado, prioridades, limites, fora de escopo) não existia como
+artefato — uma ordem aprovada contra uma direção que mudou seguia sem aviso.
+**Decisão:** (1) a direção vira **artefato versionado no repo do projeto**
+(`.maestro/INTENT.md`, carimbo `maestro-intent v1`, `version` que só sobe com conteúdo
+mudado); a ordem nasce com `intent_version`/`intent_hash` e o aceite exige direção
+corrente ou `--intent-reviewed` explícito. (2) Delegação vira **funil observável** no log
+(`delegation phase=planned|started|received|accepted`), com `started` e `received`
+emitidos por hooks que só leem `subagent_type`/`agent_type` — nunca o prompt — e
+`outcome accepted` em subagent/multi exige `started`. (3) O recibo passa a **casar o
+comando declarado** em `.maestro.yaml` (`commands.<label>`), e o projeto declara
+**verificações obrigatórias por área** (`verifications`): `order --accept` e `outcome
+accepted` recusam sem o conjunto exigido. (4) O auto-update segue a **tag móvel
+`stable`**, que só a CI move depois da suíte verde numa tag `v*`; `main` continua
+disponível como canal explícito. (5) Sensores de hábito **ignoram corpo de heredoc** e a
+baseline é refeita — a CI deixa de estar vermelha por fixture.
+**Onde o trilho alcança e onde não:** mecânico = hooks `pre-agent`/`subagent-stop`
+(disparo e retorno do subagente são interceptados pelo Claude Code), `verify`/`accept`/
+`outcome` (o CLI recusa antes do fato consumado), `stable` (a CI é quem escreve). Honra
+declarada = `--unproven` (grava `delegation_proof: none` / `verifications: missing`, o
+record diz que foi honra), projetos sem `verifications` (ficam como hoje até declarar),
+e `SubagentStop` sem `agent_type` no payload (o `received` sai sem `agents=`). Nada aqui
+lê o prompt do subagente nem grava caminho de arquivo: o funil correlaciona por
+`session_id` e `n` (ordem), e a fronteira "log só metadados" segue intacta.
+**Alternativas rejeitadas:** provar delegação pelo custo de tokens (E20) — indireto e
+atrasado; assinar recibos com HMAC — não resolve `true`, resolve forja, que não é o
+problema de um sistema de uma pessoa; seguir `origin/main` com CI status via API —
+rede em runtime além do fetch, fronteira inviolável; split de `bin/maestro` agora —
+sem uma semana de E23 em uso não há evidência de onde passa a fronteira (E24).
+
 ### ADR-009 — Regência e profundidade declarada (E17)
 **Status:** Aceito (design doc aprovado 2026-08-31, office-hours D1-D11 + leitura fria do
 Codex + 3 rodadas de review).

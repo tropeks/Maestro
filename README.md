@@ -122,6 +122,34 @@ after the proof demotes it automatically) → accepted (the director's explicit
 sign-off, which requires proof). New sessions in the project discover pending
 orders through the injection. The executor never closes its own order.
 
+### Proof, not word — direction, delegation, verifications
+
+Maestro used to record the *bet* (which agents, which order, a receipt with
+`exit=0`) and treat the record as the execution. Since v1.14 the bet has to
+be backed:
+
+- **Direction is a versioned artifact.** `maestro intent --init` writes
+  `.maestro/INTENT.md` (problem, audience, outcome, priorities, limits, out of
+  scope). Orders are stamped with the direction version that authorized them;
+  bump the direction and every live order says *direction changed — review the
+  plan* until the director accepts with `--intent-reviewed`.
+- **Delegation is a funnel, not a field.** `planned` (decide with agents) →
+  `started` (a hook sees the real `Agent` call) → `received` (SubagentStop) →
+  `accepted` (order sign-off). `maestro delegation --session` shows it, and
+  `maestro outcome accepted` refuses a subagent/multi session with no `started`.
+- **Receipts match the declared command.** `.maestro.yaml` declares
+  `verifications` (area → paths → labels) and `commands` (label → canonical
+  command). `maestro verify` lists what the change requires; `order --accept`
+  and `outcome accepted` refuse without valid receipts for every touched area.
+  `maestro evidence --record -- true` no longer proves anything.
+- **Updates follow a CI-approved tag.** CI moves the `stable` tag only after a
+  green suite on a `v*` tag, and the auto-update fast-forwards to `stable`,
+  never to `origin/main` (`update_channel: main` keeps the old path).
+
+Every escape hatch is written down: `--unproven` records
+`delegation_proof: none` / `verifications: missing` in the decision record, so
+honor is visible as honor.
+
 ### The learning loop — batch, never at runtime
 
 Maestro never self-tunes at runtime (rails stay deterministic); it learns in
@@ -198,8 +226,9 @@ citing the last `doctor` run; the rails stay up.
 
 Maestro keeps itself current. The plugin runs straight from the clone, so every
 session start does a `git fetch` (5s timeout, at most once a day, silent on failure)
-and fast-forwards to `origin/main` when that is strictly safe: clean tree, no local
-commits ahead, on `main`. The session is then born on the new version — the new hook
+and fast-forwards to the `stable` tag — moved by CI only after a green suite on a
+`v*` tag — when that is strictly safe: clean tree, no local commits ahead, on `main`.
+`update_channel: main` follows `origin/main` instead. The session is then born on the new version — the new hook
 re-executes itself. A development machine (dirty tree or unpushed commits) is never
 overwritten; the session just gets a one-line "push, don't pull" notice.
 
@@ -207,7 +236,8 @@ overwritten; the session just gets a one-line "push, don't pull" notice.
 maestro upgrade                     # fetch + fast-forward now, show the CHANGELOG delta, run doctor
 maestro upgrade --check             # measure only: exit 0 current · 1 available/blocked · 2 failed
 maestro upgrade --rollback          # git reset --keep to the previous version
-maestro upgrade --set auto_upgrade=false   # notify only; also update_check, update_interval_hours
+maestro upgrade --channel main     # one-off: follow origin/main instead of the stable tag
+maestro upgrade --set auto_upgrade=false   # notify only; also update_check, update_interval_hours, update_channel
 ```
 
 Silence never means "up to date": the result of every check, including failures, lands
