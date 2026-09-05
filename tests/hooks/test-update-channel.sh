@@ -64,7 +64,7 @@ new_clone() { # new_clone <nome> [rev] → clone em main, opcionalmente recuado 
 
 publish() { # publish <versão> — commit + push na main; NÃO aprova nada
   printf '{"name":"maestro","version":"%s"}\n' "$1" > "$SRC/.claude-plugin/plugin.json"
-  printf '\n## [%s]\n- mudança %s\n' "$1" "$1" >> "$SRC/CHANGELOG.md"
+  printf '\n## [%s] — 2026-01-01\n- mudança %s\n' "$1" "$1" >> "$SRC/CHANGELOG.md"
   G -C "$SRC" add -A && G -C "$SRC" commit -qm "v$1"
   G -C "$SRC" tag -a "v$1" -m "v$1" 2>/dev/null || :
   G -C "$SRC" push -q "$REMOTE" main "v$1"
@@ -280,6 +280,19 @@ next_home; doctor_out "$H" "$C1"     # C1 está exatamente na tag stable
 grep -q '^ok .*canal de atualização: stable — HEAD é exatamente a tag aprovada pela CI' "$OUTF" \
   && ok "doctor situa o HEAD em relação à tag" \
   || bad "doctor não situou o HEAD ($(grep -E 'canal de atualização' "$OUTF" | head -1))"
+
+# HEAD publicado em main mas à frente da tag (o rito deixa o commit do diagrama
+# depois da tag): não é "push, não pull" — é esperar a próxima tag aprovada.
+C6=$(new_clone c6)                    # topo da main; stable ficou em v1.0.4
+git -C "$C6" fetch -q origin '+refs/tags/stable*:refs/tags/stable*' 2>/dev/null || :
+if (( $(git -C "$C6" rev-list --count refs/tags/stable..HEAD 2>/dev/null || echo 0) > 0 )); then
+  next_home; doctor_out "$H" "$C6"
+  grep -q '^ok .*à frente da tag, já publicado em main' "$OUTF" \
+    && ok "doctor: HEAD publicado à frente da tag não pede push" \
+    || bad "doctor tratou HEAD publicado como trabalho preso ($(grep -E 'canal de atualização' "$OUTF" | head -1))"
+else
+  ok "doctor: HEAD publicado à frente da tag (fixture sem commit depois da tag — caso coberto pelo describe)"
+fi
 
 next_home; printf 'update_channel: main\n' > "$H/config.yaml"; doctor_out "$H" "$C1"
 grep -q '^ok .*canal de atualização: main (topo do origin/main, verde ou não)' "$OUTF" \

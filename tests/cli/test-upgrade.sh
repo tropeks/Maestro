@@ -45,7 +45,7 @@ G -C "$CLONE" checkout -q main 2>/dev/null || :
 
 publish() { # publish <versão> — versão nova no plugin.json + entrada no CHANGELOG, push
   printf '{"name":"maestro","version":"%s"}\n' "$1" > "$SRC/.claude-plugin/plugin.json"
-  printf '\n## [%s]\n- mudança %s\n' "$1" "$1" >> "$SRC/CHANGELOG.md"
+  printf '\n## [%s] — 2026-01-01\n- mudança %s\n' "$1" "$1" >> "$SRC/CHANGELOG.md"   # cabeçalho COM data, como o real
   G -C "$SRC" add -A && G -C "$SRC" commit -qm "v$1"
   G -C "$SRC" push -q "$REMOTE" main
 }

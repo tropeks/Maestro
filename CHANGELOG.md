@@ -6,6 +6,21 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-09-05
+
+Two bugs the forge's own upgrade to 1.14.0 exposed within the hour — dogfooding at work.
+
+### Fixed
+- **`maestro upgrade` printed "changelog: sem entradas entre as versões" on every
+  upgrade.** The delta reader matched the heading `## [1.14.0]` by exact equality,
+  but real headings carry a date (`## [1.14.0] — 2026-09-05`). Prefix match now; the
+  test fixtures publish dated headings so the real format is what gets exercised.
+- **Doctor called a published HEAD "push, não pull".** The release rite leaves one
+  commit (the diagram) after the tag, so every machine on the tip of `main` sits one
+  commit ahead of `stable`. When HEAD is an ancestor of `origin/main`, the doctor now
+  says "já publicado em main — aguarda a próxima tag v* aprovada pela CI" instead of
+  treating it as stuck development work.
+
 ## [1.14.0] — 2026-09-05
 
 Epics E22 and E23: direction becomes a versioned artifact, and the bet has to be
