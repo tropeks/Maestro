@@ -113,4 +113,43 @@ grep -q 'INSTRUÇÃO CANÔNICA' <<<"$OUT" && ok "núcleo sobrevive ao aperto" ||
 # sob 900B a seção Projeto (que vem depois de gates/bindings/profile) já cedeu
 grep -q 'brief: ' <<<"$OUT" && bad "sob aperto a seção Projeto cede" || ok "sob aperto a seção Projeto cede"
 
+# ---------------------------------------------------------------------------
+echo "-- E22/S-2203 — direção: as três formas (presente · sem carimbo · ausente)"
+# ---------------------------------------------------------------------------
+# O hook só LÊ `version:` com awk sobre o carimbo: nada de sha256 no hot path,
+# e ausência de direção é FATO reportado, nunca silêncio — trabalhar sem norte é
+# legítimo; fingir que há norte não é.
+run_hook "$PROJ"
+grep -q '^direção: nenhuma → maestro intent --init (E22)$' <<<"$OUT" \
+  && ok "sem INTENT: a sessão aprende que não há direção e como criar" \
+  || bad "sem INTENT: linha de direção ausente"
+mkdir -p "$PROJ/.maestro"
+cat > "$PROJ/.maestro/INTENT.md" <<'INTENT'
+<!-- maestro-intent v1
+version: 3
+ts: 2026-09-05T10:00:00-03:00
+head: none
+author_session: desconhecido
+hash: 00000000
+-->
+# Direção — fixture
+
+## Problema
+- projeto sem norte declarado.
+INTENT
+run_hook "$PROJ"
+grep -q '^direção: INTENT v3 (.maestro/INTENT.md) → plano cita a seção da direção que serve$' <<<"$OUT" \
+  && ok "com carimbo: versão + ponteiro + o que fazer com ela" || bad "linha de direção com carimbo"
+grep -q 'INTENT.md' <<<"$(projeto_sec)" && ok "a injeção aponta o arquivo, não despeja o conteúdo" || bad "ponteiro do INTENT"
+grep -q 'norte declarado' <<<"$OUT" && bad "o conteúdo da direção vazou para a injeção" \
+                                    || ok "o conteúdo da direção NÃO entra na injeção (é ponteiro, não estado)"
+sed -i 's/^version: 3$/version: três/' "$PROJ/.maestro/INTENT.md"
+run_hook "$PROJ"
+grep -q '^direção: INTENT sem carimbo → maestro intent --check$' <<<"$OUT" \
+  && ok "carimbo ilegível: acusa e manda conferir" || bad "linha de direção sem carimbo"
+# O gate plan passa a cobrar a citação da direção no plano.
+grep -q 'plano cita a direção (INTENT vN, seção) — sem direção, diga que não há' <<<"$OUT" \
+  && ok "o gate plan cobra a citação da direção no plano" || bad "gate plan cita a direção"
+rm -f "$PROJ/.maestro/INTENT.md"
+
 exit $fail
