@@ -412,7 +412,10 @@ write_gate_policy() {
       shopt -s nullglob
       for _of in "$PROJECT_DIR/.maestro/orders"/*.md; do
         grep -q '^accepted_at: ' "$_of" 2>/dev/null && continue
-        _fz=$(awk -F': ' 'NR>14 { exit } $1 == "frozen" { print substr($0, 9); exit }' "$_of" 2>/dev/null)
+        # Janela = CABEÇALHO da ordem (20 linhas cobrem o carimbo cheio, com os
+        # intent_version/intent_hash do E22) — nunca o corpo, onde `frozen:`
+        # escrito à mão pelo humano não pode virar política de gate.
+        _fz=$(awk -F': ' 'NR>20 { exit } $1 == "frozen" { print substr($0, 9); exit }' "$_of" 2>/dev/null)
         [[ -n "$_fz" ]] && _ofz+="${_ofz:+ }$_fz"
       done
       shopt -u nullglob
@@ -539,7 +542,7 @@ build_and_emit() {
   sec_gate=""
   if [[ -n "$GATE_PLAN_WFS$GATE_SHIP_WFS" ]]; then
     sec_gate=$'\n'"## Gates humanos — PARE, pergunte e espere resposta explícita."$'\n'
-    [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo."$'\n'
+    [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo; o plano cita a direção (INTENT vN, seção) — sem direção, diga que não há."$'\n'
     sec_gate+="- pedido de aprovação REGIDO: essencia (o que é) · impacto (o que representa) · approach (como) — partitura técnica só sob demanda; registre com maestro decide --brief \"essencia: ...; impacto: ...; approach: ...\" (pendente vale; atualize com maestro conduct --approach)."$'\n'
     [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
     # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
@@ -635,6 +638,22 @@ build_and_emit() {
   if [[ -n "$P_DOCS" ]]; then
     local _dn; _dn=$(grep -c . <<<"${P_DOCS// /$'\n'}" || true)
     sec_project+="docs canônicos: $_dn (maestro docs) → plano cita doc+seção; contrato mudou? emenda no MESMO changeset"$'\n'  
+  fi
+  # E22/S-2203 — direção versionada: a sessão sabe SOB QUAL direção trabalha.
+  # Só awk sobre o carimbo (as 8 primeiras linhas): nada de sha256 no hot path —
+  # o hash é assunto do CLI. Ausente/ilegível é FATO reportado, nunca silêncio:
+  # trabalhar sem direção é legítimo, fingir que há direção não é.
+  local _if="$PROJECT_DIR/.maestro/INTENT.md" _iv=""
+  if [[ -f "$_if" && -r "$_if" ]]; then
+    _iv=$(awk 'NR>8 || /^-->$/ { exit }
+      /^version: / { v = substr($0, 10); if (v ~ /^[0-9]+$/) print v; exit }' "$_if" 2>/dev/null) || _iv=""
+    if [[ -n "$_iv" ]]; then
+      sec_project+="direção: INTENT v$_iv (.maestro/INTENT.md) → plano cita a seção da direção que serve"$'\n'
+    else
+      sec_project+="direção: INTENT sem carimbo → maestro intent --check"$'\n'
+    fi
+  else
+    sec_project+="direção: nenhuma → maestro intent --init (E22)"$'\n'
   fi
   # E15/S-1503 — ordens de trabalho pendentes: a sessão descobre sozinha
   local _on=0 _ofl

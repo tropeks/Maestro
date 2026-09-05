@@ -9,7 +9,12 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=6930   # bump deliberado 6800→6930 em 2026-08-31 (E17/S-1703): cenário medido
+RATCHET=7080   # bump deliberado 6930→7080 em 2026-09-05 (E22/S-2203): a seção
+               # "## Projeto" ganhou a linha da DIREÇÃO (INTENT vN | sem carimbo |
+               # nenhuma) e o gate plan passou a cobrar a citação da direção no
+               # plano — +134B medidos no cenário abaixo. Direção é a única coisa
+               # que a sessão não consegue inferir do repo: paga-se o byte.
+               # (bump anterior: 6800→6930 em 2026-08-31, E17/S-1703.) Cenário medido
                # = baseline do plugin com projeto vazio (CLAUDE_PROJECT_DIR sem .maestro.yaml;
                # roster inteiro, sem filtro experts; sem seções de projeto). Sessão real neste
                # repo mede mais (~6940B com .maestro.yaml vivo, medida pelo doctor) e é

@@ -65,6 +65,12 @@ maestro <comando>
                   drift em commits com quitação por fronteira; --baseline/--check = catraca
   order           work order versionada (E15): --create/--list/--status/--accept — estado
                   DERIVADO de git + evidência + aceite; executor não fecha a própria ordem
+                  a ordem nasce citando a direção (E22); direção que mudou depois exige
+                  --intent-reviewed no aceite
+  intent          direção versionada do projeto (E22): .maestro/INTENT.md, seis seções
+                  obrigatórias, versionado no repo — --init cria o template · --check
+                  valida carimbo e seções · --bump sobe a versão (só com conteúdo mudado)
+                  · sem flag mostra; é a versão que as ordens carimbam e citam
   evidence        recibo de execução amarrado a conteúdo (E13): --record -- <cmd> grava
                   wtree antes/depois + hash do comando + exit; leitura dá VÁLIDA/VENCIDA
                   nomeando o motivo — "testes passaram" vira checagem mecânica
@@ -1643,6 +1649,214 @@ cmd_docs() { # S-1601/S-1602: docs canônicos como CONTRATO — drift mecânico
   return 0
 }
 
+# ---------------------------------------------------------------- intent (E22)
+# A direção do projeto vira ARTEFATO em vez de frase no prompt: o
+# `.maestro/INTENT.md` viaja com o repo (como a ordem do E15), tem VERSÃO que só
+# sobe com conteúdo, e é o número que as ordens citam. Seis seções obrigatórias;
+# título sem texto conta como ausente — seção vazia não é direção, é intenção de
+# escrever direção. O hash é do corpo SEM o carimbo: carimbar não é mudar o
+# conteúdo, e sem isso `--bump` viraria contador de saves.
+
+_intent_file() { printf '%s/.maestro/INTENT.md' "${1:-$PWD}"; }
+
+# 8 hex do sha256 do corpo (tudo depois da linha `-->`). sha256sum é aceitável
+# aqui: isto é CLI, não hot path — o session-start só lê `version:` com awk.
+_intent_body_hash() { # <arquivo> → 8 hex ou vazio
+  local h=""
+  h=$(sed '1,/^-->$/d' "$1" 2>/dev/null | sha256sum 2>/dev/null | head -c 8) || h=""
+  printf '%s' "$h"
+  return 0
+}
+
+_intent_stamp_field() { # <arquivo> <chave> → valor do carimbo
+  awk -F': ' -v k="$2" 'NR>12 || /^-->$/ { exit } $1 == k { print substr($0, length(k)+3); exit }' \
+    "$1" 2>/dev/null || true
+}
+
+_intent_version() { # <arquivo> → inteiro ≥1 (normalizado) ou vazio
+  local v=""
+  [[ -f "$1" && -r "$1" ]] || { printf ''; return 0; }
+  v=$(_intent_stamp_field "$1" version)
+  if [[ "$v" =~ ^[0-9]{1,9}$ ]] && (( 10#$v >= 1 )); then printf '%s' "$((10#$v))"; fi
+  return 0
+}
+
+# "<seção>\t<linhas de texto>" para as SEIS obrigatórias, na ordem de exigência.
+# A ordem das seções DENTRO do arquivo é livre; a contagem ignora o carimbo e
+# linhas em branco. `## ` é fronteira de seção; `### ` conta como texto.
+_intent_sections() { # <arquivo>
+  awk '
+    BEGIN { n = split("Problema|Público|Resultado|Prioridades|Limites|Fora de escopo", req, "|"); body = 0; sec = "" }
+    NR == 1 && $0 !~ /^<!-- maestro-intent/ { body = 1 }
+    !body { if ($0 ~ /^-->$/) body = 1; next }
+    /^## / { sec = substr($0, 4); sub(/[ \t]+$/, "", sec); next }
+    { t = $0; gsub(/[ \t]/, "", t); if (t != "" && sec != "") cnt[sec]++ }
+    END { for (i = 1; i <= n; i++) printf "%s\t%d\n", req[i], (req[i] in cnt ? cnt[req[i]] : 0) }
+  ' "$1" 2>/dev/null || true
+}
+
+_intent_missing() { # <arquivo> → seções ausentes/vazias separadas por " · "
+  local out="" name cnt
+  while IFS=$'\t' read -r name cnt; do
+    [[ -n "$name" ]] || continue
+    (( cnt > 0 )) || out+="${out:+ · }$name"
+  done < <(_intent_sections "$1")
+  printf '%s' "$out"
+  return 0
+}
+
+_intent_valid() { # <projeto> → rc 0 se há direção CITÁVEL (carimbo + 6 seções)
+  local f; f=$(_intent_file "$1")
+  [[ -f "$f" && -r "$f" ]] || return 1
+  [[ -n "$(_intent_version "$f")" ]] || return 1
+  [[ -z "$(_intent_missing "$f")" ]] || return 1
+  return 0
+}
+
+cmd_intent() { # E22/S-2201: direção versionada do projeto
+  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" sid=""
+  while (( $# )); do
+    case "$1" in
+      --init)    action="init" ;;
+      --show)    action="show" ;;
+      --check)   action="check" ;;
+      --bump)    action="bump" ;;
+      --session) sid="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro intent [--init|--show|--check|--bump] [--project d] [--session s]" 1 ;;
+    esac
+    shift
+  done
+  [[ -n "$action" ]] || action="show"
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local f; f=$(_intent_file "$proj")
+
+  if [[ "$action" == "init" ]]; then
+    [[ -f "$f" ]] && die validation "já existe direção em $f" \
+      "leia (maestro intent) e mude o conteúdo; para subir a versão, maestro intent --bump" 1
+    mkdir -p "${f%/*}" 2>/dev/null || die env "não consigo criar ${f%/*}" "cheque permissões" 2
+    local bt="${f%/*}/.INTENT.body.$$" pname
+    pname=$(cd -P -- "$proj" 2>/dev/null && basename -- "$PWD") || pname="projeto"
+    # As instruções ficam ANTES da primeira seção de propósito: texto dentro de
+    # uma seção a tornaria "preenchida" e o --check passaria em direção vazia.
+    cat > "$bt" <<TEMPLATE || die env "falha ao gravar $bt" "" 2
+# Direção — $pname
+
+Preencha as seis seções abaixo. Seção sem texto conta como AUSENTE
+(\`maestro intent --check\` diz quais faltam). A versão só sobe com
+\`maestro intent --bump\`, e só quando o conteúdo mudou — é o número que as
+ordens citam, não um contador de saves.
+
+## Problema
+
+## Público
+
+## Resultado
+
+## Prioridades
+
+## Limites
+
+## Fora de escopo
+TEMPLATE
+    local bh head_sha
+    bh=$(sha256sum < "$bt" 2>/dev/null | head -c 8) || bh="none"
+    head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
+    {
+      printf '<!-- maestro-intent v1\n'
+      printf 'version: 1\nts: %s\nhead: %s\n' "$(date -Iseconds)" "$head_sha"
+      printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$bh"
+      printf -- '-->\n'
+      cat "$bt"
+    } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
+      || { rm -f "$f.tmp.$$" "$bt" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
+    rm -f "$bt" 2>/dev/null || :
+    log_event intent ${sid:+session_id="$sid"} n=1 via=manual
+    printf 'direção criada: %s (v1, sem conteúdo ainda)\n' "$f"
+    printf '  preencha as seis seções e confira com: maestro intent --check\n'
+    return 0
+  fi
+
+  if [[ ! -f "$f" || ! -r "$f" ]]; then
+    case "$action" in
+      show)  printf 'sem direção — maestro intent --init (E22: a direção do projeto é artefato versionado)\n'; return 0 ;;
+      *)     printf 'sem direção em %s — maestro intent --init\n' "$f"; return 1 ;;
+    esac
+  fi
+
+  local ver hash stamped miss
+  ver=$(_intent_version "$f")
+  hash=$(_intent_body_hash "$f")
+  stamped=$(_intent_stamp_field "$f" hash)
+  miss=$(_intent_missing "$f")
+
+  if [[ "$action" == "show" || "$action" == "check" ]]; then
+    if [[ -z "$ver" ]]; then
+      printf 'INTENT sem carimbo legível: %s\n' "$f"
+      printf '  o cabeçalho precisa de `<!-- maestro-intent v1` + `version: <n>` até a linha `-->`\n'
+      if [[ "$action" == "check" ]]; then return 1; fi
+      return 0
+    fi
+    local name cnt filled=0
+    if [[ "$action" == "show" ]]; then
+      printf 'direção: INTENT v%s · hash %s · %s\n' "$ver" "${hash:-?}" "$f"
+      printf '  carimbo : ts %s · head %s · sessão %s\n' \
+        "$(_intent_stamp_field "$f" ts)" "$(_intent_stamp_field "$f" head)" \
+        "$(_intent_stamp_field "$f" author_session)"
+    fi
+    while IFS=$'\t' read -r name cnt; do
+      [[ -n "$name" ]] || continue
+      if (( cnt > 0 )); then
+        filled=$((filled + 1))
+        if [[ "$action" == "show" ]]; then printf '  %-16s %s linha(s)\n' "$name" "$cnt"; fi
+      else
+        if [[ "$action" == "show" ]]; then printf '  %-16s VAZIA\n' "$name"; fi
+      fi
+    done < <(_intent_sections "$f")
+    if [[ -n "$stamped" && -n "$hash" && "$stamped" != "$hash" ]]; then
+      printf '  conteúdo editado desde o carimbo v%s → maestro intent --bump\n' "$ver"
+    fi
+    if [[ -n "$miss" ]]; then
+      printf 'direção INCOMPLETA (%s de 6 seções): falta %s\n' "$filled" "$miss"
+      if [[ "$action" == "check" ]]; then return 1; fi
+      return 0
+    fi
+    printf 'direção OK: INTENT v%s, 6/6 seções, hash %s\n' "$ver" "${hash:-?}"
+    return 0
+  fi
+
+  # bump ---------------------------------------------------------------------
+  [[ -n "$ver" ]] || die validation "carimbo ilegível em $f" \
+    "conserte o cabeçalho (maestro intent --check) antes de versionar" 1
+  if [[ -n "$stamped" && -n "$hash" && "$stamped" == "$hash" ]]; then
+    die validation "o conteúdo não mudou desde o carimbo v$ver" \
+      "a versão é o número que as ordens citam, não um contador de saves — edite $f antes" 1
+  fi
+  local nv head_sha
+  nv=$(( ver + 1 ))
+  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
+  # O corpo é COPIADO byte a byte (sed do carimbo para baixo): o bump troca o
+  # carimbo, nunca o texto — e o hash gravado é o do corpo que já está no disco.
+  {
+    printf '<!-- maestro-intent v1\n'
+    printf 'version: %s\nts: %s\nhead: %s\n' "$nv" "$(date -Iseconds)" "$head_sha"
+    printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$hash"
+    printf -- '-->\n'
+    sed '1,/^-->$/d' "$f"
+  } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
+    || { rm -f "$f.tmp.$$" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
+  log_event intent ${sid:+session_id="$sid"} n="$nv" via=manual
+  printf 'direção v%s → v%s (hash %s)\n' "$ver" "$nv" "$hash"
+  if [[ -n "$miss" ]]; then
+    printf 'AVISO: ainda incompleta — falta %s (as ordens só citam direção completa)\n' "$miss"
+  fi
+  printf 'ordens novas nascem citando v%s; as antigas passam a pedir revisão do plano\n' "$nv"
+  return 0
+}
+
 # ----------------------------------------------------------------- order (E15)
 
 cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
@@ -1659,7 +1873,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
   #   aceita       → aceite explícito do diretor (--accept, auditado)
   # Executor não escreve o próprio boletim; o diretor assina o aceite.
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
-  local b_steps="" b_min="" b_cents=""
+  local b_steps="" b_min="" b_cents="" intent_reviewed=0
   while (( $# )); do
     case "$1" in
       --create)  action="create" ;;
@@ -1673,10 +1887,11 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       --budget-min)   b_min="${2:-}"; shift ;;
       --budget-cents) b_cents="${2:-}"; shift ;;
       --doc)     odoc="${2:-}"; shift ;;
+      --intent-reviewed) intent_reviewed=1 ;;   # E22: o diretor releu o plano contra a direção nova
       --session) sid="${2:-}"; shift ;;
       --project) proj="${2:-}"; shift ;;
       *) die validation "flag desconhecida '$1'" \
-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N" 1 ;;
+           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N [--intent-reviewed]" 1 ;;
     esac
     shift
   done
@@ -1709,6 +1924,14 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     [[ "$branch" =~ ^[A-Za-z0-9/_-]{1,80}$ ]] || die validation "branch inválido" "" 1
     local of="$odir/$oid-$slug.md" head_sha
     head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
+    # E22: a ordem NASCE citando a direção vigente. Sem direção citável
+    # (ausente, sem carimbo ou com seção vazia) a ordem sai mesmo assim — o
+    # Maestro nunca bloqueia trabalho — mas sai avisando que nasceu sem norte.
+    local i_ver="" i_hash=""
+    if _intent_valid "$proj"; then
+      i_ver=$(_intent_version "$(_intent_file "$proj")")
+      i_hash=$(_intent_body_hash "$(_intent_file "$proj")")
+    fi
     local body; body=$(head -c 16384)
     {
       printf '<!-- maestro-order v1\n'
@@ -1719,6 +1942,8 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       [[ -n "$b_min" ]]   && printf 'budget_min: %s\n' "$b_min"
       [[ -n "$b_cents" ]] && printf 'budget_cents: %s\n' "$b_cents"
       [[ -n "$odoc" ]] && printf 'doc: %s\n' "$odoc"
+      [[ -n "$i_ver" ]]  && printf 'intent_version: %s\n' "$i_ver"
+      [[ -n "$i_hash" ]] && printf 'intent_hash: %s\n' "$i_hash"
       printf 'author_session: %s\n' "${sid:-desconhecido}"
       printf -- '-->\n'
       printf '# Ordem %s — %s\n\n' "$oid" "$title"
@@ -1727,6 +1952,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
       [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
       printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$((10#$oid))"
+      [[ -n "$i_ver" ]] && printf -- '- Direção vigente na criação: INTENT v%s (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.\n' "$i_ver"
       [[ -n "$odoc" ]] && printf -- '- Esta ordem é autorizada por `%s` — siga-o; se a entrega mudar o contrato, EMENDE o doc no mesmo changeset (o aceite confere o frescor).\n' "$odoc"
       printf -- '- Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.\n'
       printf -- '- O aceite é do diretor: `maestro order --accept %s` (você não fecha a própria ordem).\n' "$oid"
@@ -1734,11 +1960,22 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       || { rm -f "$of.tmp.$$" 2>/dev/null; die env "falha ao gravar $of" "" 2; }
     log_event order_create ${sid:+session_id="$sid"} n="$((10#$oid))"
     printf 'ordem %s criada: %s\n  branch: %s\n  status: aberta (derivado — nada executado ainda)\n' "$oid" "$of" "$branch"
+    if [[ -n "$i_ver" ]]; then
+      printf '  direção: INTENT v%s carimbada na ordem\n' "$i_ver"
+    else
+      printf '  AVISO: ordem sem direção — %s\n' \
+        "$([[ -f "$(_intent_file "$proj")" ]] && echo 'INTENT incompleto ou sem carimbo (maestro intent --check)' || echo 'não há .maestro/INTENT.md (maestro intent --init)')"
+    fi
     return 0
   fi
 
   # helpers de derivação -----------------------------------------------------
-  _order_field() { awk -F': ' -v k="$2" 'NR>14 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null; }
+  # A janela é o CABEÇALHO, não o arquivo: 20 linhas cobrem o carimbo cheio
+  # (id/ts/epoch/head/branch/frozen/budget_*/doc/intent_* /author_session + as
+  # duas linhas do comentário) e param antes do corpo, onde `branch:` escrito à
+  # mão pelo humano não pode virar campo. Era 14 até o E22 acrescentar
+  # intent_version/intent_hash — cabeçalho maior, mesma garantia.
+  _order_field() { awk -F': ' -v k="$2" 'NR>20 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null; }
   _order_status() { # <arquivo> → status derivado no stdout
     local f="$1" br ev_f ev_w tip_tree
     grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
@@ -1821,13 +2058,45 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     printf '%s' "${first:-order-$((10#$o))}"
   }
 
+  _order_intent_stale() { # <arquivo> <versão atual> → rc 0 se a direção andou depois da ordem
+    # Ordem sem carimbo de direção (criada antes do E22, ou num projeto sem
+    # INTENT) NUNCA é acusada: o que não foi prometido não pode estar quebrado.
+    local ov; ov=$(_order_field "$1" intent_version)
+    [[ "$ov" =~ ^[0-9]{1,9}$ && "${2:-}" =~ ^[0-9]{1,9}$ ]] || return 1
+    if (( 10#$2 > 10#$ov )); then return 0; fi
+    return 1
+  }
+
+  _order_stamp_intent() { # <arquivo> — grava sob QUAL direção o aceite foi dado
+    local nv; nv=$(_intent_version "$(_intent_file "$proj")")
+    [[ -n "$nv" ]] && printf 'accepted_intent: %s\n' "$nv" >> "$1"
+    return 0
+  }
+
+  _order_intent_gate() { # <arquivo> — o aceite sob direção desatualizada é decisão nova
+    local nv ov
+    nv=$(_intent_version "$(_intent_file "$proj")")
+    _order_intent_stale "$1" "$nv" || return 0
+    ov=$(_order_field "$1" intent_version)
+    if (( intent_reviewed == 1 )); then
+      printf 'direção revisada pelo diretor: a ordem nasceu sob v%s, a direção está em v%s\n' "$ov" "$nv"
+      return 0
+    fi
+    die validation "a direção mudou (v$ov → v$nv) depois da ordem $oid" \
+      "releia o plano contra .maestro/INTENT.md; se ele continua de pé, aceite com --intent-reviewed" 1
+  }
+
   if [[ "$action" == "list" ]]; then
     [[ -d "$odir" ]] || { echo "nenhuma ordem em $odir (crie: maestro order --create)"; return 0; }
-    local f any=0
+    local f any=0 iv_now mark
+    # Uma leitura de INTENT para a lista inteira (o arquivo não muda no laço).
+    iv_now=$(_intent_version "$(_intent_file "$proj")")
     shopt -s nullglob
     for f in "$odir"/*.md; do
       any=1
-      printf '%s  [%s]  %s\n' "$(_order_field "$f" id)" "$(_order_status "$f")" \
+      mark=""
+      _order_intent_stale "$f" "$iv_now" && mark="  [direção mudou]"
+      printf '%s  [%s]%s  %s\n' "$(_order_field "$f" id)" "$(_order_status "$f")" "$mark" \
         "$(grep -m1 '^# ' "$f" | sed 's/^# //')"
     done
     shopt -u nullglob
@@ -1862,6 +2131,23 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
     else
       "$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$of")" --project "$proj" 2>/dev/null | head -1 || echo "?"
+    fi
+    # E22: a ordem cita a direção que a autorizou. Direção que andou não
+    # invalida a ordem — torna o PLANO suspeito, e quem revisa é gente.
+    local _ov _ivn _ihn _oh
+    _ov=$(_order_field "$of" intent_version)
+    _ivn=$(_intent_version "$(_intent_file "$proj")")
+    if [[ -n "$_ov" ]]; then
+      printf '  direção : v%s\n' "$_ov"
+      if _order_intent_stale "$of" "$_ivn"; then
+        printf '  ATENÇÃO: a direção mudou (v%s → v%s) depois desta ordem — revise o plano contra .maestro/INTENT.md\n' "$_ov" "$_ivn"
+      elif [[ "$_ov" == "$_ivn" ]]; then
+        _ihn=$(_intent_body_hash "$(_intent_file "$proj")")
+        _oh=$(_order_field "$of" intent_hash)
+        if [[ -n "$_oh" && -n "$_ihn" && "$_oh" != "$_ihn" ]]; then
+          printf '           a direção foi editada sem bump (ainda v%s, conteúdo outro) — maestro intent --bump\n' "$_ov"
+        fi
+      fi
     fi
     local _od; _od=$(_order_field "$of" doc)
     if [[ -n "$_od" ]]; then
@@ -1919,6 +2205,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       # entre eles.
       local _mv; _mv=$(_order_moved_since_accept "$of")
       if [[ -z "$_mv" ]]; then echo "ordem $oid já aceita"; return 0; fi
+      _order_intent_gate "$of"
       local _ptree2; _ptree2=$(_order_proof_tree "$of")
       if [[ -z "$_ptree2" ]]; then
         die validation "ordem $oid andou depois do aceite e não tem prova do conteúdo atual" \
@@ -1926,6 +2213,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       fi
       printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
         "$(date -Iseconds)" "${sid:-desconhecido}" "$_ptree2" >> "$of"
+      _order_stamp_intent "$of"
       log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
       log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
       printf 'ordem %s REACEITA — o branch andou depois do aceite anterior (%s), e o conteúdo de agora tem prova própria\n' "$oid" "${_mv% }"
@@ -1935,6 +2223,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
       die validation "ordem $oid está '$st', não 'provada'" \
         "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
     fi
+    _order_intent_gate "$of"
     # S-1803: o carimbo do aceite ESCREVE no arquivo da ordem, que é rastreado
     # (E15: "work order versionada"). Sem o carimbo da árvore, o próprio
     # --accept faz o conteúdo andar depois da prova e o recibo — que é amarrado
@@ -1948,6 +2237,7 @@ cmd_order() { # S-1501/S-1502: work order versionada com ESTADO DERIVADO
     local ptree; ptree=$(_order_proof_tree "$of")
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
       "$(date -Iseconds)" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
+    _order_stamp_intent "$of"
     log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
     # E23a/S-2301: última fase do funil — o aceite do diretor é o que fecha
     # planned → started → received → accepted para esta ordem.
