@@ -405,6 +405,21 @@ else
   printf '%s\n' "$out" | sed 's/^/       | /'
 fi
 
+# Rito v1.14.2: tag no commit do DIAGRAMA, retrato pinado no pai (commit de release).
+d="$(fresh diagrama-pai-da-tag)"
+sha="$(git_fixture "$d")"
+mkdir -p "$d/docs/assets"
+printf '{"meta":{"repository":{"revision":"%s"}}}\n' "$sha" >"$d/docs/assets/architecture.json"
+git -C "$d" add -A >/dev/null && git -C "$d" commit -q -m 'chore(diagram)' >/dev/null
+git -C "$d" tag v0.1.1
+out="$(CLAUDE_PROJECT_DIR="$d" MAESTRO_HOME="$d/.state" NO_COLOR=1 "$d/bin/maestro" doctor 2>&1)"; rc=$?
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q 'diagrama de release: em dia com v0.1.1'; then
+  ok "S-1709: retrato pinado no pai da tag (tag no commit do diagrama) → ok"
+else
+  bad "S-1709: retrato pinado no pai da tag não aceito (rc=$rc)"
+  printf '%s\n' "$out" | sed 's/^/       | /'
+fi
+
 d="$(fresh diagrama-atrasado)"
 sha="$(git_fixture "$d")"
 git -C "$d" tag v0.2.0

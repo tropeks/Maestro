@@ -6,6 +6,17 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.14.2] — 2026-09-05
+
+### Changed
+- **Release rite: the tag goes on the diagram commit.** Until now the tag sat on the
+  release commit and the portrait (pinned to that commit) landed one commit later, so
+  every machine exactly on `stable` saw the doctor warn "diagrama de release
+  verificado em <old>" and every machine on the tip of `main` sat one commit ahead of
+  `stable`. From this release: bump + CHANGELOG commit, then the portrait pinned to
+  that commit, then the tag on the diagram commit. `check_release_diagram` accepts the
+  tag's first parent as "em dia", so both rites validate.
+
 ## [1.14.1] — 2026-09-05
 
 Two bugs the forge's own upgrade to 1.14.0 exposed within the hour — dogfooding at work.

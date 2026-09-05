@@ -1331,7 +1331,14 @@ check_release_diagram() { # S-1709: diagrama de arquitetura declarado vs. últim
     report skip "diagrama de release" "não consegui resolver o commit da tag $tag"
     return 0
   fi
-  if [[ "$rev" == "$tagc" ]]; then
+  # Rito desde a v1.14.2: o retrato é pinado no commit de RELEASE e commitado
+  # em seguida, e a tag vai no commit do DIAGRAMA — assim quem está exatamente
+  # na tag (canal stable) já tem o retrato certo, e main não fica "1 à frente".
+  # Por isso o pai da tag também é "em dia". Tag no commit de release (rito
+  # antigo) continua valendo pela igualdade direta.
+  local tagp
+  tagp=$(git -C "$proj" rev-parse --verify -q "${tagc}^" 2>/dev/null) || tagp=""
+  if [[ "$rev" == "$tagc" || ( -n "$tagp" && "$rev" == "$tagp" ) ]]; then
     report ok "diagrama de release: em dia com $tag"
   else
     report warn "diagrama de release" \
