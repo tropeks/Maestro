@@ -9,6 +9,10 @@ BIN="$REPO/bin/maestro"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export MAESTRO_HOME="$tmp/home"
+# E23b: `outcome accepted` passou a consultar o `.maestro.yaml` do projeto
+# corrente. Sem isolar, a suíte julgaria o repo do Maestro (que declara
+# `verifications:`) e o resultado dependeria do working tree de quem a roda.
+NEUTRO="$tmp/neutro"; mkdir -p "$NEUTRO"; export CLAUDE_PROJECT_DIR="$NEUTRO"
 
 fail=0
 ok()  { printf 'ok   %s\n' "$1"; }
@@ -39,6 +43,57 @@ chk "--suite fora do enum → exit 1" "$rc" "1"
 
 LOG="$MAESTRO_HOME/logs/routing.jsonl"
 grep -q '"event":"outcome".*"outcome":"accepted"' "$LOG" && ok "outcome no log (enum)" || bad "outcome no log"
+
+echo "-- E23b: outcome accepted exige a verificação obrigatória da área (S-2302)"
+PV="$tmp/verif"; mkdir -p "$PV/src/auth" "$PV/docs"
+git -C "$PV" init -qb main
+cat > "$PV/.maestro.yaml" <<'YAML'
+verifications:
+  auth:
+    paths: [src/auth/]
+    labels: [suite]
+commands:
+  suite: true
+YAML
+echo a > "$PV/src/auth/jwt.py"; echo d > "$PV/docs/d.md"
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm base
+"$BIN" decide --session vf-1 --workflow fix --mode direct >/dev/null 2>&1
+RECV="$MAESTRO_HOME/sessions/vf-1.json"
+
+echo mexido >> "$PV/docs/d.md"
+CLAUDE_PROJECT_DIR="$PV" "$BIN" outcome --session vf-1 accepted >/dev/null 2>&1; rc=$?
+chk "changeset fora das paths declaradas → accepted passa" "$rc" "0"
+chk "e o record NÃO ganha o campo verifications" "$(jq -r 'has("verifications")' "$RECV")" "false"
+
+echo mexido >> "$PV/src/auth/jwt.py"
+out=$(CLAUDE_PROJECT_DIR="$PV" "$BIN" outcome --session vf-1 accepted 2>&1); rc=$?
+chk "tocou área com verificação obrigatória e sem prova → exit 1" "$rc" "1"
+grep -q 'sem verificação obrigatória: suite' <<<"$out" \
+  && ok "a recusa nomeia o rótulo que falta" || bad "recusa nomeia o rótulo ($out)"
+grep -q 'maestro evidence --record --label suite -- true' <<<"$out" \
+  && ok "e entrega o comando declarado para gerar a prova" || bad "recusa traz o comando ($out)"
+chk "record intacto: recusa não fecha desfecho" "$(jq -r '.outcome' "$RECV")" "accepted"
+
+out=$(CLAUDE_PROJECT_DIR="$PV" "$BIN" outcome --session vf-1 accepted --unproven 2>&1); rc=$?
+chk "--unproven passa (a exceção é do humano, não do CLI)" "$rc" "0"
+chk "e o record CARIMBA a falta" "$(jq -r '.verifications' "$RECV")" "missing"
+grep -q 'aceito SEM a verificação obrigatória' <<<"$out" && ok "e a saída diz isso em voz alta" || bad "aviso do --unproven ($out)"
+
+"$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
+out=$(CLAUDE_PROJECT_DIR="$PV" "$BIN" outcome --session vf-1 accepted 2>&1); rc=$?
+chk "com o recibo válido do rótulo exigido → exit 0" "$rc" "0"
+chk "record carrega verifications=cited" "$(jq -r '.verifications' "$RECV")" "cited"
+
+echo "mais uma linha" >> "$PV/src/auth/jwt.py"
+CLAUDE_PROJECT_DIR="$PV" "$BIN" outcome --session vf-1 rework >/dev/null 2>&1
+chk "rework/reverted NÃO são barrados (só o aceite afirma que serve)" "$?" "0"
+"$BIN" decide --session vf-2 --workflow fix --mode direct >/dev/null 2>&1
+CLAUDE_PROJECT_DIR="$tmp/nao-e-repo" "$BIN" outcome --session vf-2 accepted >/dev/null 2>&1
+chk "projeto sem .maestro.yaml → nada exigido (exit 0)" "$?" "0"
+if command -v jq >/dev/null; then
+  "$BIN" doctor --ci >/dev/null 2>&1
+  chk "doctor valida o schema do record com verifications" "$?" "0"
+fi
 
 echo "-- retro agrega a janela"
 # fixture: log sintético controlado (hoje, dentro de qualquer janela)

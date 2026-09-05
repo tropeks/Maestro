@@ -174,6 +174,80 @@ printf '{"session_id":"o3"}' | CLAUDE_PROJECT_DIR="$P" bash "$SS" >/dev/null 2>&
 grep -q 'ORDER_FROZEN=""' "$MAESTRO_HOME/gate-policy.sh" && ok "aceite descongela na recompilação" || bad "descongela"
 chk "multi pós-aceite → passa" "$(probe o2 "$P/core/auth/jwt.py")" "0"
 
+echo "-- E23b: verificação obrigatória por área no aceite (S-2302)"
+# Projeto isolado: o fluxo principal acima NÃO declara `verifications:` e é a
+# prova de que ordem sem área tocada segue exatamente na regra do order-N.
+PV="$tmp/ordem-verif"; mkdir -p "$PV/src/auth" "$PV/docs"
+git -C "$PV" init -qb main
+cat > "$PV/.maestro.yaml" <<'YAML'
+verifications:
+  auth:
+    paths: [src/auth/]
+    labels: [suite]
+commands:
+  suite: true
+YAML
+echo a > "$PV/src/auth/jwt.py"; echo d > "$PV/docs/d.md"
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm base
+"$BIN" order --create --title "Mexe na auth" --project "$PV" <<< "objetivo" >/dev/null
+git -C "$PV" checkout -qb order/001-mexe-na-auth
+echo entrega >> "$PV/src/auth/jwt.py"
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm entrega
+"$BIN" evidence --record --label order-1 --project "$PV" -- true >/dev/null
+chk "recibo order-1 verde no tip → provada (regra do E15 intacta)" \
+    "$("$BIN" order --list --project "$PV" | grep -o '\[[a-z_]*\]')" "[provada]"
+out=$("$BIN" order --status 1 --project "$PV")
+grep -q 'verif   : áreas auth' <<<"$out" && ok "status mostra a área tocada pelo branch" || bad "status: área ($out)"
+grep -q 'suite: NENHUMA' <<<"$out" && ok "status mostra o rótulo exigido que falta" || bad "status: rótulo ($out)"
+"$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1; rc=$?
+chk "provada mas SEM o rótulo da área → aceite RECUSA (exit 1)" "$rc" "1"
+err=$("$BIN" order --accept 1 --project "$PV" 2>&1 >/dev/null)
+grep -q 'suite: NENHUMA — maestro evidence --record --label suite -- true' <<<"$err" \
+  && ok "a recusa lista o rótulo e o comando declarado" || bad "recusa lista o comando ($err)"
+grep -q '^accepted_at: ' "$PV/.maestro/orders/001-"*.md 2>/dev/null \
+  && bad "recusa não pode carimbar aceite" || ok "recusa não carimba nada no arquivo"
+# Recibo do rótulo exigido, mas de OUTRO comando: não conta.
+"$BIN" evidence --record --label suite --project "$PV" -- echo outro >/dev/null
+"$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1
+chk "recibo do rótulo com comando ≠ declarado → segue recusando" "$?" "1"
+grep -q 'comando ≠ o declarado' <<<"$("$BIN" order --status 1 --project "$PV")" \
+  && ok "status nomeia o motivo (comando ≠ o declarado)" || bad "motivo cmd_match no status"
+# Agora com o comando declarado, no conteúdo do tip.
+"$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
+grep -q 'suite: VÁLIDA' <<<"$("$BIN" order --status 1 --project "$PV")" \
+  && ok "status: rótulo exigido VÁLIDA" || bad "status VÁLIDA"
+"$BIN" order --accept 1 --project "$PV" >/dev/null; chk "com o rótulo da área provado → aceite passa" "$?" "0"
+# Recibo que NÃO é do tip (branch andou depois da prova) também não conta.
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm "carimbo 001"
+echo depois >> "$PV/src/auth/jwt.py"
+git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm "andou"
+"$BIN" evidence --record --label order-1 --project "$PV" -- true >/dev/null
+"$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1; rc=$?
+chk "re-aceite com suite velha (árvore ≠ tip) → recusa" "$rc" "1"
+grep -q 'não é o conteúdo do tip' <<<"$("$BIN" order --status 1 --project "$PV")" \
+  && ok "e o motivo é 'não é o conteúdo do tip'" || bad "motivo de árvore no status"
+"$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
+"$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1; chk "re-aceite com a suite refeita no tip → passa" "$?" "0"
+
+echo "-- E23b: ordem que não toca área declarada segue na regra de sempre"
+# Projeto próprio (a ordem 001 acima vive só no branch: voltar para a main
+# apagaria o arquivo dela e o próximo id voltaria a ser 001).
+PW="$tmp/ordem-sem-area"; mkdir -p "$PW/src/auth" "$PW/docs"
+git -C "$PW" init -qb main
+cp "$PV/.maestro.yaml" "$PW/.maestro.yaml"
+echo a > "$PW/src/auth/jwt.py"; echo d > "$PW/docs/d.md"
+git -C "$PW" add -A; git -C "$PW" -c user.email=t@t -c user.name=t commit -qm base
+"$BIN" order --create --title "So docs" --project "$PW" <<< "objetivo" >/dev/null
+git -C "$PW" checkout -qb order/001-so-docs
+echo doc >> "$PW/docs/d.md"
+git -C "$PW" add -A; git -C "$PW" -c user.email=t@t -c user.name=t commit -qm docs
+"$BIN" evidence --record --label order-1 --project "$PW" -- true >/dev/null
+grep -q 'verif   :' <<<"$("$BIN" order --status 1 --project "$PW")" \
+  && bad "ordem fora das paths não devia exibir linha de verificação" \
+  || ok "sem área tocada, o status não fala de verificação"
+"$BIN" order --accept 1 --project "$PW" >/dev/null 2>&1
+chk "sem área tocada, order-N sozinho basta (exit 0)" "$?" "0"
+
 echo "-- validações"
 "$BIN" order --create --project "$P" <<< "x" >/dev/null 2>&1; rc=$?
 chk "sem --title → exit 1" "$rc" "1"
