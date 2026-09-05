@@ -56,6 +56,19 @@ const EVENTS = [
   "killswitch",
   "session_end",
   "conduct", // E17/S-1701 — verbo bash de mutação do record (flags/approach)
+  // Eventos emitidos pelos verbos bash (common.sh é a autoridade; esta lista só
+  // decide o que `maestro log --summary` agrega em vez de jogar em unknownEvent).
+  "habit_warn",
+  "consent_grant",
+  "consent_revoke",
+  "outcome",
+  "budget_warn",
+  "order_create",
+  "order_accept",
+  "upgrade",
+  "delegation", // E23a — funil planned/started/received/accepted
+  "intent", // E22 — direção versionada
+  "verify", // E23b — verificações obrigatórias por área
 ] as const;
 
 // -------------------------------------------------------------------- erros

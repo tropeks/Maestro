@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd Stop)   # S-1811 SessionEnd · S-2101 Stop
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications'
 
 usage() {
   cat <<'U'
@@ -1298,6 +1298,8 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
       and ((keys - ["steps","minutes","cents"]) | length == 0)
       and (all(.[]; type == "number" and . == floor and . >= 1))) else true end)
     and (if has("suite_evidence") then (.suite_evidence as $e | ["cited","none"] | index($e) != null) else true end)
+    and (if has("delegation_proof") then (has("outcome") and (.delegation_proof as $d | ["started","none"] | index($d) != null)) else true end)
+    and (if has("verifications") then (has("outcome") and (.verifications as $v | ["cited","missing"] | index($v) != null)) else true end)
     and (if has("depth") then (.depth as $d | ["standard","deep","day-zero"] | index($d) != null) else true end)
     and (if has("profile") then (.profile as $p | ["prototipo","piloto","produto"] | index($p) != null) else true end)
     and (has("profile") == ((.depth // "") == "day-zero"))
@@ -3197,6 +3199,9 @@ case "$cmd" in
   docs) shift; cmd_docs "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   telemetry) shift; cmd_telemetry "$@" ;;
+  intent) shift; cmd_intent "$@" ;;        # E22
+  verify) shift; cmd_verify "$@" ;;        # E23b
+  delegation) shift; cmd_delegation "$@" ;; # E23a
   ""|-h|--help) usage ;;
   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
 esac

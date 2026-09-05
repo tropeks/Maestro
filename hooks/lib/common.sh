@@ -112,7 +112,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -145,6 +145,8 @@ _maestro_set_key_regex() {
     via)        _maestro_re='^(auto|manual|rollback)$' ;;
     decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
     settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
+    phase)      _maestro_re='^(planned|started|received|accepted)$' ;;   # E23a: funil de delegação
+    channel)    _maestro_re='^(stable|main)$' ;;   # E23c: canal do auto-update
     *)          _maestro_re=""; return 1 ;;
   esac
   return 0
