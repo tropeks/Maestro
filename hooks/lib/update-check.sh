@@ -30,11 +30,11 @@
 #       lê `chave: valor` de $MAESTRO_HOME/config.yaml (DATA_MODEL §10)
 #   maestro_update_config_set <chave> <valor>
 #   maestro_update_check [--force]
-#       rc=0 sempre. Publica UPD_STATE ∈ disabled|current|available|blocked|failed,
+#       rc=0 sempre. Publica UPD_STATE ∈ disabled|current|available|blocked|failed|no-stable,
 #       UPD_LOCAL/UPD_REMOTE_VER (versões do plugin.json), UPD_BEHIND, UPD_AHEAD,
 #       UPD_DIRTY, UPD_BRANCH_CUR, UPD_REASON, UPD_FETCH (ok|failed|skipped),
-#       UPD_SNOOZED (0|1), UPD_AUTO (0|1); grava $MAESTRO_HOME/update-state.
-#       --force ignora o intervalo.
+#       UPD_SNOOZED (0|1), UPD_AUTO (0|1), UPD_CHANNEL (stable|main);
+#       grava $MAESTRO_HOME/update-state. --force ignora o intervalo.
 #   maestro_update_apply
 #       ff-only para o ref remoto já buscado (SEM rede). rc=0 aplicou (UPD_PREV
 #       = SHA anterior, UPD_FROM = versão anterior); rc=1 não aplicou (UPD_REASON).
@@ -53,6 +53,15 @@
 #   MAESTRO_UPDATE_REPO         clone a verificar (default: o repo desta lib)
 #   MAESTRO_UPDATE_REMOTE       nome do remoto (default origin)
 #   MAESTRO_UPDATE_BRANCH       branch rastreada (default main)
+#   MAESTRO_UPDATE_CHANNEL      canal: stable|main (default: update_channel da config)
+#
+# Canais (E23c/S-2303). `main` é o comportamento original: o candidato é o topo de
+# `origin/main`, verde ou não. `stable` (default) é o topo APROVADO: a tag móvel
+# `stable`, que só a CI empurra depois de shellcheck + suíte verdes numa tag `v*`.
+# A tag é móvel por desenho — por isso o fetch dela é forçado (`+`), senão o git se
+# recusa a mexer numa tag que já existe no clone e a máquina congelaria na primeira
+# `stable` que viu. `stable` ausente no remoto (repo antes da primeira release
+# aprovada) NÃO é erro: é o estado `no-stable` — nada a aplicar, nada a gritar.
 
 UPD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPD_REPO="${MAESTRO_UPDATE_REPO:-$(cd "$UPD_LIB_DIR/../.." && pwd)}"
@@ -67,7 +76,7 @@ UPD_LOCK_FILE="$UPD_HOME/update.lock"
 UPD_STATE=""; UPD_LOCAL=""; UPD_REMOTE_VER=""; UPD_BEHIND=0; UPD_AHEAD=0
 UPD_DIRTY=0; UPD_BRANCH_CUR=""; UPD_REASON=""; UPD_FETCH="skipped"
 UPD_SNOOZED=0; UPD_AUTO=0; UPD_PREV=""; UPD_FROM=""; UPD_UPGRADED_AT=""
-UPD_REMOTE_SHA=""; UPD_LOCAL_SHA=""; UPD_SNOOZE_HUMAN=""
+UPD_REMOTE_SHA=""; UPD_LOCAL_SHA=""; UPD_SNOOZE_HUMAN=""; UPD_CHANNEL="main"
 
 _upd_has() { command -v "$1" >/dev/null 2>&1; }
 _upd_git() { git -C "$UPD_REPO" "$@"; }
@@ -100,6 +109,20 @@ _upd_git_path() { # <nome> → caminho ABSOLUTO em $GIT_DIR (vale em worktree vi
   local p; p=$(_upd_git rev-parse --git-path "$1" 2>/dev/null) || p=""
   [[ -n "$p" ]] || { printf '%s' "$UPD_REPO/.git/$1"; return 0; }
   [[ "$p" == /* ]] && printf '%s' "$p" || printf '%s/%s' "$UPD_REPO" "$p"
+  return 0
+}
+
+_upd_ref() { # ref-candidato do canal corrente (E23c)
+  if [[ "$UPD_CHANNEL" == "stable" ]]; then
+    printf '%s' "refs/tags/stable"
+  else
+    printf 'refs/remotes/%s/%s' "$UPD_REMOTE" "$UPD_BRANCH"
+  fi
+  return 0
+}
+_upd_ref_sha() { # <ref> → SHA do COMMIT (tag anotada peela; branch resolve nela mesma)
+  local sha; sha=$(_upd_git rev-parse --verify -q "$1^{commit}" 2>/dev/null) || sha=""
+  printf '%s' "$sha"
   return 0
 }
 
@@ -165,6 +188,7 @@ _upd_state_write() { # grava o estado inteiro (atômico); preserva prev/head/upg
     printf 'checked=%s\n' "$(_upd_now)"
     printf 'fetched=%s\n' "${fetched:-0}"
     printf 'fetch=%s\n' "$UPD_FETCH"
+    printf 'channel=%s\n' "$UPD_CHANNEL"
     printf 'result=%s\n' "$UPD_STATE"
     printf 'reason=%s\n' "$UPD_REASON"
     printf 'local=%s\n' "$UPD_LOCAL"
@@ -208,6 +232,19 @@ _upd_fetch() { # a linha de rede do update. rc = do git.
   # --tags: sem ele a máquina que só recebe `main` fica com as tags do dia do
   # clone, e o doctor compara o retrato de release com uma tag velha (achado
   # do Legatus na v1.12.0: "release v1.11.0" numa máquina já em 1.12.0).
+  #
+  # Canal stable (E23c): refspecs explícitas em vez de --tags, por dois motivos.
+  # (1) `stable` é MÓVEL — só com `+` (force) o git aceita reapontar uma tag que
+  # já existe aqui; --tags é não-forçado e recusaria, e ainda faria o fetch
+  # inteiro sair != 0. (2) o curinga `stable*` casa ZERO refs sem erro quando o
+  # remoto ainda não tem a tag; a refspec literal seria `fatal: couldn't find
+  # remote ref` e a ausência viraria "rede falhou". As tags `v*` continuam
+  # viajando (é delas que o doctor tira o retrato de release).
+  if [[ "$UPD_CHANNEL" == "stable" ]]; then
+    _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q "$UPD_REMOTE" \
+      "+refs/tags/stable*:refs/tags/stable*" "+refs/tags/v*:refs/tags/v*" "$UPD_BRANCH"
+    return $?
+  fi
   _upd_run_timed "${MAESTRO_UPDATE_TIMEOUT:-5}" git -C "$UPD_REPO" fetch -q --tags "$UPD_REMOTE" "$UPD_BRANCH"
 }
 
@@ -247,6 +284,16 @@ _upd_resolve_auto() { # publica UPD_AUTO (env vence config; default: ligado)
   return 0
 }
 
+_upd_resolve_channel() { # publica UPD_CHANNEL (env vence config; inválido → stable, o canal seguro)
+  local c="${MAESTRO_UPDATE_CHANNEL:-}"
+  [[ -n "$c" ]] || c=$(maestro_update_config_get update_channel stable)
+  case "$c" in
+    stable|main) UPD_CHANNEL="$c" ;;
+    *)           UPD_CHANNEL="stable" ;;   # o doctor é quem reclama do valor torto
+  esac
+  return 0
+}
+
 _upd_fetch_due() { # rc=0 se o intervalo desde o último fetch OK já venceu
   local interval="${MAESTRO_UPDATE_INTERVAL:-}" fetched now
   if [[ ! "$interval" =~ ^[0-9]{1,9}$ ]]; then
@@ -274,11 +321,15 @@ _upd_fast_path() { # S-1810: sem fetch e sem nada mudado, reaproveita o estado (
   # HEAD e o ref remoto são os MESMOS SHAs de então, nada pode ter ficado para
   # trás: dois rev-parse bastam. Qualquer diferença cai na medição completa.
   [[ "$(_upd_state_read result)" == "current" ]] || return 1
-  local ref="refs/remotes/$UPD_REMOTE/$UPD_BRANCH" p_local p_remote head remote
+  # canal trocado desde a última checagem: o ref-candidato é outro, a medição
+  # gravada não vale mais (E23c).
+  [[ "$(_upd_state_read channel)" == "$UPD_CHANNEL" ]] || return 1
+  local ref p_local p_remote head remote
+  ref=$(_upd_ref)
   p_local=$(_upd_state_read local_sha); p_remote=$(_upd_state_read remote_sha)
   [[ "$p_local" =~ ^[0-9a-f]{40}$ && "$p_remote" =~ ^[0-9a-f]{40}$ ]] || return 1
   head=$(_upd_git rev-parse HEAD 2>/dev/null) || return 1
-  remote=$(_upd_git rev-parse --verify -q "$ref" 2>/dev/null) || return 1
+  remote=$(_upd_ref_sha "$ref"); [[ -n "$remote" ]] || return 1
   [[ "$head" == "$p_local" && "$remote" == "$p_remote" ]] || return 1
   UPD_LOCAL_SHA="$head"; UPD_REMOTE_SHA="$remote"
   UPD_REMOTE_VER=$(_upd_state_read remote); UPD_BRANCH_CUR=$(_upd_state_read branch)
@@ -287,10 +338,10 @@ _upd_fast_path() { # S-1810: sem fetch e sem nada mudado, reaproveita o estado (
   return 0
 }
 
-_upd_measure() { # posição local vs ref remoto — git local. rc=1 sem o ref.
-  local ref="refs/remotes/$UPD_REMOTE/$UPD_BRANCH"
+_upd_measure() { # posição local vs ref-candidato do canal — git local. rc=1 sem o ref.
+  local ref; ref=$(_upd_ref)
   _upd_git rev-parse --verify -q "$ref" >/dev/null 2>&1 || return 1
-  UPD_REMOTE_SHA=$(_upd_git rev-parse "$ref" 2>/dev/null) || UPD_REMOTE_SHA=""
+  UPD_REMOTE_SHA=$(_upd_ref_sha "$ref")
   UPD_LOCAL_SHA=$(_upd_git rev-parse HEAD 2>/dev/null) || UPD_LOCAL_SHA=""
   UPD_REMOTE_VER=$(_upd_version_of "$ref")
   UPD_BEHIND=$(_upd_git rev-list --count "HEAD..$ref" 2>/dev/null) || UPD_BEHIND=0
@@ -343,6 +394,7 @@ maestro_update_check() {
 
   if _upd_disabled; then UPD_STATE="disabled"; UPD_REASON="config"; return 0; fi
   _upd_resolve_auto
+  _upd_resolve_channel
 
   # Fast path ANTES das sondas de repositório: dentro do intervalo e com HEAD e
   # ref remoto idênticos à última checagem, dois rev-parse decidem (S-1810).
@@ -361,6 +413,16 @@ maestro_update_check() {
   fi
 
   _upd_maybe_fetch "$force"
+  # Canal stable sem a tag no remoto: o repo ainda não teve release aprovada
+  # pela CI. Não é falha (a rede pode ter ido bem) e não é update — é `no-stable`,
+  # registrado como qualquer outro estado para o doctor ver.
+  if [[ "$UPD_CHANNEL" == "stable" ]] \
+     && ! _upd_git rev-parse --verify -q "refs/tags/stable" >/dev/null 2>&1; then
+    UPD_STATE="no-stable"; UPD_REASON="no-stable-tag"
+    UPD_LOCAL_SHA=$(_upd_git rev-parse HEAD 2>/dev/null) || UPD_LOCAL_SHA=""
+    UPD_BRANCH_CUR=$(_upd_git branch --show-current 2>/dev/null) || UPD_BRANCH_CUR=""
+    _upd_state_write; return 0
+  fi
   if ! _upd_measure; then
     UPD_STATE="failed"; UPD_REASON="no-remote-ref"; _upd_state_write; return 0
   fi
@@ -376,7 +438,8 @@ maestro_update_check() {
 _upd_merge() { # sob o lock: só merge se o HEAD ainda é o que foi MEDIDO (rc 98 = outro processo já mexeu)
   local head; head=$(git -C "$UPD_REPO" rev-parse HEAD 2>/dev/null) || return 1
   [[ "$head" == "$UPD_LOCAL_SHA" ]] || return 98
-  GIT_TERMINAL_PROMPT=0 git -C "$UPD_REPO" merge --ff-only -q "refs/remotes/$UPD_REMOTE/$UPD_BRANCH" >/dev/null 2>&1
+  local ref; ref=$(_upd_ref)
+  GIT_TERMINAL_PROMPT=0 git -C "$UPD_REPO" merge --ff-only -q "$ref" >/dev/null 2>&1
 }
 
 maestro_update_apply() {
@@ -436,7 +499,7 @@ maestro_update_rollback() {
 
 maestro_update_snooze() { # 24h → 48h → 7d para a MESMA versão remota
   local sha="${UPD_REMOTE_SHA:-}" level=0 s_sha now until
-  [[ -n "$sha" ]] || sha=$(_upd_git rev-parse "refs/remotes/$UPD_REMOTE/$UPD_BRANCH" 2>/dev/null) || sha=""
+  [[ -n "$sha" ]] || sha=$(_upd_ref_sha "$(_upd_ref)")
   [[ -n "$sha" ]] || { UPD_REASON="no-remote-ref"; return 1; }
   if [[ -f "$UPD_SNOOZE_FILE" ]]; then
     s_sha=$(awk 'NR==1 {print $1}' "$UPD_SNOOZE_FILE" 2>/dev/null) || s_sha=""
@@ -456,3 +519,9 @@ maestro_update_snooze() { # 24h → 48h → 7d para a MESMA versão remota
   printf '%s %s %s\n' "$sha" "$until" "$level" > "$UPD_SNOOZE_FILE" 2>/dev/null || return 1
   return 0
 }
+
+# Canal resolvido já no source: `maestro upgrade --rollback` e o snooze entram
+# direto em _upd_measure/_upd_ref sem passar por maestro_update_check, e o
+# ref-candidato precisa estar certo desde a primeira linha (E23c). Custa uma
+# leitura de config.yaml sem fork; maestro_update_check reresolve (idempotente).
+_upd_resolve_channel

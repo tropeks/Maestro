@@ -11,6 +11,11 @@
 #
 # Hermético: remoto bare em file:// dentro do mktemp; MAESTRO_UPDATE_REPO aponta
 # para um clone de FIXTURE (nunca o repo real); MAESTRO_HOME isolado.
+#
+# Todo este arquivo roda com MAESTRO_UPDATE_CHANNEL=main: desde o E23c o canal
+# default é `stable` (a tag que só a CI verde move), e aqui o contrato coberto é
+# o do canal `main` — que não mudou uma vírgula. O canal novo tem arquivo
+# próprio: tests/hooks/test-update-channel.sh.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -64,7 +69,8 @@ run() {
   mkdir -p "$proj"
   printf '{"session_id":"upd-test-1"}' \
     | env MAESTRO_HOME="$home" CLAUDE_PROJECT_DIR="$proj" MAESTRO_UPDATE_REPO="$CLONE" \
-          MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_INTERVAL=0 MAESTRO_UPDATE_TIMEOUT=5 "$@" \
+          MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_INTERVAL=0 MAESTRO_UPDATE_TIMEOUT=5 \
+          MAESTRO_UPDATE_CHANNEL=main "$@" \
           bash "$HOOK" >"$outf" 2>"$errf"
   RC=$?
   OUT="$outf"; ERR="$errf"
@@ -227,6 +233,7 @@ printf '{"name":"maestro","version":"9.9.9"}\n' > "$NOREPO/.claude-plugin/plugin
 next_home
 printf '{"session_id":"upd-test-1"}' | env MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$SANDBOX/proj" \
   MAESTRO_UPDATE_REPO="$NOREPO" MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_INTERVAL=0 \
+  MAESTRO_UPDATE_CHANNEL=main \
   bash "$HOOK" >"$SANDBOX/out" 2>"$SANDBOX/err"; RC=$?
 chk "hook sai 0" "$RC" "0"
 has "injeção íntegra" "INSTRUÇÃO CANÔNICA" "$SANDBOX/out"
@@ -237,6 +244,7 @@ echo "-- re-exec: a trava anti-loop e o aviso vindo do env"
 next_home
 printf '{"session_id":"upd-test-1"}' | env MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$SANDBOX/proj" \
   MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_INTERVAL=0 \
+  MAESTRO_UPDATE_CHANNEL=main \
   MAESTRO_UPDATE_REEXEC=1 MAESTRO_UPDATED_FROM=1.0.0 MAESTRO_UPDATED_TO=1.0.5 \
   bash "$HOOK" >"$SANDBOX/out" 2>"$SANDBOX/err"; RC=$?
 chk "hook sai 0" "$RC" "0"
@@ -244,6 +252,7 @@ has "aviso composto do env" "atualizado agora: v1.0.0 → v1.0.5" "$SANDBOX/out"
 [[ -f "$H/update-state" ]] && bad "re-exec voltou a checar (loop)" || ok "re-exec não checa de novo"
 printf '{"session_id":"upd-test-1"}' | env MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$SANDBOX/proj" \
   MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_REEXEC=1 \
+  MAESTRO_UPDATE_CHANNEL=main \
   MAESTRO_UPDATED_FROM='1.0.0"; rm -rf /' MAESTRO_UPDATED_TO='$(id)' \
   bash "$HOOK" >"$SANDBOX/out" 2>"$SANDBOX/err"
 has "versão inválida no env vira '?'" "atualizado agora: v? → v?" "$SANDBOX/out"
@@ -268,7 +277,7 @@ echo
 echo "-- race: HEAD mudou entre a medição e o apply → raced, prev intacto"
 publish 1.0.7
 next_home
-( export MAESTRO_HOME="$H" MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_UPDATE_INTERVAL=0 MAESTRO_NO_UPDATE_CHECK=0
+( export MAESTRO_HOME="$H" MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_UPDATE_INTERVAL=0 MAESTRO_NO_UPDATE_CHECK=0 MAESTRO_UPDATE_CHANNEL=main
   source "$REPO/hooks/lib/update-check.sh"
   maestro_update_check
   echo "state1=$UPD_STATE"
@@ -298,7 +307,7 @@ next_home
 t0=$(date +%s)
 printf '{"session_id":"upd-test-1"}' | env -i HOME="$HOME" PATH="$WB:$TB" MAESTRO_HOME="$H" \
   CLAUDE_PROJECT_DIR="$SANDBOX/proj" MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_NO_UPDATE_CHECK=0 \
-  MAESTRO_UPDATE_INTERVAL=0 MAESTRO_UPDATE_TIMEOUT=1 bash "$HOOK" >"$SANDBOX/out" 2>"$SANDBOX/err"; RC=$?
+  MAESTRO_UPDATE_INTERVAL=0 MAESTRO_UPDATE_TIMEOUT=1 MAESTRO_UPDATE_CHANNEL=main bash "$HOOK" >"$SANDBOX/out" 2>"$SANDBOX/err"; RC=$?
 t1=$(date +%s)
 chk "hook sai 0" "$RC" "0"
 (( t1 - t0 < 10 )) && ok "sessão livre em $((t1 - t0))s (fetch travado, teto de 1s)" || bad "hook demorou $((t1 - t0))s — fetch sem teto"

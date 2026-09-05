@@ -2,7 +2,8 @@
 # E19 / S-1903 — metade CLI do auto-update: `maestro upgrade` e os dois checks
 # novos do doctor (check_update_state, check_upstream).
 #
-# `maestro upgrade` é AÇÃO EXPLÍCITA DO HUMANO: a lib recebe UPD_MANUAL=1 e por
+# Canal fixo em main: aqui é o contrato do canal ANTIGO (o default virou `stable`
+# no E23c — canal novo em tests/hooks/test-update-channel.sh). `maestro upgrade` é AÇÃO EXPLÍCITA DO HUMANO: a lib recebe UPD_MANUAL=1 e por
 # isso ignora update_check:false e MAESTRO_NO_UPDATE_CHECK — o CLI nunca fica
 # mudo quando alguém pede satisfação diretamente (diferente do hook, que
 # respeita as duas trancas). Hermético: remoto bare em file://, clone de
@@ -56,7 +57,7 @@ U() { # U <home> [VAR=VAL ...] -- <args de maestro upgrade>
   while [[ "${1:-}" != "--" ]]; do extra+=("$1"); shift; done
   shift
   env MAESTRO_HOME="$home" MAESTRO_UPDATE_REPO="$CLONE" MAESTRO_UPDATE_TIMEOUT=5 \
-      MAESTRO_UPDATE_INTERVAL=0 "${extra[@]}" "$BIN" upgrade "$@" >"$OUTF" 2>"$ERRF"
+      MAESTRO_UPDATE_INTERVAL=0 MAESTRO_UPDATE_CHANNEL=main "${extra[@]}" "$BIN" upgrade "$@" >"$OUTF" 2>"$ERRF"
   RC=$?
 }
 state() { sed -n "s/^$2=\(.*\)$/\1/p" "$1/update-state" 2>/dev/null | head -1; }
@@ -76,7 +77,7 @@ publish 1.0.1
 BEFORE_101=$(head_of "$CLONE")
 next_home; U "$H" --
 chk "exit 0" "$RC" "0"
-has "resumo com as duas versões e a contagem" "Maestro v1.0.0 → v1.0.1 (1 commit(s))" "$OUTF"
+has "resumo com as duas versões, a contagem e o canal" "Maestro v1.0.0 → v1.0.1 (1 commit(s), canal main)" "$OUTF"
 chk "HEAD == origin/main" "$(head_of "$CLONE")" "$(git -C "$CLONE" rev-parse refs/remotes/origin/main)"
 has "delta do changelog: cabeçalho" "## [1.0.1]" "$OUTF"
 has "delta do changelog: linha" "mudança 1.0.1" "$OUTF"
@@ -140,7 +141,7 @@ has "mensagem 'nada para desfazer' (die vai para stderr)" "nada para desfazer �
 echo "-- --check: disponível → exit 1 (clone em 1.0.1, 1.0.2 pendente no origin)"
 next_home; U "$H" -- --check
 chk "exit 1" "$RC" "1"
-has "linha de status com as duas versões" "atualização: v1.0.1 → v1.0.2 disponível (1 commit(s)) — maestro upgrade" "$OUTF"
+has "linha de status com as duas versões" "atualização: v1.0.1 → v1.0.2 disponível (1 commit(s), canal main) — maestro upgrade" "$OUTF"
 
 echo "-- --check --force: nunca aplica, mesmo com o comando explícito"
 BEFORE_CHECK=$(head_of "$CLONE")
@@ -152,7 +153,7 @@ echo "-- --check: em dia → exit 0"
 next_home; U "$H" --                      # aplica 1.0.1 -> 1.0.2
 next_home; U "$H" -- --check
 chk "exit 0" "$RC" "0"
-has "linha 'em dia'" "atualização: em dia (v1.0.2)" "$OUTF"
+has "linha 'em dia' com o canal" "atualização: em dia (v1.0.2, canal main)" "$OUTF"
 
 echo "-- --check: falhou (sem origin) → exit 2"
 git -C "$CLONE" remote rename origin upstream
@@ -257,8 +258,8 @@ prev=
 upgraded=
 EOF
 doctor_out "$H"
-grep -q 'warn atualização disponível: v1.0.3 → v1.0.4 (1 commit(s))' "$OUTF" \
-  && ok "doctor avisa atualização disponível" || bad "doctor não avisou disponível ($(update_line))"
+grep -q 'warn atualização disponível: v1.0.3 → v1.0.4 (1 commit(s), canal main)' "$OUTF" \
+  && ok "doctor avisa disponível; estado sem 'channel' (pré-E23c) é lido como canal main" || bad "doctor não avisou disponível ($(update_line))"
 
 next_home
 cat > "$H/update-state" <<EOF
@@ -389,12 +390,11 @@ prev=
 upgraded=
 EOF2
 doctor_out "$H"
-grep -q 'ok   atualização: v1.0.3 em dia (último fetch há 10h)' "$OUTF" \
+grep -q 'ok   atualização: v1.0.3 em dia no canal main (último fetch há 10h)' "$OUTF" \
   && ok "doctor mostra 10h de fetch (checked era agora)" || bad "idade errada: $(update_line)"
 next_home; doctor_out "$H"
 grep -q 'maestro upgrade --check --force consulta o origin agora' "$OUTF" \
   && ok "dica do doctor ensina --check --force" || bad "dica ainda manda --check sem --force: $(update_line)"
-
 
 if [[ $fail -eq 0 ]]; then echo "test-upgrade: OK"; else echo "test-upgrade: FALHOU"; fi
 exit $fail

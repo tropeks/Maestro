@@ -140,3 +140,42 @@ jobs:
       # (/maestro:deslop) é só a quitação do estoque.
       - name: maestro habits (catraca vs baseline)
         run: ./bin/maestro habits --all --project "$PWD"
+
+  # -------------------------------------------------------------------------
+  # approve — a ÚNICA coisa que esta CI escreve no repositório (E23c/S-2303).
+  #
+  # Por que uma tag MÓVEL: `stable` não é uma release, é um PONTEIRO para "o
+  # último commit que passou shellcheck + suíte numa tag v*". O auto-update das
+  # máquinas segue esse ponteiro em vez do topo da `main` (que pode estar
+  # vermelho por minutos ou horas) — ff-only até `stable` é, por construção,
+  # "só o que já foi provado". Ponteiro anda; por isso `-f` aqui e fetch
+  # forçado do outro lado (hooks/lib/update-check.sh).
+  #
+  # Por que é a única escrita: este repo é um roteador que protege
+  # `.github/workflows/` justamente porque é por onde se executa código. O topo
+  # do arquivo segue `contents: read`; a permissão de escrita existe SÓ neste
+  # job, SÓ em `refs/tags/v*`, e SÓ depois dos dois gates passarem. Nada de
+  # commit, nada de release, nada de push em branch.
+  approve:
+    name: aprovar (mover a tag stable)
+    needs: [shellcheck, suite]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth: 0 — a tag aponta para $GITHUB_SHA e o push precisa do
+      # histórico completo; clone raso faria o remoto recusar o objeto.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: mover stable para o commit verde
+        run: |
+          set -euo pipefail
+          # tag LEVE de propósito: sem objeto de tag não há identidade de
+          # committer para configurar, e `describe --match 'v*'` do doctor
+          # continua ignorando este ponteiro.
+          git tag -f stable "$GITHUB_SHA"
+          git push -f origin refs/tags/stable
+          printf 'stable -> %s (%s)\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"

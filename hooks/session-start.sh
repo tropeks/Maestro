@@ -463,6 +463,9 @@ cleanup_records() {
 # ---------------------------------------------------------------------------
 UPDATE_NOTICE=""
 update_notice_for_state() { # → UPDATE_NOTICE (uma linha, sem caminho)
+  # `no-stable` (E23c: canal stable, tag ainda não empurrada pela CI) e `failed`
+  # não geram linha: a sessão não tem o que fazer com isso. O estado fica no
+  # update-state e o doctor é quem cobra.
   case "$UPD_STATE" in
     available)
       (( UPD_SNOOZED == 1 )) && return 0
@@ -488,7 +491,7 @@ update_step() {
   (( UPDATE_LIB_OK == 1 )) || return 0
   maestro_update_check || return 0
   if [[ "$UPD_STATE" == "available" && "$UPD_AUTO" == "1" ]] && maestro_update_apply; then
-    log_event upgrade from="$UPD_FROM" to="$UPD_LOCAL" via=auto || :
+    log_event upgrade from="$UPD_FROM" to="$UPD_LOCAL" via=auto channel="${UPD_CHANNEL:-main}" || :
     local new_hook="$UPD_REPO/hooks/session-start.sh"
     if [[ -r "$new_hook" ]]; then
       MAESTRO_UPDATE_REEXEC=1 MAESTRO_UPDATED_FROM="$UPD_FROM" MAESTRO_UPDATED_TO="$UPD_LOCAL" \
