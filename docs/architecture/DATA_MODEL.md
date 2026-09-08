@@ -3,7 +3,7 @@ covers:
   - config/routing-table.yaml
   - hooks/lib/common.sh
   - agents/**
-reviewed: 196bdf8
+reviewed: add7d42
 ---
 # DATA_MODEL.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.8 — 2026-09-05 (emendas E22/E23: §13 direção versionada, §9 ordem carimbada, §3 `delegation_proof`/`verifications`, §4 vocabulário completo, §8 `cmd_match`, §2 `verifications`/`commands`/`habits_ignore`, §10 `update_channel`)
@@ -482,6 +482,16 @@ trabalho, não memória** (ADR-007 intocado: conhecimento durável é do superme
 e **não log** (caminhos e narrativa jamais tocam o routing.jsonl). Chave =
 basename saneado + djb2/8hex do caminho absoluto, derivada por
 `maestro_brief_file()` (common.sh) — definição ÚNICA, usada por CLI e hook.
+
+**Emenda 2026-09-08 (worktree):** a chave é do PROJETO, não do diretório. Uma git
+worktree (`.git` é ARQUIVO, não diretório) resolve para o repositório principal via
+`git rev-parse --git-common-dir`, de modo que brief, recibo de evidência e estado de
+ordem são os MESMOS dos dois lados. Sem isso, ordem provada dentro de uma worktree
+ficava invisível do repo principal e `order --status` respondia `em_execucao / prova
+NENHUMA` para uma ordem já aceita — o relatório mudava conforme o diretório corrente.
+Submódulo também tem `.git` como arquivo, mas seu `--git-common-dir` NÃO termina em
+`/.git`, então continua sendo projeto próprio. Só a worktree paga o fork extra; o
+caso comum mantém o NFR de <100ms do session-start.
 
 ```
 <!-- maestro-brief v1

@@ -6,6 +6,18 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **A git worktree is the same project as its main repo.** The project key (slug plus
+  hash of the absolute path) behind briefs, evidence receipts and order state resolved
+  a worktree to its own directory, so work proven inside a worktree was invisible from
+  the main checkout: `maestro order --status` answered `em_execucao / prova NENHUMA`
+  for an order that had already been accepted. The report changed with the current
+  directory, and the wrong answer was the accusing one. A worktree (`.git` is a file,
+  not a directory) now resolves through `git rev-parse --git-common-dir`. A submodule
+  also carries a `.git` file, but its common dir does not end in `/.git`, so it stays
+  its own project. Only the worktree pays the extra fork; the common path keeps the
+  session-start budget.
+
 ## [1.14.3] — 2026-09-08
 
 ### Fixed
