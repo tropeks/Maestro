@@ -47,6 +47,19 @@ maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
   # propriedade exigida é determinismo (CLI e hook derivam pela MESMA função).
   local root="${1:-$PWD}" real base slug="" i c h=5381
   real=$(cd -P -- "$root" 2>/dev/null && pwd) || real="$root"
+  # E15: worktree e repo principal sao o MESMO projeto. Sem isto, ordem provada
+  # dentro de uma worktree fica invisivel do repo principal — `order --status`
+  # respondia 'em_execucao / prova NENHUMA' para uma ordem aceita e encerrada:
+  # o relatorio MENTIA conforme o cwd, e a resposta errada era a que acusava.
+  # O `.git` de uma worktree e ARQUIVO (aponta o common dir); o de um repo
+  # normal e DIRETORIO. So a worktree paga o fork, entao o caso comum mantem o
+  # NFR <100ms do session-start e — o que importa mais — mantem a chave que os
+  # briefs e recibos existentes ja usam.
+  if [[ -f "$real/.git" ]]; then
+    local common
+    common=$(git -C "$real" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+    [[ -n "$common" && "$common" == */.git ]] && real="${common%/.git}"
+  fi
   base="${real##*/}"
   slug="${base//[^a-zA-Z0-9._-]/-}"; slug="${slug:0:32}"
   for (( i = 0; i < ${#real}; i++ )); do
