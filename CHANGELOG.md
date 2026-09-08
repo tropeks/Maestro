@@ -6,6 +6,8 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.14.4] — 2026-09-08
+
 ### Fixed
 - **A git worktree is the same project as its main repo.** The project key (slug plus
   hash of the absolute path) behind briefs, evidence receipts and order state resolved
