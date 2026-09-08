@@ -6,6 +6,18 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.14.3] — 2026-09-08
+
+### Fixed
+- **The promotion signal reads the current gate mode (PR #1, from the forge).**
+  `maestro retro` judged only the window, the decision count and the override rate,
+  so with `gate.mode: block` already in place it kept proposing "promote warn→block"
+  on every round. A calibration signal that never falls silent is noise, and noise
+  loses credibility. It now reads the mode from the same routing table the retro
+  already resolved: `block` says the promotion is done, `warn` keeps the old two
+  branches. The lookup is best-effort (`|| :`) — a table with no `gate:` block must
+  not take the whole retro down under `set -e`.
+
 ## [1.14.2] — 2026-09-05
 
 ### Changed
