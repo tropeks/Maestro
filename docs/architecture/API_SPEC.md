@@ -2,7 +2,7 @@
 covers:
   - bin/maestro
   - hooks/*.sh
-reviewed: 39a152d
+reviewed: 196bdf8
 ---
 # API_SPEC.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.2 — 2026-09-05 (emendas E22/E23: hooks `pre-agent`/`subagent-stop`, `maestro intent`, `maestro verify`, `maestro delegation`, canal do `upgrade`)
