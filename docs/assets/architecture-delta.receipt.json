@@ -8,18 +8,18 @@
   "completeness": "complete",
   "proofLevel": "revision-pinned",
   "base": {
-    "title": "Maestro v1.14.2 — trilhos determinísticos, IA nas bordas",
-    "rawSha256": "efeecf6f9930358d37fb4c58da9873d30e013abea9cebc4b92df54f0cd7894ef",
-    "semanticSha256": "6df075b07f31c845d4e44cd481429c5f0b4cde424e58357a11262a6cf95ff2cb",
-    "bytes": 11979,
-    "revision": "39a152dece4bd1d43a3495ecf160fce0e12302f3"
-  },
-  "head": {
     "title": "Maestro v1.14.3 — trilhos determinísticos, IA nas bordas",
     "rawSha256": "0c342bf8beafe1489b604fa029c5a56483be6ecd05c7e764522eca0ec0f993fb",
     "semanticSha256": "85f807f90987d06bc34ea8efe18e9faab722fc62e692ffb9608128739b36baf6",
     "bytes": 11979,
     "revision": "196bdf8bc1e91a6d46db6a9ccd5a2d5e762de6ba"
+  },
+  "head": {
+    "title": "Maestro v1.14.4 — trilhos determinísticos, IA nas bordas",
+    "rawSha256": "3369cd1d144f556b7b658b0e7c6c64e4cf8b030a2d4efc665c558438d2c39fda",
+    "semanticSha256": "6a3ccfa8a6e3966f14b404700c95a74d42f44c8f71710b1a1fcd0b233c262af8",
+    "bytes": 11979,
+    "revision": "7063392c1538f385a9db7c76fad6e278779ef4a2"
   },
   "summary": {
     "components": {
@@ -62,7 +62,7 @@
     "Boundary identity is conservatively derived from kind + label."
   ],
   "artifact": {
-    "sha256": "212906b97c13996f0df07580179dfc224d5ba61ce8bca48f214de96f31a252b7",
+    "sha256": "a6832c9d667cb7ad1b8d07a6db9d3904d5493fdb4aa7875a1ed07bbba127b007",
     "bytes": 2078979
   },
   "validation": {
