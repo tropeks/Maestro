@@ -3288,7 +3288,7 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   gmode=$(awk '/^gate:/ { g = 1; next }
                g && /^[a-zA-Z]/ { g = 0 }
                g && /^  mode:/ { sub(/^  mode:[ \t]*/, ""); sub(/[ \t]*#.*/, ""); print; exit }' \
-               "$rt" 2>/dev/null)
+               "$rt" 2>/dev/null) || :   # awk sem casar (tabela sem gate:) não derruba o retro sob set -e
   if [[ "$gmode" == "block" ]]; then
     printf '   promoção warn→block: já aplicada (gate.mode: block)\n'
   elif (( days >= 14 && ndec >= 10 && rate < 20 )); then
