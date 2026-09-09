@@ -1071,7 +1071,15 @@ check_injection_bill() { # S-703: conta real da injeção vs teto de 8000B
   # que uma sessão receberia AGORA, com a config real deste repo. O RATCHET
   # (teto consciente, abaixo dos 8000B duros) vive no teste versionado
   # (tests/hooks/test-injection-budget.sh) — o doctor reporta o fato e avisa
-  # acima de 90%; estourar os 8000B é falha de conteúdo.
+  # perto do teto; estourar os 8000B é falha de conteúdo.
+  #
+  # E25/S-2502: o limiar do warn passou de 7200 para 7500 porque o ratchet
+  # subiu para 7230 e os dois ficaram invertidos — instalação saudável nascia
+  # com um aviso que ninguém podia limpar, e sinal que não se cala vira ruído
+  # (o mesmo motivo pelo qual o retro parou de propor warn→block já aplicada).
+  # A ordem que vale é ratchet < warn < teto: o ratchet governa a adição
+  # DELIBERADA, o warn avisa que a folga acabou, o teto é falha. Mover um exige
+  # olhar o outro. Hoje: 7230 < 7500 < 8000.
   local hook="$REPO_DIR/hooks/session-start.sh"
   [[ -f "$hook" ]] || return 0
   local th tp bytes
@@ -1088,8 +1096,9 @@ check_injection_bill() { # S-703: conta real da injeção vs teto de 8000B
   CAP_INJECTION_BYTES=$bytes
   if (( bytes > 8000 )); then
     report fail_val "injeção SessionStart dentro do teto de 8000B" "medido ${bytes}B (API_SPEC §1)"
-  elif (( bytes > 7200 )); then
-    report warn "injeção SessionStart: ${bytes}B de 8000B" "acima de 90% do teto — enxugue antes de adicionar seção"
+  elif (( bytes > 7500 )); then
+    report warn "injeção SessionStart: ${bytes}B de 8000B" \
+      "enxugue antes de adicionar seção; por projeto, preamble: standard|lean no .maestro.yaml devolve 0,9-3,0KB (E25)"
   else
     report ok "injeção SessionStart: ${bytes}B de 8000B"
   fi
@@ -1434,7 +1443,11 @@ check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e li
       kept=$((kept + 1))
       # E17/S-1702: outcome fechado com o approach do brief ainda pendente é
       # sinal de regência incompleta — nunca falha o doctor, só avisa.
-      if jq -e '(has("outcome")) and ((.brief // "") | contains("approach: pendente"))' \
+      # E25/S-2501: `killed` fica de fora — cobrar o approach de quem descartou é
+      # pedir o plano de execução do que se decidiu não executar, e o kill de
+      # feature quase sempre tem o approach pendente (é por isso que se mata).
+      if jq -e '(has("outcome")) and (.outcome != "killed")
+                and ((.brief // "") | contains("approach: pendente"))' \
            "$f" >/dev/null 2>&1; then
         pending+=("$(basename -- "$f")")
       fi
@@ -2805,7 +2818,10 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
       *) die validation "argumento desconhecido '$1'" \
            "maestro outcome --session <id> <accepted|rework|reverted|killed> [--suite pass|fail] [--unproven] [--reason <texto>]" 1 ;;
     esac
-    shift
+    # `|| :` porque flag como ÚLTIMO argumento (`--reason` sem valor) já consumiu o
+    # que havia: sem isto o shift falha sob set -e e o comando morre em silêncio,
+    # em vez de cair na validação que ensina a forma certa.
+    shift || :
   done
   [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
     "maestro outcome --session <id> <accepted|rework|reverted|killed>" 1
@@ -2820,8 +2836,14 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
     kreason="${kreason#"${kreason%%[![:space:]]*}"}"
     kreason="${kreason%"${kreason##*[![:space:]]}"}"
     if (( ${#kreason} > 120 )); then
-      printf 'maestro: --reason truncado em 120 caracteres (tinha %s)\n' "${#kreason}" >&2
+      printf 'maestro: --reason truncado em 120 (tinha %s)\n' "${#kreason}" >&2
       kreason="${kreason:0:120}"
+      # Recua até o último espaço: `bin/maestro` não fixa LC_ALL, então sob LANG=C
+      # o corte acima é em BYTE e parte sequência UTF-8 no meio. Cortar em
+      # fronteira ASCII é a mesma regra que o orçamento da injeção usa, e perder
+      # a palavra parcial é melhor saída que o caractere corrompido. Porquê de 120
+      # caracteres sem um espaço sequer é patológico e segue cortado no byte.
+      [[ "$kreason" == *" "* ]] && kreason="${kreason% *}"
     fi
   fi
   if [[ "$verdict" == "killed" ]]; then
@@ -2909,15 +2931,22 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
       fi
     fi
   fi
-  # O `del` no ramo não-killed não é zelo: o desfecho é last-wins, e uma sessão
-  # morta e depois reaberta como accepted ficaria com kill_reason órfão — record
-  # inválido no doctor para quem fez tudo certo.
+  # Os dois `del` não são zelo: o desfecho é last-wins, e campo herdado MENTE.
+  # Sem o primeiro, sessão morta e depois reaberta como accepted ficaria com
+  # kill_reason órfão (record inválido no doctor para quem fez tudo certo). Sem o
+  # segundo, `accepted --suite pass` seguido de `killed` deixaria no record
+  # `suite: pass`, `delegation_proof: started` e `verifications: cited` — o record
+  # afirmando que a entrega DESCARTADA tinha suíte verde e delegação provada,
+  # contra a recusa explícita de `--suite` com killed e contra o DATA_MODEL §3 v1.9.
   if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg kr "$kreason" --arg ts "$(date -Iseconds)" \
        '.outcome = $o | .outcome_ts = $ts
         | (if $vf != "" then .verifications = $vf else . end)
         | (if $dp != "" then .delegation_proof = $dp else . end)
         | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
-        | (if $o == "killed" then .kill_reason = $kr else del(.kill_reason) end)' \
+        | (if $o == "killed"
+             then .kill_reason = $kr
+                  | del(.suite) | del(.suite_evidence) | del(.delegation_proof) | del(.verifications)
+             else del(.kill_reason) end)' \
        "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"

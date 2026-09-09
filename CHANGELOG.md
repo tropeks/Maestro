@@ -6,6 +6,63 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-09-09
+
+Duas ideias lidas no [pstack](https://github.com/no-session/pstack) (fork do gstack para
+founder solo), traduzidas para o Maestro. Do código dele não veio nada: é gstack v0.13.3,
+e esta máquina roda a v1.77. Vieram as duas perguntas que ele responde diferente.
+
+### Added
+- **`killed` — decidir NÃO construir também é desfecho.** O enum do `maestro outcome`
+  era `accepted | rework | reverted`, e os três pressupõem que houve entrega. O
+  `interrogate` do workflow `feature` existe justamente para produzir o desfecho oposto,
+  e esse desfecho não tinha onde ser gravado: morria com a sessão, e a mesma ideia
+  voltava semanas depois como pedido novo, sem o porquê que já tinha sido pago.
+  `maestro outcome --session <id> killed --reason "<por quê>"` fecha isso. O `--reason`
+  é obrigatório (kill sem porquê é ruído, não registro), `--suite` é recusado (não se
+  roda suíte do que não se escreveu), e nenhum dos dois gates de prova se aplica — eles
+  existem porque o ACEITE afirma que a entrega serve. O record ganha `kill_reason`
+  (≤120, confidencial, nunca no log), e mudar o desfecho depois **apaga** o campo: o
+  desfecho é last-wins, e record órfão reprovaria justamente quem mudou de ideia e
+  construiu. O `retro` passa a ler o descarte — janela madura sem nenhum `killed` é
+  sintoma, não virtude. Onde o kill sobrevive à sessão já existia desde o E22: a seção
+  `## Fora de escopo` do `.maestro/INTENT.md`. O CLI aponta para lá e não escreve — o
+  artefato é versionado e o hash do corpo é contrato.
+- **`preamble:` — o preâmbulo tem tamanho, e quem escolhe é o projeto.** O Maestro
+  injetava o mesmo bloco em toda sessão de todo projeto. Medido: 7214B no cenário do
+  ratchet, dos quais ~3,2KB de catálogo (rotas, heurísticas, roster) que um repo com o
+  jeito de trabalhar assentado nunca consulta. `.maestro.yaml` passa a aceitar
+  `preamble: full | standard | lean` — `full` é o default e a ausência da chave produz
+  saída **byte a byte idêntica** à de antes (nenhum projeto muda de comportamento por
+  atualizar). `standard` 6300B (−914B), `lean` 4171B (−3043B, −42%). É uma troca
+  declarada pelo dono do projeto: menos contexto, roteamento mais burro. O que sai não
+  sai calado — o cabeçalho, que nunca trunca, nomeia o tier e o que ficou de fora, com o
+  ponteiro para o texto íntegro. Valor fora do enum degrada para `full` e o diz.
+
+### Changed
+- A instrução canônica da injeção ganha a linha do `killed` (+150B): verbo que não
+  aparece no preâmbulo ninguém digita. Ratchet da injeção bumpado 7080 → 7230 e cota do
+  núcleo sob orçamento apertado 700 → 900B, os dois deliberados e no mesmo changeset,
+  conforme o protocolo.
+- O warn da conta da injeção no doctor sobe de 7200 para 7500B. Os dois números tinham
+  ficado invertidos — o ratchet (7230, o teto DELIBERADO) acima do warn (7200) faria
+  toda instalação saudável nascer com um aviso que ninguém podia limpar, e sinal que não
+  se cala vira ruído. A ordem que vale é `ratchet < warn < teto`: 7230 < 7500 < 8000. O
+  texto do warn passa a nomear o `preamble:` como a alavanca.
+
+### Fixed
+- Três lugares conheciam o enum de desfecho e teriam tratado `killed` como ausência:
+  `log_event` o descartaria do `routing.jsonl` (deixando o sinal do retro inerte),
+  `session-end.sh` contaria a sessão como *decidida sem desfecho*, e `gate-report.sh`
+  seguiria cobrando o gate `ship` de um trabalho descartado. Os três aceitam `killed`.
+
+### Docs
+- ADR-011 (o descarte é desfecho; o preâmbulo é escolha do projeto), com as
+  alternativas recusadas: tier por workflow é impossível — o SessionStart emite antes de
+  existir workflow. E25 no EPICS, `preamble:` no DATA_MODEL §2, emenda v1.9 do record no
+  §3, os contratos de `outcome`, session-start e `retro` no API_SPEC, e a chave e o verbo
+  nos dois READMEs.
+
 ## [1.14.4] — 2026-09-08
 
 ### Fixed

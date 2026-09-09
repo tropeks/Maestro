@@ -79,7 +79,8 @@ por diff. Tudo warn-only/informativo; nada bloqueia; reversível por revert.
   continua fora do CI (filosofia do run-eval.sh); baseline regenerável no mesmo PR.*
   **Entregue 2026-08-17** (test-eval-diff.sh).
 - **S-703:** ratchet da injeção SessionStart. O doctor roda o hook de verdade e mede os
-  bytes reais (`injeção SessionStart: NB de 8000B`; warn >90%, fail_val >8000); o fato
+  bytes reais (`injeção SessionStart: NB de 8000B`; warn >7500B — era >90% até o E25,
+  que subiu o ratchet para 7230 e precisou do warn acima dele —, fail_val >8000); o fato
   entra no envelope (`injection.{bytes,budget}`); o RATCHET consciente (6500B, bump só
   deliberado e no mesmo commit) vive em test-injection-budget.sh. *AC: medição real;
   estouro do ratchet reprova nomeando o protocolo; envelope carrega inteiros.*

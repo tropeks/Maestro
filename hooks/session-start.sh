@@ -281,14 +281,19 @@ parse_profile() {
       MEMCT)    [[ "$val" =~ ^[A-Za-z0-9._-]{1,64}$ ]] && P_MEMCT="$val" ;;
       DOCS)     P_DOCS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,80}$') ;;
       PREAMBLE) case "$val" in
-                  full|standard|lean) P_PREAMBLE="$val" ;;
+                  # Limpa a acusação: com a chave repetida, vale o último valor —
+                  # e o último sendo válido, não há o que acusar.
+                  full|standard|lean) P_PREAMBLE="$val"; P_PREAMBLE_BAD="" ;;
                   "") ;;   # `preamble:` sem valor é silêncio, não escolha
                   # Só ecoa de volta o que é seguro ecoar; o resto vira '?'.
                   *) [[ "$val" =~ ^[A-Za-z0-9._-]{1,16}$ ]] && P_PREAMBLE_BAD="$val" || P_PREAMBLE_BAD="?" ;;
                 esac ;;
     esac
   done < <(awk '
-    function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); return s }
+    # Aspa SIMPLES e CR entram junto com a dupla: `preamble: \047lean\047` é YAML
+    # válido, e arquivo em CRLF é comum em repo que passou por Windows — sem isto o
+    # valor não casa o enum e o projeto recebe full achando que pediu lean.
+    function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/\r/, "", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^["\047]|["\047]$/, "", s); return s }
     /^project:/   { print "PROJECT\t"  clean(substr($0, 9));  next }
     /^pipeline:/  { print "PIPELINE\t" clean(substr($0, 10)); next }
     /^languages:/ { print "LANGS\t"    clean(substr($0, 11)); next }

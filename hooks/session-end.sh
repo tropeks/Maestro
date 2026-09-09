@@ -45,7 +45,9 @@ rec="${MAESTRO_SESSIONS_DIR:-$MAESTRO_HOME/sessions}/$sid.json"
 if [[ -f "$rec" && -r "$rec" ]]; then
   body=$(head -c 65536 -- "$rec" 2>/dev/null) || body=""
   if [[ "$body" =~ \"workflow\"[[:space:]]*:[[:space:]]*\"[a-z]+\" ]]; then decided="yes"; fi
-  if [[ "$body" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"(accepted|rework|reverted)\" ]]; then settled="yes"; fi
+  # E25/S-2501: `killed` fecha a sessão como qualquer outro desfecho — decidir
+  # NÃO construir é decisão tomada, não decisão pendente.
+  if [[ "$body" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"(accepted|rework|reverted|killed)\" ]]; then settled="yes"; fi
 fi
 
 log_event session_end session_id="$sid" decided="$decided" settled="$settled" || :

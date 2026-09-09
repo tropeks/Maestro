@@ -353,8 +353,12 @@ Desfecho é last-wins, então a remoção é parte do contrato: gravar `accepted
 mudou de ideia e construiu ficaria com um campo órfão e o doctor reprovaria justamente
 quem fez tudo certo — o mesmo erro que a correção de 2026-08-24 fechou para `outcome`.
 
-`kill_reason` vive SÓ no record (§4 intocado), como `wtree` (v1.4) e `brief`/`flags`
-(v1.7): o log recebe `outcome=killed` e nada mais. O porquê é síntese do diretor, não
+`kill_reason` vive SÓ no record, como `wtree` (v1.4) e `brief`/`flags` (v1.7): o log
+recebe `outcome=killed` e nada mais. O §4 **não ganha campo**, mas ganha o valor: o enum
+da chave `outcome` na tabela de regex passa a incluir `killed`, e essa tabela é a fonte
+declarada do `_maestro_set_key_regex` — restaurá-la sem o valor novo devolveria o
+`killed` ao descarte silencioso do `log_event`, e o sinal de descarte do `retro`, que lê
+o log, zeraria sem avisar ninguém. O porquê é síntese do diretor, não
 colagem do prompt, e o teto de 120 chars é o guardião mecânico contra vazar contexto
 bruto. `# classification: confidential` — inalterado.
 
@@ -475,7 +479,7 @@ por uma checagem explícita de `*/*` no `log_event`.
 | `gate_mode` | `^(warn\|block)$` | E2 |
 | `smell` | `^[a-z][a-z-]{2,23}$` | E9 |
 | `scope` | `^[a-z][a-z-]{2,23}$` | E10 |
-| `outcome` | `^(accepted\|rework\|reverted)$` | E10 |
+| `outcome` | `^(accepted\|rework\|reverted\|killed)$` | E10 · `killed` E25 |
 | `suite` | `^(pass\|fail)$` | E10 |
 | `cap` | `^(steps\|minutes)$` | E14 |
 | `n` | `^[0-9]{1,9}$` | E9/E15/E22/E23 |

@@ -145,8 +145,12 @@ function hd_is_close(l,   s) {
   stripped = line; sub(/^[ \t]+/, "", stripped)
   is_blank   = (stripped == "")
   # `--` só é comentário em SQL/Lua; em shell, `--flag)` de case era lido como
-  # comentário-que-parece-código e virava dead-code falso (2026-08-29).
-  is_comment = (stripped ~ /^(#|\/\/|\/\*|\*)/)
+  # comentário-que-parece-código e virava dead-code falso (2026-08-29). O `*`
+  # tem a MESMA doença e escapou daquela rodada: em shell `*)` é o ramo default
+  # de um case e `*.log` é glob — o `*` inicial só é continuação de comentário
+  # em linguagem de bloco (`/* … */`). Três ramos `*) cmd ;;` seguidos viravam
+  # "3 linhas de código comentado" (E25, 2026-09-09).
+  is_comment = (stripped ~ /^(#|\/\/|\/\*)/) || (!sh && stripped ~ /^\*/)
   if (!is_comment && EXT ~ /^(lua|sql)$/ && stripped ~ /^--/) is_comment = 1
 
   # ---- docstring de Python (S-1807) -----------------------------------------

@@ -124,7 +124,7 @@ _maestro_re=""
 _maestro_set_key_regex() {
   case "${1:-}" in
     session_id) _maestro_re='^[A-Za-z0-9_-]{1,64}$' ;;
-    workflow)   _maestro_re='^(fix|feature|refactor|ship|audit|custom)$' ;;
+    workflow)   _maestro_re='^(fix|feature|refactor|ship|audit|verify|codereview|custom)$' ;;   # verify/codereview existem na tabela desde o E4
     mode)       _maestro_re='^(direct|subagent|multi)$' ;;
     agents)     _maestro_re='^[a-z0-9-]+(,[a-z0-9-]+)*$' ;;
     tool)       _maestro_re='^[A-Za-z]{1,32}$' ;;
@@ -134,7 +134,7 @@ _maestro_set_key_regex() {
     gate_mode)  _maestro_re='^(warn|block)$' ;;
     smell)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;
     scope)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;
-    outcome)    _maestro_re='^(accepted|rework|reverted)$' ;;
+    outcome)    _maestro_re='^(accepted|rework|reverted|killed)$' ;;   # E25/S-2501: descartar é desfecho
     suite)      _maestro_re='^(pass|fail)$' ;;
     cap)        _maestro_re='^(steps|minutes)$' ;;
     n)          _maestro_re='^[0-9]{1,9}$' ;;

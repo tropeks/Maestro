@@ -163,8 +163,9 @@ experts: [golang-pro]   # só ele aparece na injeção
 preamble: standard      # full (default) | standard | lean — quanto do preâmbulo este projeto recebe
 ```
 
-`preamble` é a única chave que muda o TAMANHO da injeção: `standard` deixa de fora o
-catálogo de rotas, `lean` deixa também as heurísticas e o roster. A troca é declarada —
+`preamble` corta a injeção por SEÇÃO: `standard` deixa de fora o catálogo de rotas,
+`lean` deixa também as heurísticas e o roster. (`experts:` também encolhe o bloco, mas
+pelo roster — é filtro de elenco, não escolha de tamanho.) A troca é declarada —
 menos contexto por sessão, roteamento mais burro — e o que ficou de fora é dito no
 cabeçalho do bloco, que nunca trunca.
 

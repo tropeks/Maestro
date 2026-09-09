@@ -23,8 +23,11 @@ RATCHET=7230   # bump deliberado 7080→7230 em 2026-09-09 (E25/S-2502): a INSTR
                # DIREÇÃO na seção "## Projeto".) Cenário medido
                # = baseline do plugin com projeto vazio (CLAUDE_PROJECT_DIR sem .maestro.yaml;
                # roster inteiro, sem filtro experts; sem seções de projeto). Sessão real neste
-               # repo mede mais (~6940B com .maestro.yaml vivo, medida pelo doctor) e é
-               # governada pelo warn 7200/teto 8000 do doctor, não por este ratchet.
+               # repo mede mais (com .maestro.yaml vivo, medida pelo doctor) e é
+               # governada pelo warn 7500/teto 8000 do doctor, não por este ratchet.
+               # A ordem que vale é ratchet < warn < teto: 7230 < 7500 < 8000 — mover
+               # um exige olhar o outro (o warn subiu de 7200 no mesmo commit, senão
+               # instalação saudável nasceria com aviso que ninguém podia limpar).
                # Histórico: 5895B (08-18) → 6266B (E8+) → 6516B (E16) → 6930B (E17)
                # → 7080B (E22) → 7230B (E25). Teto duro segue 8000B.
 
@@ -43,8 +46,12 @@ command -v jq >/dev/null || { echo "FAIL jq ausente (dependência declarada)"; e
 
 echo "-- S-703: ratchet da injeção"
 h=$(mktemp -d "$tmp/h.XXXXXX"); p=$(mktemp -d "$tmp/p.XXXXXX")
+# MAESTRO_NO_UPDATE_CHECK=1 alinha esta medição à do doctor (bin/maestro, mesmo
+# flag): sem ele, máquina atrás do origin ou com árvore suja ganha a linha
+# `atualização: …` no cabeçalho (~120B) e o ratchet reprovaria por ambiente, não
+# por conteúdo. Os dois números têm de medir a MESMA coisa.
 bytes=$(printf '{"session_id":"ratchet"}' \
-  | MAESTRO_HOME="$h" CLAUDE_PROJECT_DIR="$p" bash "$HOOK" 2>/dev/null | wc -c | tr -d ' ')
+  | MAESTRO_HOME="$h" CLAUDE_PROJECT_DIR="$p" MAESTRO_NO_UPDATE_CHECK=1 bash "$HOOK" 2>/dev/null | wc -c | tr -d ' ')
 [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -gt 0 ]] \
   && ok "injeção medida: ${bytes}B" || bad "injeção medida (obtido '$bytes')"
 [[ "$bytes" -le 8000 ]] && ok "dentro do teto duro de 8000B" \
@@ -58,12 +65,13 @@ fi
 echo "-- S-703: doctor reporta a conta e grava no envelope"
 h2=$(mktemp -d "$tmp/h2.XXXXXX")
 MAESTRO_HOME="$h2" "$BIN" doctor >"$tmp/doc" 2>&1
-# ok OU warn: o que esta linha prova é que o doctor REPORTA a conta, não em que
-# faixa ela caiu. Desde o E25/S-2502 o default `full` mede 7230B no cenário do
-# doctor e cruza o warn de 90% (7200B) — sinal legítimo, e a resposta a ele é
-# escolher um tier de preâmbulo, não silenciar o doctor.
-grep -qE '(ok|warn) +injeção SessionStart: [0-9]+B de 8000B' "$tmp/doc" \
-  && ok "linha da conta no doctor" || bad "linha da conta no doctor"
+# Volta a exigir `ok` (E25, integração): o limiar do warn foi para 7500B no
+# mesmo changeset, restaurando a ordem ratchet(7230) < warn(7500) < teto(8000).
+# Aceitar `(ok|warn)` aqui deixaria passar em silêncio o dia em que o default
+# cruzar a folga — que é exatamente o que esta asserção existe para pegar.
+grep -qE 'ok   injeção SessionStart: [0-9]+B de 8000B' "$tmp/doc" \
+  && ok "linha da conta no doctor (faixa ok: default abaixo do warn)" \
+  || bad "linha da conta no doctor (faixa ok: default abaixo do warn)"
 inj=$(jq -r '.injection.bytes' "$h2/capabilities.json" 2>/dev/null)
 [[ "$inj" =~ ^[0-9]+$ && "$inj" -gt 0 ]] \
   && ok "envelope carrega injection.bytes=${inj} (inteiro)" \

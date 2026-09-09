@@ -54,15 +54,24 @@ gate=""; essencia=""
 if [[ -f "$rec" && -r "$rec" ]]; then
   body=$(head -c 65536 -- "$rec" 2>/dev/null) || body=""
   wf=""; [[ "$body" =~ \"workflow\"[[:space:]]*:[[:space:]]*\"([a-z]+)\" ]] && wf="${BASH_REMATCH[1]}"
-  settled=0; [[ "$body" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"(accepted|rework|reverted)\" ]] && settled=1
+  # E25/S-2501: `killed` conta como fechado — o gate ship não cobra shipar o que
+  # foi descartado.
+  settled=0; [[ "$body" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"(accepted|rework|reverted|killed)\" ]] && settled=1
   case "$wf" in
     feature|refactor)
-      # gate plan: approach ainda pendente no brief regido
-      if [[ "$body" =~ approach:[[:space:]]*pendente ]]; then gate="plan"; fi ;;
+      # gate plan: approach ainda pendente no brief regido. `settled` entra aqui
+      # também (E25/S-2501): matar uma feature ANTES do plano aprovado é o kill
+      # mais comum, e sem esta guarda o herdr seguiria perguntando "Aprovo o
+      # plano?" — no telefone inclusive — sobre trabalho já descartado.
+      if (( settled == 0 )) && [[ "$body" =~ approach:[[:space:]]*pendente ]]; then gate="plan"; fi ;;
     ship)
       (( settled == 0 )) && gate="ship" ;;
   esac
-  if [[ "$body" =~ essencia:[[:space:]]*([^;\"]{1,200}) ]]; then
+  # Ancorado ao campo "brief" de propósito: o record tem outros campos de texto do
+  # diretor (`reason`, e desde o E25 `kill_reason`), e um deles contendo a substring
+  # `essencia:` sairia desta máquina pela ponte do herdr. A promessa do API_SPEC §1 é
+  # que só a essência do brief sai.
+  if [[ "$body" =~ \"brief\"[[:space:]]*:[[:space:]]*\"[^\"]*essencia:[[:space:]]*([^;\"]{1,200}) ]]; then
     essencia="${BASH_REMATCH[1]}"
     essencia="${essencia%"${essencia##*[![:space:]]}"}"
   fi

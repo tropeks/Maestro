@@ -192,8 +192,9 @@ experts: [golang-pro]   # only this one shows up in the injection
 preamble: standard      # full (default) | standard | lean — how much preamble this project gets
 ```
 
-`preamble` is the one key that changes the SIZE of the injection: `standard` drops the
-route catalogue, `lean` drops the heuristics and the roster too. It is a declared
+`preamble` trims the injection by SECTION: `standard` drops the route catalogue, `lean`
+drops the heuristics and the roster too. (`experts:` also shrinks the block, but through
+the roster — it filters the cast, it does not choose a size.) It is a declared
 trade — less context per session, a dumber router — and whatever was left out is named
 in the block's header, which never truncates.
 

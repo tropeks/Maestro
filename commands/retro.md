@@ -28,6 +28,12 @@ Traduza os números em DIFFS concretos, cada um com o sinal que o justifica:
   `habits:` no `.maestro.yaml` do projeto, ou threshold; NUNCA supressão inline.
 - **Workflows declarados sem uso** → proponha remover ou fundir (menos tabela =
   menos bytes de injeção).
+- **Nenhum descarte na janela** (`killed` zerado numa janela já madura) → o
+  `interrogate` está aprovando tudo, ou o kill não está sendo registrado. Não é
+  diff de tabela: proponha ao Capitão a leitura do que foi construído e não
+  deveria. **Com descartes na janela**, o oposto: o porquê de cada um vive no
+  record e expira em 4h — proponha levá-los para o `## Fora de escopo` do
+  `.maestro/INTENT.md`, que é onde o descarte sobrevive (`maestro intent --bump`).
 - **`PROMOÇÃO ELEGÍVEL`** no retro → proponha `gate.mode: warn → block`.
 - **Casos de eval novos**: se a conversa recente contém pedidos reais que a
   tabela roteou mal, proponha destilá-los para `tests/eval/cases.yaml`

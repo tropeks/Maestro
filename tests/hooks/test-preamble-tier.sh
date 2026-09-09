@@ -223,6 +223,34 @@ out=$(env MAESTRO_HOME="$(mktemp -d "$SANDBOX/home.XXXXXX")" CLAUDE_PROJECT_DIR=
   || chk no "MAESTRO_OFF=1 não emite nada, com tier declarado" "rc=$rc out='$out'"
 
 # =============================================================================
+echo "-- 8. o valor chega como o YAML permite escrevê-lo"
+# =============================================================================
+# Aspa simples é YAML válido e o yaml_inline_list do mesmo arquivo já a normalizava;
+# CRLF é o que um repo que passou por Windows entrega. Sem os dois, o projeto que
+# PEDIU lean recebia full mais uma acusação de valor inválido — o pior dos mundos:
+# não obedece e culpa quem escreveu certo.
+run aspas "preamble: 'lean'"
+[[ "$OUT" != *"$HDR_ROUTES"* && "$OUT" == *"preâmbulo: lean"* ]] \
+  && chk yes "aspa simples: lean obedecido" \
+  || chk no "aspa simples: lean obedecido" "$(printf '%s' "$OUT" | grep -i '^preâmbulo' | head -1)"
+p=$(mktemp -d "$SANDBOX/proj.XXXXXX"); printf 'preamble: standard\r\n' >"$p/.maestro.yaml"
+out=$(env MAESTRO_HOME="$(mktemp -d "$SANDBOX/home.XXXXXX")" CLAUDE_PROJECT_DIR="$p" \
+        bash "$HOOK" <"$IN" 2>/dev/null)
+[[ "$out" != *"$HDR_ROUTES"* && "$out" == *"preâmbulo: standard"* ]] \
+  && chk yes "CRLF: standard obedecido" \
+  || chk no "CRLF: standard obedecido" "$(printf '%s' "$out" | grep -i '^preâmbulo' | head -1)"
+
+echo "-- 9. chave repetida: vale o último, e o último válido limpa a acusação"
+run repetida "preamble: turbo
+preamble: lean"
+[[ "$OUT" != *"$HDR_ROUTES"* ]] \
+  && chk yes "último valor vence (lean aplicado)" || chk no "último valor vence (lean aplicado)"
+[[ "$OUT" != *"valor inválido"* ]] \
+  && chk yes "acusação do valor recusado não sobrevive ao valor bom" \
+  || chk no "acusação do valor recusado não sobrevive ao valor bom"
+nucleo "chave repetida"
+
+# =============================================================================
 printf -- '-- conta: full=%sB standard=%sB lean=%sB\n' "$B_FULL" "$B_STD" "$B_LEAN"
 [[ $fail -eq 0 ]] && echo "test-preamble-tier: OK" || echo "test-preamble-tier: FALHAS" >&2
 exit $fail

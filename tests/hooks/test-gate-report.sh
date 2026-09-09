@@ -93,6 +93,30 @@ grep -q "pane release-agent w9:p9 --source custom:maestro --agent claude" "$CALL
 printf '{"session_id":"s5","prompt":"segue"}' | env MAESTRO_HOME="$H" HERDR_ENV=1 HERDR_PANE_ID=w9:p9 HERDR_BIN_PATH="$FAKE" bash "$UPS" >/dev/null 2>&1
 [[ -s "$CALLS" ]] && bad "release repetido sem gate" || ok "sem gate, sem chamada"
 
+echo "-- E25/S-2501: o desfecho fecha os DOIS gates, killed inclusive"
+next_home; record s6 feature "essencia: idéia do pstack; impacto: x; approach: pendente" killed
+stop s6
+[[ -e "$(gate_file)" ]] \
+  && bad "gate plan cobrado depois do kill (herdr perguntaria 'Aprovo o plano?' do que foi descartado)" \
+  || ok "feature descartada: sem gate plan (approach pendente é o normal de quem matou)"
+next_home; record s7 ship "essencia: v1.15; impacto: x; approach: y" killed
+stop s7
+[[ -e "$(gate_file)" ]] && bad "gate ship cobrado depois do kill" || ok "ship descartado: sem gate ship"
+# a guarda não pode ter matado o caso legítimo
+next_home; record s8 feature "essencia: viva; impacto: x; approach: pendente"
+stop s8
+chk "sem desfecho, o gate plan continua de pé" "$(gv gate)" "plan"
+
+echo "-- E25: a essência sai do brief, nunca de outro campo de texto do diretor"
+next_home
+printf '{"session_id":"s9","ts":"2026-09-09T00:00:00-03:00","expires_at":"2099-01-01T00:00:00-03:00","workflow":"feature","mode":"direct","reason":"essencia: VAZOU PELO REASON","brief":"essencia: a verdadeira; impacto: x; approach: pendente"}\n' > "$H/sessions/s9.json"
+stop s9
+case "$(gv message)" in
+  *"VAZOU PELO REASON"*) bad "texto de outro campo saiu na mensagem que vai para o telefone" ;;
+  *"a verdadeira"*)      ok  "mensagem cita a essência do brief, e só ela" ;;
+  *)                     bad "mensagem sem a essência: $(gv message)" ;;
+esac
+
 echo
 if [[ $fail -eq 0 ]]; then echo "test-gate-report: OK"; else echo "test-gate-report: FALHOU"; fi
 exit $fail

@@ -119,7 +119,9 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 ### `hooks/session-end.sh` — evento SessionEnd (S-1811, v1.11.1)
 - **Lê:** `session_id` do stdin (regex; `CLAUDE_SESSION_ID` como fallback) e o decision
   record `$MAESTRO_HOME/sessions/<id>.json`, só por presença: `workflow` presente →
-  `decided=yes`; `outcome` ∈ accepted|rework|reverted → `settled=yes`.
+  `decided=yes`; `outcome` ∈ accepted|rework|reverted|killed → `settled=yes` (**emenda
+  E25/S-2501:** `killed` fecha a sessão como qualquer outro desfecho — decidir NÃO
+  construir é decisão tomada, não decisão pendente).
 - **Emite:** uma linha `session_end` no log com `session_id`, `decided`, `settled` — nada
   do record (brief, flags, reason) sai. Nada em stdout (`exec 1>&2`).
 - **Erros:** sempre exit 0 — stdin vazio/lixo/id fora do tipo, kill-switch, lib ausente,
@@ -149,8 +151,14 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 ### `hooks/gate-report.sh` — evento Stop (E21/S-2101, v1.13.0)
 - **Só dentro do herdr** (`HERDR_ENV=1` + `HERDR_PANE_ID` tipado); fora, no-op absoluto.
 - **Lê:** o decision record da sessão (regex, presença + enums). Gate pendente = workflow
-  plan-gated (`feature`/`refactor`) com `approach: pendente` no brief → `plan`; `ship` sem
-  `outcome` → `ship`. Sem gate: apaga o arquivo do pane (resolvido por outro caminho) e sai.
+  plan-gated (`feature`/`refactor`) SEM desfecho e com `approach: pendente` no brief →
+  `plan`; `ship` sem desfecho → `ship`. Sem gate: apaga o arquivo do pane (resolvido por
+  outro caminho) e sai. **Emenda E25/S-2501:** desfecho aqui inclui `killed`, e a guarda
+  vale para os DOIS gates — matar uma feature antes do plano aprovado é o kill mais
+  comum, e sem isso o herdr seguiria perguntando "Aprovo o plano?" (no telefone
+  inclusive) sobre trabalho já descartado. A essência é extraída **ancorada ao campo
+  `brief`**: o record tem outros campos de texto do diretor (`reason`, `kill_reason`) e
+  um deles contendo a substring `essencia:` sairia da máquina pela ponte.
 - **Escreve:** `$MAESTRO_HOME/herdr/gates/<pane>` (`:` vira `_`), chave=valor: `gate`,
   `session`, `project` (basename do projeto), `ts`, `message` — a pergunta regida em uma
   linha (`gate plan · <projeto> · <essência> — Aprovo o plano? (aprovo | ajusta: …)` /
