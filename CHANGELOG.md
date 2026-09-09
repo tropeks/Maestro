@@ -55,6 +55,36 @@ e esta máquina roda a v1.77. Vieram as duas perguntas que ele responde diferent
   `log_event` o descartaria do `routing.jsonl` (deixando o sinal do retro inerte),
   `session-end.sh` contaria a sessão como *decidida sem desfecho*, e `gate-report.sh`
   seguiria cobrando o gate `ship` de um trabalho descartado. Os três aceitam `killed`.
+- **O gate humano cobrava trabalho já descartado.** O desfecho fechava o gate `ship` mas
+  não o `plan`: matar uma feature ANTES do plano aprovado é o kill mais comum — o
+  `approach` fica `pendente` justamente porque se matou —, então o herdr seguia
+  perguntando "Aprovo o plano?", no telefone inclusive, até o record expirar em 4h.
+- **O kill herdava a prova do desfecho anterior.** `accepted --suite pass` seguido de
+  `killed` deixava `suite: pass`, `delegation_proof: started` e `verifications: cited` no
+  record — afirmando que a entrega descartada tinha suíte verde e delegação provada. O
+  `del` agora é simétrico.
+- **O doctor pedia o plano do que não será executado**: `approach: pendente` deixou de
+  ser cobrado de record com `outcome: killed`.
+- **A essência que vai para o telefone** passou a ser extraída ancorada ao campo `brief`.
+  O record tem outros campos de texto do diretor (`reason`, e agora `kill_reason`), e um
+  deles contendo a substring `essencia:` sairia da máquina pela ponte do herdr.
+- `preamble: 'lean'` (aspa simples, YAML válido) e `.maestro.yaml` em CRLF passaram a ser
+  obedecidos — o `yaml_inline_list` do mesmo arquivo já normalizava a aspa, e a
+  inconsistência interna fazia o projeto receber `full` **e** uma acusação de valor
+  inválido: não obedecer e culpar quem escreveu certo.
+- O corte do `--reason` recua até o último espaço: `bin/maestro` não fixa `LC_ALL`, e sob
+  `LANG=C` o corte era em BYTE e partia uma sequência UTF-8 ao meio.
+- Flag como último argumento (`--reason` sem valor) cai na validação que ensina o comando,
+  em vez de morrer sem mensagem no `shift` sob `set -e`.
+- O enum de `workflow` do log ganhou `verify|codereview`, que existem na routing table
+  desde o E4 — a mesma classe de bug que o `killed` fechou dez linhas abaixo.
+- A medição do ratchet passou a usar `MAESTRO_NO_UPDATE_CHECK=1`, alinhando-a à do
+  doctor: sem isso, máquina atrás do origin reprovava o ratchet por ambiente.
+- **Falso positivo do sensor `dead-code`:** em shell, `*)` é o ramo default de um `case` e
+  `*.log` é glob, mas o `is_comment` tratava `*` inicial como continuação de comentário de
+  bloco — três ramos `*) cmd ;;` seguidos viravam "3 linhas de código comentado". É a
+  mesma doença que o `--flag)` teve em 2026-08-29 e que escapou daquela rodada. Sem o
+  conserto, o "fix" seria reescrever um `case` idiomático para calar um sensor.
 
 ### Docs
 - ADR-011 (o descarte é desfecho; o preâmbulo é escolha do projeto), com as
