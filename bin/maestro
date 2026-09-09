@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd Stop SubagentStop)   # S-1811 SessionEnd · S-2101 Stop · S-2301 SubagentStop
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications kill_reason'
 
 usage() {
   cat <<'U'
@@ -83,7 +83,9 @@ maestro <comando>
   consent         consentimento escopado (E10): --grant/--revoke routing-table|roster|ops,
                   TTL 1min–4h — dados na denylist ou infra no guarda; nunca hooks/bin/src,
                   nunca destruição de dados (ops não cobre rm -rf/force push/DROP)
-  outcome         desfecho da decisão (E10): accepted|rework|reverted [--suite pass|fail]
+  outcome         desfecho da decisão (E10): accepted|rework|reverted|killed [--suite pass|fail]
+                  killed (E25) = decidimos NÃO construir isto — EXIGE --reason "<por quê>"
+                  (≤120, truncado com aviso), recusa --suite e não passa pelos gates abaixo
                   accepted em mode subagent|multi EXIGE prova de delegação (E23a): ≥1
                   `delegation phase=started` da sessão no log — `--unproven` passa e
                   carimba `delegation_proof: none` no record
@@ -1378,10 +1380,13 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
     and (((.reason // "") | length) <= 120)
     and (if has("agents") then (.agents | type == "array") else true end)
     and (if has("wtree") then (.wtree | type == "string" and test("^[0-9a-f]{40}$")) else true end)
-    and (if has("outcome") then (.outcome as $o | ["accepted","rework","reverted"] | index($o) != null) else true end)
+    and (if has("outcome") then (.outcome as $o | ["accepted","rework","reverted","killed"] | index($o) != null) else true end)
     and (if has("outcome_ts") then (.outcome_ts | type == "string") else true end)
     and (if has("suite") then (.suite as $s | ["pass","fail"] | index($s) != null) else true end)
     and (if (has("outcome_ts") or has("suite")) then has("outcome") else true end)
+    and (if has("kill_reason") then ((.outcome // "") == "killed"
+      and (.kill_reason | type == "string" and length > 0 and length <= 120)) else true end)
+    and (if (.outcome // "") == "killed" then has("kill_reason") else true end)
     and (if has("budget") then (.budget | type == "object"
       and ((keys - ["steps","minutes","cents"]) | length == 0)
       and (all(.[]; type == "number" and . == floor and . >= 1))) else true end)
@@ -2786,22 +2791,50 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   # pagou: accepted | rework | reverted (+ suite pass|fail). Sem desfecho não
   # há aprendizado — é ele que o retro cruza com mode/agents para dizer qual
   # tier funciona. Enums no log, jamais texto.
-  local sid="" verdict="" suite="" unproven=0
+  # E25/S-2501: os três vereditos acima pressupõem que houve código; faltava o
+  # quarto — `killed`, a decisão de NÃO construir. Sem ele o descarte evapora
+  # com a sessão e a mesma ideia volta na semana seguinte.
+  local sid="" verdict="" suite="" unproven=0 kreason=""
   while (( $# )); do
     case "$1" in
       --session) sid="${2:-}"; shift ;;
       --suite)   suite="${2:-}"; shift ;;
+      --reason)  kreason="${2:-}"; shift ;;   # E25: o porquê do DESCARTE (só com killed)
       --unproven) unproven=1 ;;   # E23b: fecha SEM a prova exigida, e o record diz isso
-      accepted|rework|reverted) verdict="$1" ;;
+      accepted|rework|reverted|killed) verdict="$1" ;;
       *) die validation "argumento desconhecido '$1'" \
-           "maestro outcome --session <id> <accepted|rework|reverted> [--suite pass|fail] [--unproven]" 1 ;;
+           "maestro outcome --session <id> <accepted|rework|reverted|killed> [--suite pass|fail] [--unproven] [--reason <texto>]" 1 ;;
     esac
     shift
   done
   [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
-    "maestro outcome --session <id> <accepted|rework|reverted>" 1
-  [[ -n "$verdict" ]] || die validation "desfecho obrigatório" "accepted | rework | reverted" 1
+    "maestro outcome --session <id> <accepted|rework|reverted|killed>" 1
+  [[ -n "$verdict" ]] || die validation "desfecho obrigatório" "accepted | rework | reverted | killed" 1
   [[ -z "$suite" || "$suite" =~ ^(pass|fail)$ ]] || die validation "--suite aceita pass|fail" "" 1
+
+  # E25 — o porquê passa pelo MESMO tratamento do --reason do decide (src/cli.ts):
+  # controle fora, espaço colapsado, teto de 120 (DATA_MODEL §3). Acima do teto
+  # corta e avisa: falhar aqui perderia o registro do descarte por uma vírgula.
+  if [[ -n "$kreason" ]]; then
+    kreason=$(printf '%s' "$kreason" | tr '\000-\037\177' ' ' | tr -s ' ')
+    kreason="${kreason#"${kreason%%[![:space:]]*}"}"
+    kreason="${kreason%"${kreason##*[![:space:]]}"}"
+    if (( ${#kreason} > 120 )); then
+      printf 'maestro: --reason truncado em 120 caracteres (tinha %s)\n' "${#kreason}" >&2
+      kreason="${kreason:0:120}"
+    fi
+  fi
+  if [[ "$verdict" == "killed" ]]; then
+    # Kill sem porquê é ruído, não registro: quem lê o retro daqui a um mês
+    # precisa saber por que a ideia morreu, senão ela ressuscita igual.
+    [[ -n "$kreason" ]] || die validation "killed exige o porquê do descarte" \
+      "maestro outcome --session $sid killed --reason \"<por que não vamos construir>\"" 1
+    [[ -z "$suite" ]] || die validation "killed não aceita --suite" \
+      "nada foi construído — não há suíte a anexar a um descarte" 1
+  elif [[ -n "$kreason" ]]; then
+    die validation "--reason é o porquê do DESCARTE e só vale com killed" \
+      "a razão da aposta é do decide (maestro decide ... --reason); para descartar: maestro outcome --session $sid killed --reason \"...\"" 1
+  fi
   has jq || die env "outcome exige jq" "instale jq (dependência declarada)" 2
 
   # shellcheck source=hooks/lib/common.sh
@@ -2818,6 +2851,9 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
   # retro passaria a creditar ao tier de agente um resultado que o próprio
   # diretor executou. `--unproven` é a válvula honesta: passa, mas carimba
   # `delegation_proof: none` no record para o retro saber o que não foi provado.
+  # E25: `killed` não entra aqui nem no gate de verificações abaixo, e não
+  # ganha delegation_proof/verifications no record. Os dois gates existem porque
+  # o ACEITE afirma que a entrega serve; no kill não há entrega a afirmar.
   local proof=""
   if [[ "$verdict" == "accepted" ]]; then
     local rmode=""
@@ -2873,14 +2909,22 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
       fi
     fi
   fi
-  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg ts "$(date -Iseconds)" \
+  # O `del` no ramo não-killed não é zelo: o desfecho é last-wins, e uma sessão
+  # morta e depois reaberta como accepted ficaria com kill_reason órfão — record
+  # inválido no doctor para quem fez tudo certo.
+  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg kr "$kreason" --arg ts "$(date -Iseconds)" \
        '.outcome = $o | .outcome_ts = $ts
         | (if $vf != "" then .verifications = $vf else . end)
         | (if $dp != "" then .delegation_proof = $dp else . end)
-        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)' \
+        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
+        | (if $o == "killed" then .kill_reason = $kr else del(.kill_reason) end)' \
        "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
     log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
     printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+    # O texto do porquê fica no record (confidential) e JAMAIS no log; o que
+    # sobrevive à sessão é o INTENT, e ele é versionado — quem edita é o humano.
+    [[ "$verdict" == "killed" ]] && \
+      echo "o descarte só sobrevive à sessão no '## Fora de escopo' do .maestro/INTENT.md — leve o motivo para lá e rode: maestro intent --bump"
     case "$proof" in
       started) echo "delegação PROVADA no log (delegation phase=started nesta sessão)" ;;
       none)    echo "aviso: aceito SEM prova de delegação (--unproven) — record carimbado com delegation_proof: none" ;;
@@ -3280,6 +3324,16 @@ cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
   printf -- '-- evidência: %s recibo(s) no ledger, %s de exit 0\n' "$n_ev" "$n_ev_ok"
   printf -- '-- sinais:\n' 
   (( rate >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$rate"
+  # E25 — o descarte é sinal de calibração como o override: janela madura sem
+  # nenhum `killed` é interrogate aprovando tudo, ou kill que ninguém registrou.
+  local n_kill
+  n_kill=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "outcome" and .outcome == "killed" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+  [[ "$n_kill" =~ ^[0-9]+$ ]] || n_kill=0
+  if (( n_kill > 0 )); then
+    printf '   %s descarte(s) na janela (killed): o porquê fica no record — leve-o para o "## Fora de escopo" do .maestro/INTENT.md, que é onde ele sobrevive\n' "$n_kill"
+  elif (( days >= 14 && ndec >= 10 )); then
+    printf '   nenhum descarte na janela (%sd, %s decisões): ou o interrogate está aprovando tudo, ou o kill não está sendo registrado (maestro outcome ... killed --reason)\n' "$days" "$ndec"
+  fi
   # O critério de janela sozinho não sabe se a promoção JÁ aconteceu: com o gate
   # em block ele seguia imprimindo "proponha warn→block" em toda ronda. Ler o
   # modo corrente da MESMA tabela que o retro já resolveu em $rt fecha o laço —

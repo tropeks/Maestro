@@ -18,6 +18,9 @@ fail=0
 ok()  { printf 'ok   %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 chk() { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1 (esperado '$3', obtido '$2')"; fi; }
+# Pendência de arquivo que NÃO é desta frente: não falha a suíte (o dono ainda não
+# entregou), mas grita na saída para ninguém esquecer que o contrato está pela metade.
+pend() { printf 'PEND %s\n' "$1"; }
 
 command -v jq >/dev/null || { echo "FAIL jq ausente"; exit 1; }
 command -v bun >/dev/null || { echo "FAIL bun ausente (decide precisa)"; exit 1; }
@@ -183,6 +186,67 @@ if command -v jq >/dev/null; then
   chk "doctor valida o schema do record com verifications" "$?" "0"
 fi
 
+# ---------------------------------------------------------------------------
+echo "-- E25/S-2501: killed é desfecho de primeira classe (decidimos NÃO construir)"
+# ---------------------------------------------------------------------------
+"$BIN" decide --session kill-a --workflow fix --mode subagent --agents dev-pleno >/dev/null 2>&1
+RECK="$MAESTRO_HOME/sessions/kill-a.json"
+KMOTIVO="o custo do build supera o valor; o fluxo manual ja resolve"
+out=$("$BIN" outcome --session kill-a killed --reason "$KMOTIVO" 2>&1); rc=$?
+chk "killed --reason sobre record existente → exit 0" "$rc" "0"
+chk "record fecha com outcome killed" "$(jq -r '.outcome' "$RECK")" "killed"
+chk "record grava o porquê" "$(jq -r '.kill_reason' "$RECK")" "$KMOTIVO"
+# mode subagent SEM nenhuma 'delegation phase=started': o gate do E23a existe
+# porque o ACEITE afirma que a entrega serve — no kill não há entrega.
+chk "kill não passa pelo gate de delegação (nem carimba delegation_proof)" \
+    "$(jq -r 'has("delegation_proof")' "$RECK")" "false"
+grep -q 'Fora de escopo' <<<"$out" && ok "a saída aponta onde o kill sobrevive (INTENT)" || bad "saída sem ponteiro para o INTENT ($out)"
+grep -q 'intent --bump' <<<"$out" && ok "e lembra que a versão sobe à mão" || bad "saída sem intent --bump ($out)"
+
+"$BIN" decide --session kill-b --workflow fix --mode direct >/dev/null 2>&1
+RECB="$MAESTRO_HOME/sessions/kill-b.json"
+out=$("$BIN" outcome --session kill-b killed 2>&1); rc=$?
+chk "killed sem --reason → exit 1 (kill sem porquê é ruído, não registro)" "$rc" "1"
+grep -q -- '--reason' <<<"$out" && ok "a recusa entrega o comando certo" || bad "recusa sem o comando ($out)"
+chk "e o record NÃO é tocado" "$(jq -r '.outcome // "AUSENTE"' "$RECB")" "AUSENTE"
+"$BIN" outcome --session kill-b accepted --reason "por que sim" >/dev/null 2>&1; rc=$?
+chk "--reason com veredito ≠ killed → exit 1 (a razão da aposta é do decide)" "$rc" "1"
+"$BIN" outcome --session kill-b killed --reason "por que não" --suite pass >/dev/null 2>&1; rc=$?
+chk "killed --suite → exit 1 (nada foi construído, não há suíte a anexar)" "$rc" "1"
+chk "nenhuma das recusas fechou o record" "$(jq -r '.outcome // "AUSENTE"' "$RECB")" "AUSENTE"
+
+LONGA=$(printf '%0.sx' {1..200})
+out=$("$BIN" outcome --session kill-b killed --reason "$LONGA" 2>&1); rc=$?
+chk "--reason acima de 120 → exit 0 (trunca, não falha em silêncio)" "$rc" "0"
+chk "e o record guarda exatamente 120 chars (teto do reason, DATA_MODEL §3)" \
+    "$(jq -r '.kill_reason | length' "$RECB")" "120"
+grep -q 'truncado em 120' <<<"$out" && ok "o truncamento é dito em voz alta" || bad "truncamento silencioso ($out)"
+
+# A regressão que o del(.kill_reason) evita: desfecho é last-wins, e uma sessão
+# morta e depois reaberta como accepted ficaria com kill_reason órfão — record
+# inválido no doctor para quem fez tudo certo.
+"$BIN" outcome --session kill-b accepted >/dev/null 2>&1; rc=$?
+chk "record morto e depois fechado como accepted → exit 0" "$rc" "0"
+chk "e o kill_reason SOME do record" "$(jq -r 'has("kill_reason")' "$RECB")" "false"
+
+out=$("$BIN" doctor --ci 2>&1); rc=$?
+chk "doctor com record killed → exit 0" "$rc" "0"
+grep -q 'decision records.*inválido' <<<"$out" && bad "doctor reprova record ($out)" || ok "record killed passa no schema DATA_MODEL §3"
+
+grep -q "$KMOTIVO" "$LOG" && bad "o porquê do descarte VAZOU para o log" || ok "o porquê fica no record, jamais no log"
+# O log tem vocabulário próprio (DATA_MODEL §4) e a allowlist de valores mora em
+# hooks/lib/common.sh — arquivo de outra frente. Enquanto `killed` não entrar lá,
+# o log_event descarta o valor (degrada, não quebra) e o evento sai sem o campo.
+if grep -q 'accepted|rework|reverted|killed' "$REPO/hooks/lib/common.sh"; then
+  grep -q '"event":"outcome".*"outcome":"killed"' "$LOG" \
+    && ok "log carrega outcome=killed (enum)" || bad "outcome=killed ausente no log"
+else
+  pend "hooks/lib/common.sh: outcome ainda aceita só (accepted|rework|reverted) — killed é descartado do log"
+  grep -q '"event":"outcome","session_id":"kill-a"' "$LOG" \
+    && ok "o evento de desfecho do kill é logado mesmo assim (degrada, não bloqueia)" \
+    || bad "evento de outcome do kill ausente no log"
+fi
+
 echo "-- retro agrega a janela"
 # fixture: log sintético controlado (hoje, dentro de qualquer janela)
 TS=$(date -Iseconds)
@@ -211,6 +275,9 @@ grep -q 'grant 1' <<<"$out" && ok "consentimentos contados" || bad "consentiment
 grep -q 'sem uso na janela' <<<"$out" && ok "workflows declarados sem uso aparecem" || bad "workflows sem uso"
 grep -q 'override em 33% (≥20%)' <<<"$out" \
   && ok "sinal de calibração dispara com override alto" || bad "sinal de calibração"
+grep -q 'nenhum descarte na janela' <<<"$out" \
+  && bad "janela de 3 decisões cobrando descarte (o piso é o mesmo da promoção)" \
+  || ok "janela imatura não cobra o descarte"
 # O sinal de promoção depende do gate.mode CORRENTE, não só da janela: propor
 # warn→block com o gate já em block é ruído que nunca cala. As duas fixtures
 # abaixo são a tabela real com o modo trocado — mesmos bindings e workflows, logo
@@ -238,6 +305,20 @@ grep -q 'promoção warn→block: já aplicada (gate.mode: block)' <<<"$out" \
   && ok "gate já em block → sinal se cala (não repete a proposta)" || bad "promoção já aplicada ($out)"
 grep -q 'PROMOÇÃO ELEGÍVEL' <<<"$out" \
   && bad "gate em block ainda propõe promoção ($out)" || ok "gate em block não propõe promoção"
+
+echo "-- E25: o descarte é sinal de calibração (nem tudo pode ser aprovado)"
+# Janela madura (15 decisões, 14d) e ZERO killed: ou o interrogate aprova tudo,
+# ou o kill não está sendo registrado — mesmo critério da promoção warn→block.
+out=$(MAESTRO_ROUTING_TABLE="$RTWARN" "$BIN" retro --days 14)
+grep -q 'nenhum descarte na janela' <<<"$out" \
+  && ok "janela madura sem killed vira sinal" || bad "sinal de zero descarte ($out)"
+grep -q 'interrogate' <<<"$out" && ok "e nomeia as duas explicações possíveis" || bad "sinal sem diagnóstico ($out)"
+printf '{"ts":"%s","event":"outcome","session_id":"r9","outcome":"killed"}\n' "$TS" >> "$LOG"
+out=$(MAESTRO_ROUTING_TABLE="$RTWARN" "$BIN" retro --days 14)
+grep -q '1 descarte(s) na janela' <<<"$out" && ok "com killed na janela, o retro conta" || bad "contagem de descarte ($out)"
+grep -q 'Fora de escopo' <<<"$out" && ok "e aponta o INTENT como lugar do descarte" || bad "sinal sem ponteiro para o INTENT ($out)"
+grep -q 'nenhum descarte na janela' <<<"$out" && bad "os dois sinais saindo juntos ($out)" || ok "os dois sinais são exclusivos"
+grep -q 'killed: 1' <<<"$out" && ok "'-- desfechos:' agrupa killed sozinho (sem tocar na linha)" || bad "killed em desfechos ($out)"
 
 echo "-- honestidade com log vazio"
 rm -f "$LOG"
