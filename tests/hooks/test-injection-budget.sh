@@ -9,18 +9,24 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=7080   # bump deliberado 6930→7080 em 2026-09-05 (E22/S-2203): a seção
-               # "## Projeto" ganhou a linha da DIREÇÃO (INTENT vN | sem carimbo |
-               # nenhuma) e o gate plan passou a cobrar a citação da direção no
-               # plano — +134B medidos no cenário abaixo. Direção é a única coisa
-               # que a sessão não consegue inferir do repo: paga-se o byte.
-               # (bump anterior: 6800→6930 em 2026-08-31, E17/S-1703.) Cenário medido
+RATCHET=7230   # bump deliberado 7080→7230 em 2026-09-09 (E25/S-2502): a INSTRUÇÃO
+               # CANÔNICA ganhou a linha do desfecho `killed` — "decidir NÃO fazer
+               # também é desfecho", com o comando pronto. +150B medidos no cenário
+               # abaixo (7064B → 7214B). Verbo que não aparece no preâmbulo ninguém
+               # digita, e descarte sem registro volta como ideia nova daqui a três
+               # semanas sem o porquê que já tinha sido pago: o byte se paga na
+               # primeira repetição evitada. O mesmo commit traz o preâmbulo
+               # graduado (`preamble: standard|lean` no .maestro.yaml), que DEVOLVE
+               # 914B/3043B a quem opta — mas o ratchet segue medindo o default
+               # `full`, que é o que todo projeto recebe sem escolher nada.
+               # (bump anterior: 6930→7080 em 2026-09-05, E22/S-2203: linha da
+               # DIREÇÃO na seção "## Projeto".) Cenário medido
                # = baseline do plugin com projeto vazio (CLAUDE_PROJECT_DIR sem .maestro.yaml;
                # roster inteiro, sem filtro experts; sem seções de projeto). Sessão real neste
                # repo mede mais (~6940B com .maestro.yaml vivo, medida pelo doctor) e é
                # governada pelo warn 7200/teto 8000 do doctor, não por este ratchet.
-               # Histórico: 5895B (08-18) → 6266B (E8+) → 6516B (E16) → 6930B (E17).
-               # Teto duro segue 8000B.
+               # Histórico: 5895B (08-18) → 6266B (E8+) → 6516B (E16) → 6930B (E17)
+               # → 7080B (E22) → 7230B (E25). Teto duro segue 8000B.
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOK="$REPO/hooks/session-start.sh"
@@ -52,7 +58,11 @@ fi
 echo "-- S-703: doctor reporta a conta e grava no envelope"
 h2=$(mktemp -d "$tmp/h2.XXXXXX")
 MAESTRO_HOME="$h2" "$BIN" doctor >"$tmp/doc" 2>&1
-grep -qE 'ok   injeção SessionStart: [0-9]+B de 8000B' "$tmp/doc" \
+# ok OU warn: o que esta linha prova é que o doctor REPORTA a conta, não em que
+# faixa ela caiu. Desde o E25/S-2502 o default `full` mede 7230B no cenário do
+# doctor e cruza o warn de 90% (7200B) — sinal legítimo, e a resposta a ele é
+# escolher um tier de preâmbulo, não silenciar o doctor.
+grep -qE '(ok|warn) +injeção SessionStart: [0-9]+B de 8000B' "$tmp/doc" \
   && ok "linha da conta no doctor" || bad "linha da conta no doctor"
 inj=$(jq -r '.injection.bytes' "$h2/capabilities.json" 2>/dev/null)
 [[ "$inj" =~ ^[0-9]+$ && "$inj" -gt 0 ]] \

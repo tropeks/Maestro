@@ -335,7 +335,11 @@ run "$H7b" "$P7b" "$IN" MAESTRO_ROUTING_TABLE="$BIG" MAESTRO_AGENTS_DIR="$ROSTER
 CORE_B=$(printf '%s' "$OUT" | sed -n '1,/^$/p;/INSTRUÇÃO CANÔNICA/,/^$/p' | wc -c)
 [[ $RC -eq 0 ]] && ok "orçamento de 500 B: degrada com exit 0" \
   || bad "orçamento de 500 B: degrada com exit 0 (rc=$RC)"
-[[ $OUTBYTES -le 700 ]] && ok "orçamento de 500 B: estouro limitado ao núcleo ($OUTBYTES B)" \
+# Cota do núcleo 700→900 B em 2026-09-09 (E25/S-2502): a instrução canônica ganhou
+# a linha do desfecho `killed`, e o núcleo passou de 703 para 853 B. Este número
+# limita o ESTOURO consentido — cresce só quando o núcleo cresce, e cada aumento
+# do núcleo é uma linha que a sessão nunca pode perder.
+[[ $OUTBYTES -le 900 ]] && ok "orçamento de 500 B: estouro limitado ao núcleo ($OUTBYTES B)" \
   || bad "orçamento de 500 B: estouro limitado ao núcleo ($OUTBYTES B)"
 [[ "$OUT" == *"session_id: ses_ABC-123"* && "$OUT" == *"maestro decide --session ses_ABC-123"* && "$OUT" == *"</maestro-routing>"* ]] \
   && ok "orçamento de 500 B: session_id + instrução canônica + fechamento intactos" \
