@@ -205,6 +205,28 @@ oversized-file 12 · oversized-function 6 · skipped-test 1` — `dead-code`,
 ocorrência nova dos três reprova contra baseline 0.
 `# classification: confidential`
 
+
+#### Emenda E25 (S-2502) — `preamble:` (tamanho do bloco injetado)
+
+```yaml
+preamble: lean        # full (default) | standard | lean
+```
+
+Escolhe QUANTO do preâmbulo do SessionStart este projeto recebe. `full` é o default e a
+**ausência da chave produz saída byte a byte idêntica** à de antes da emenda — nenhum
+projeto existente muda de comportamento. `standard` omite a seção `## Rotas (intenção →
+workflow) e workflows`; `lean` omite também `## Heurísticas de execução` e `## Roster`.
+Valor fora do enum é tratado como `full` e DITO na injeção (perfil de projeto é dado do
+usuário, mas silêncio aqui seria esconder que o preâmbulo mudou de tamanho).
+
+É uma troca declarada pelo dono do projeto: `lean` compra contexto vendendo qualidade de
+roteamento — o modelo perde o catálogo de rotas e as heurísticas de tiering. Uso legítimo:
+repo onde o jeito de trabalhar está assentado e o diretor é sempre o mesmo. O que sai
+NUNCA sai calado: o cabeçalho (que não trunca) nomeia o tier e o que ficou de fora, com o
+ponteiro para `config/routing-table.yaml` e `agents/`. Medida de referência (2026-09-09,
+repo do Maestro): `full` 7165B · `## Rotas` 1038B · `## Heurísticas` 1891B · `## Roster`
+254B.
+
 ### 3. Decision record — `~/.maestro/sessions/<session_id>.json` (efêmero)
 
 ```json
@@ -309,6 +331,37 @@ Dois campos novos, ambos opcionais, ambos enum fechado, ambos **só existem junt
 aceite afirma que a entrega serve. Os dois estão no `RECORD_FIELDS` do doctor desde
 o mesmo commit — campo fora da lista reprovaria justamente o record de quem provou.
 
+
+
+#### Emenda v1.9 (E25/S-2501) — o descarte também é desfecho
+
+O enum de `outcome` passa a `accepted | rework | reverted | killed`, e ganha um campo
+acompanhante:
+
+| campo | tipo | validação |
+|---|---|---|
+| `kill_reason` | string | ≤120 chars (mesmo teto do `reason`, §3), não-vazia; **existe SSE `outcome == "killed"`** — nos dois sentidos: sem ele o `killed` é erro de schema, e com qualquer outro desfecho ele é campo extra |
+
+`killed` significa *decidimos não construir isto*. Os três valores anteriores pressupõem
+entrega — por isso `killed` **não passa** pelo gate de prova de delegação (E23a) nem pelo
+de verificações por área (E23b) e **não grava** `delegation_proof` nem `verifications`: os
+dois gates existem porque o ACEITE afirma que a entrega serve, e aqui não há entrega.
+`--suite` é recusado pelo mesmo motivo (não se roda suíte do que não se escreveu).
+
+Desfecho é last-wins, então a remoção é parte do contrato: gravar `accepted`/`rework`/
+`reverted` sobre um record morto **apaga** `kill_reason`. Sem isso, o record de quem
+mudou de ideia e construiu ficaria com um campo órfão e o doctor reprovaria justamente
+quem fez tudo certo — o mesmo erro que a correção de 2026-08-24 fechou para `outcome`.
+
+`kill_reason` vive SÓ no record (§4 intocado), como `wtree` (v1.4) e `brief`/`flags`
+(v1.7): o log recebe `outcome=killed` e nada mais. O porquê é síntese do diretor, não
+colagem do prompt, e o teto de 120 chars é o guardião mecânico contra vazar contexto
+bruto. `# classification: confidential` — inalterado.
+
+Onde o kill SOBREVIVE à sessão (o record expira em 4h) é a seção `## Fora de escopo` do
+`.maestro/INTENT.md` (§13). O comando **aponta** para lá e não escreve: o INTENT é
+versionado e o hash do corpo é contrato — escrita automática viraria `--bump` em contador
+de saves, exatamente o que o E22 proibiu.
 
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 

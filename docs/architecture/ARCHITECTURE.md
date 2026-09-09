@@ -230,6 +230,42 @@ problema de um sistema de uma pessoa; seguir `origin/main` com CI status via API
 rede em runtime além do fetch, fronteira inviolável; split de `bin/maestro` agora —
 sem uma semana de E23 em uso não há evidência de onde passa a fronteira (E24).
 
+### ADR-011 — O descarte é desfecho, e o preâmbulo é escolha do projeto (E25)
+**Status:** Aceito (2026-09-09; origem: leitura do fork `no-session/pstack` a pedido do
+Capitão — "pega as idéias").
+**Contexto:** duas assimetrias que só ficaram visíveis quando outro sistema resolveu as
+mesmas questões de forma diferente. (1) O vocabulário de desfecho do E10 (`accepted |
+rework | reverted`) pressupõe entrega nos três valores. O `interrogate` do workflow
+`feature` existe justamente para produzir o desfecho oposto — "isto não deve ser
+construído" —, e esse desfecho não tinha onde ser gravado: morria com a sessão, e a mesma
+ideia voltava como pedido novo. Descarte não registrado é a forma mais cara de trabalho
+repetido, porque ninguém sabe que já foi decidido. (2) O preâmbulo do SessionStart era
+tamanho único: 7165B medidos, dos quais 3183B de catálogo (rotas, heurísticas, roster)
+que um repo com o jeito de trabalhar assentado nunca consulta.
+**Decisão:** (1) `killed` entra no enum, com `kill_reason` obrigatório ao lado e nenhum
+dos gates de prova (não há entrega a provar). O record expira em 4h, então o kill que
+importa **não mora nele**: o comando aponta a seção `## Fora de escopo` do
+`.maestro/INTENT.md`, que já era, desde o E22, o registro versionado do que se decidiu
+não construir. O CLI aponta e não escreve. (2) `.maestro.yaml` ganha `preamble:
+full|standard|lean`, com `full` default e ausência da chave produzindo saída byte a byte
+idêntica à anterior — a mudança é opt-in por projeto, nunca por atualização do plugin.
+**Onde o trilho alcança e onde não:** mecânico = o schema (kill sem porquê é erro; kill
+com `--suite` é erro; desfecho novo sobre record morto apaga `kill_reason`), e o corte de
+seções (o projeto declara, o hook obedece). Honra declarada = escrever de fato o kill no
+`## Fora de escopo`, que continua sendo mão humana ou do diretor; e a qualidade do
+roteamento sob `lean`, que é uma troca ASSUMIDA pelo dono do projeto — menos catálogo,
+router mais burro. O que não é honra em nenhum tier: o que ficou de fora é DITO no
+cabeçalho, que não trunca. Silêncio sobre ausência é o antipadrão que o E19 (`no-stable`)
+e o E22 (`direção: nenhuma`) já fecharam; o preâmbulo graduado não o reabre.
+**Alternativas rejeitadas:** tier por WORKFLOW, que é o análogo literal do
+`preamble-tier` das skills do pstack — impossível sem inverter a ordem dos eventos: o
+SessionStart emite antes de existir workflow, e quem sabe o workflow é o `decide`, quando
+o preâmbulo já foi para o contexto. Escrever o kill automaticamente no INTENT — o
+`--bump` viraria contador de saves, exatamente o que o E22 proibiu. Um workflow `kill` na
+routing table — descarte é DESFECHO de um fluxo, não um fluxo; criá-lo tiraria o kill de
+dentro do `feature`, que é onde ele nasce. Importar código do pstack — é gstack v0.13.3,
+e a instalação desta máquina roda a v1.77.
+
 ### ADR-009 — Regência e profundidade declarada (E17)
 **Status:** Aceito (design doc aprovado 2026-08-31, office-hours D1-D11 + leitura fria do
 Codex + 3 rodadas de review).

@@ -810,6 +810,47 @@ por shebang — decidir isso é deste épico.
 
 ---
 
+### E25 — O descarte é decisão, e o preâmbulo tem tamanho (P1, S) — emenda 2026-09-09, aprovada pelo Romulo ("pega as idéias")
+Origem: leitura do [pstack](https://github.com/no-session/pstack), fork do gstack v0.13.3
+adaptado para founder solo. Não há nada de MECÂNICA a importar dele — a máquina que ele
+usa (gerador `SKILL.md.tmpl`, evals de roteamento, testes e2e por touchfile) é gstack, e a
+instalação desta máquina roda a v1.77, muito à frente do que o fork carrega. O que ele tem
+de próprio são duas ideias de FORMA, e as duas apontam buraco real aqui.
+
+**S-2501 — `killed` como desfecho de primeira classe.** O loop do pstack termina em
+`kill it or loop back`, e o `/validate` fecha em GO / KILL / PIVOT. O Maestro só sabia
+registrar `accepted | rework | reverted`: os três pressupõem que código foi produzido.
+Decidir NÃO construir — o desfecho mais barato que existe, e o que o `interrogate` do
+workflow `feature` existe para produzir — não tinha onde ser registrado, então evaporava
+com a sessão e a mesma ideia voltava na semana seguinte como pedido novo. `maestro
+outcome --session <id> killed --reason "<por quê>"` fecha isso: enum novo no record
+(DATA_MODEL §3 v1.9), campo `kill_reason` obrigatório junto dele (kill sem porquê é
+ruído), nenhum dos dois gates de prova (não há entrega a provar), e o retro ganha o sinal
+correspondente — janela de calibração sem nenhum kill é sintoma, não virtude. O lugar
+onde o kill SOBREVIVE à sessão já existia desde o E22: a seção `## Fora de escopo` do
+`.maestro/INTENT.md`. O comando aponta para lá e não escreve nada — o artefato é
+versionado e o hash é contrato.
+
+**S-2502 — preâmbulo graduado por projeto.** No pstack cada skill declara
+`preamble-tier: 1..4` e o gerador injeta mais ou menos contexto conforme o tier. O
+Maestro injetava o MESMO bloco em toda sessão de todo projeto. Medido em 2026-09-09 neste
+repo: 7165B, dos quais `## Rotas` 1038B + `## Heurísticas` 1891B + `## Roster` 254B =
+3183B de catálogo que um projeto com o trilho internalizado nunca consulta. `.maestro.yaml`
+passa a aceitar `preamble: full | standard | lean` (default `full`, e a ausência da chave
+produz saída byte a byte idêntica à de antes). É uma TROCA declarada pelo dono do projeto:
+`lean` compra contexto vendendo qualidade de roteamento. Como em todo lugar do Maestro,
+o que sai não sai calado — o cabeçalho, que nunca trunca, diz o tier vigente e o que ficou
+de fora (mesmo princípio do `no-stable` do E19 e do `direção: nenhuma` do E22).
+
+- **Fora do épico:** importar código do pstack (é gstack velho); adotar o ethos dele
+  ("ship the 80% que dá dinheiro") — é o oposto do mote de execução deste projeto, e
+  misturar os dois estragaria o padrão de entrega; tier por WORKFLOW (o session-start
+  roda antes de o workflow existir — quem sabe o workflow é o `decide`, e aí o preâmbulo
+  já foi emitido).
+- **Dependências:** E10 (outcome), E22 (INTENT).
+
+---
+
 ## Grafo de dependências
 
 ```

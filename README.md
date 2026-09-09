@@ -157,7 +157,8 @@ honor is visible as honor.
 Maestro never self-tunes at runtime (rails stay deterministic); it learns in
 batches: telemetry → `maestro retro` (override rate, gate stats, smell
 frequencies, **outcomes** — `maestro outcome` closes each decision with
-accepted/rework/reverted) → `/maestro:retro` proposes concrete diffs with the
+accepted/rework/reverted/killed, and `killed --reason` is how "this should not be
+built" stops dying with the session) → `/maestro:retro` proposes concrete diffs with the
 signal that justifies each → the eval-on-diff exam kills any proposal that
 worsens the table → a versioned commit is the learning. With explicit,
 scoped, TTL-bound **consent** (`maestro consent --grant routing-table|roster`),
@@ -188,7 +189,13 @@ version: 1
 project: remedix
 languages: [go]
 experts: [golang-pro]   # only this one shows up in the injection
+preamble: standard      # full (default) | standard | lean — how much preamble this project gets
 ```
+
+`preamble` is the one key that changes the SIZE of the injection: `standard` drops the
+route catalogue, `lean` drops the heuristics and the roster too. It is a declared
+trade — less context per session, a dumber router — and whatever was left out is named
+in the block's header, which never truncates.
 
 ## Workflows and gates
 

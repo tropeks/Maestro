@@ -128,7 +128,8 @@ nunca fecha a própria ordem.
 O Maestro não se auto-ajusta em runtime (os trilhos são determinísticos);
 aprende em lote: telemetria → `maestro retro` (taxa de override, gates,
 frequência de smells, **desfechos** — `maestro outcome` fecha cada decisão com
-accepted/rework/reverted) → `/maestro:retro` propõe diffs concretos com o sinal
+accepted/rework/reverted/killed, e `killed --reason` é como o "isto não deve ser
+construído" deixa de morrer com a sessão) → `/maestro:retro` propõe diffs concretos com o sinal
 que justifica cada um → o exame do eval-on-diff mata proposta que piora a
 tabela → o commit versionado é o aprendizado. Com **consentimento** explícito,
 escopado e com TTL (`maestro consent --grant routing-table|roster`), a IA pode
@@ -159,7 +160,13 @@ version: 1
 project: remedix
 languages: [go]
 experts: [golang-pro]   # só ele aparece na injeção
+preamble: standard      # full (default) | standard | lean — quanto do preâmbulo este projeto recebe
 ```
+
+`preamble` é a única chave que muda o TAMANHO da injeção: `standard` deixa de fora o
+catálogo de rotas, `lean` deixa também as heurísticas e o roster. A troca é declarada —
+menos contexto por sessão, roteamento mais burro — e o que ficou de fora é dito no
+cabeçalho do bloco, que nunca trunca.
 
 ## Workflows e gates
 

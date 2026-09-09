@@ -58,6 +58,19 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   6930 → 7080 bytes. As frozen zones de ordens pendentes passam a ser lidas em 20
   linhas de cabeçalho (E22/S-2202), não 14.
 
+- **Emenda E25 (S-2501/S-2502):** duas mudanças na injeção.
+  (a) A instrução canônica ganha UMA linha ensinando o desfecho do descarte (`maestro
+  outcome --session <id> killed --reason "…"`) — sem ela o verbo novo do CLI seria letra
+  morta, porque o preâmbulo é o único lugar onde a sessão aprende o vocabulário.
+  (b) `.maestro.yaml` passa a aceitar `preamble: full|standard|lean` (DATA_MODEL §2):
+  `full` é o default e a ausência da chave produz saída **byte a byte idêntica** à de
+  antes; `standard` omite `## Rotas`; `lean` omite também `## Heurísticas` e `## Roster`.
+  O corte acontece ANTES do laço de orçamento (é escolha do projeto, não aperto de teto) e
+  o cabeçalho — que nunca trunca — nomeia o tier e o que ficou de fora, com ponteiro para
+  `config/routing-table.yaml` e `agents/`; valor fora do enum degrada para `full` e o diz.
+  Ratchet da injeção bumpado deliberadamente por (a), no mesmo commit, conforme o
+  protocolo no cabeçalho de `tests/hooks/test-injection-budget.sh`.
+
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
 - **`post-edit-habits.sh` (E9, PostToolUse em Edit|Write|MultiEdit):** roda os habit
@@ -243,6 +256,16 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   exigidas grava `"cited"`; sem áreas exigidas o campo não existe. `rework`/`reverted`
   nunca são barrados — só o aceite afirma que a entrega serve. O aviso de honra do
   `--suite pass` continua para o rótulo `suite` quando ele não é exigido por área.
+  **Emenda E25/S-2501:** o enum vira `accepted|rework|reverted|killed`. `killed` EXIGE
+  `--reason "<por quê>"` (≤120 chars, truncado com aviso — precedente do `reason` do
+  `decide`) e grava `kill_reason` no record (DATA_MODEL §3 v1.9); `--reason` com outro
+  desfecho e `--suite` junto de `killed` são **exit 1**. `killed` não passa pelos gates de
+  delegação e de verificação e não grava os campos deles — os dois existem porque o
+  ACEITE afirma que a entrega serve, e no descarte não há entrega. Desfecho é last-wins,
+  então gravar qualquer outro veredito sobre um record morto **apaga** `kill_reason`. O
+  log recebe `outcome=killed` e **nunca** o texto do porquê. A saída aponta a seção `##
+  Fora de escopo` do `.maestro/INTENT.md` (E22) como o lugar onde o kill sobrevive à
+  sessão — aponta e não escreve: o INTENT é versionado e o hash do corpo é contrato.
 - `retro [--days N]` — relatório determinístico de calibração (override rate, gates,
   smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
@@ -252,6 +275,12 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   usam só M (comandos que casam com alvo `skill:` de binding ou nome de workflow,
   derivados da routing table; tabela ilegível degrada para a contagem antiga com
   aviso).
+  **Emenda E25/S-2501 (2026-09-09):** o bloco `-- sinais:` ganha a leitura do descarte —
+  com ≥1 `killed` na janela, quantos foram e onde eles sobrevivem (`## Fora de escopo` do
+  INTENT); com ZERO e a janela já de calibração (≥14d, ≥10 decisões), o aviso de que nada
+  foi descartado — ou o `interrogate` está aprovando tudo, ou o descarte não está sendo
+  registrado. A linha `-- desfechos:` não muda: ela já agrupa por `.outcome` e passa a
+  mostrar `killed: N` sozinha.
 
 
 ### `maestro docs` (E16)
