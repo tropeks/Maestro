@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.14.4 — trilhos determinísticos, IA nas bordas",
-    "subtitle": "Camada de roteamento MoE para Claude Code · pós-E23: prova, não palavra — direção versionada, funil de delegação, verificação por área, canal stable",
+    "title": "Maestro v1.15.0 — trilhos determinísticos, IA nas bordas",
+    "subtitle": "Camada de roteamento MoE para Claude Code · pós-E25: o descarte é desfecho e o preâmbulo é escolha do projeto",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "7063392c1538f385a9db7c76fad6e278779ef4a2"
+      "revision": "edd38030d06d4067a8f68d91bb974d8eac481bef"
     },
     "views": [
       {
@@ -127,7 +127,7 @@
       "id": "sstart",
       "type": "backend",
       "label": "session-start.sh",
-      "sublabel": "injeção ≤7080B",
+      "sublabel": "injeção ≤7230B",
       "sources": [
         {
           "path": "hooks/session-start.sh",
@@ -143,7 +143,7 @@
         150,
         64
       ],
-      "tag": "+ pre-agent · subagent-stop"
+      "tag": "tier full · standard · lean"
     },
     {
       "id": "gates",
@@ -287,7 +287,7 @@
       "type": "database",
       "label": "Decision record",
       "sublabel": "~/.maestro/sessions · 0600",
-      "tag": "proof · verifications",
+      "tag": "proof · verif · kill_reason",
       "pos": [
         560,
         330
