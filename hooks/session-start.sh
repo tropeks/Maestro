@@ -46,6 +46,20 @@
 #                                  de um typo é pior do que exibi-lo demais)
 # O filtro roda ANTES do orçamento de 8000 bytes: declarar `experts` é também a
 # forma de caber mais coisa útil na injeção, nunca de estourá-la.
+#
+# E25/S-2502 — preâmbulo graduado (`preamble:` no .maestro.yaml). O Maestro
+# injetava o MESMO catálogo em toda sessão de todo projeto; projeto cuja rota é
+# óbvia e cujo diretor é sempre o mesmo pagava ~3,2KB de referência sem usar.
+#   full ..... (default) nada muda — ausência da chave é idêntica byte a byte
+#   standard . sem `## Rotas`: rotas mapeiam frase→workflow, e quem já tem jeito
+#              de trabalhar assentado re-deriva (o catálogo está no maestro --help)
+#   lean ..... sem rotas, heurísticas e roster — TROCA declarada pelo dono do
+#              projeto: menos contexto, roteamento mais burro
+# Nada some em silêncio: tier ≠ full acrescenta UMA linha ao cabeçalho (que nunca
+# trunca) dizendo o que ficou de fora e onde está o texto completo — o mesmo
+# princípio do `no-stable` (E19) e do `direção: nenhuma` (E22). Valor inválido
+# degrada para full E é dito na linha; nunca derruba a sessão.
+# O corte roda ANTES do laço de orçamento: escolher tier é escolher o que cabe.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -244,6 +258,10 @@ parse_routing_table() {
 # Opcional: ausência não é erro, só significa "defaults globais".
 # ---------------------------------------------------------------------------
 P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_MEMCT=""; P_DOCS=""
+# E25/S-2502 — tier do preâmbulo. Default `full`: a chave ausente tem de produzir
+# exatamente a injeção de sempre. P_PREAMBLE_BAD guarda o valor recusado (para a
+# linha do cabeçalho) e vale como flag de "o .maestro.yaml está errado aqui".
+P_PREAMBLE="full"; P_PREAMBLE_BAD=""
 # `experts: []` (lista explicitamente vazia) é diferente de `experts` ausente:
 # a primeira é uma decisão do projeto, a segunda é silêncio. Só o texto bruto
 # distingue as duas, então o flag é levantado aqui, antes da normalização.
@@ -262,6 +280,12 @@ parse_profile() {
       NOTES)    P_NOTES="$val" ;;
       MEMCT)    [[ "$val" =~ ^[A-Za-z0-9._-]{1,64}$ ]] && P_MEMCT="$val" ;;
       DOCS)     P_DOCS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,80}$') ;;
+      PREAMBLE) case "$val" in
+                  full|standard|lean) P_PREAMBLE="$val" ;;
+                  "") ;;   # `preamble:` sem valor é silêncio, não escolha
+                  # Só ecoa de volta o que é seguro ecoar; o resto vira '?'.
+                  *) [[ "$val" =~ ^[A-Za-z0-9._-]{1,16}$ ]] && P_PREAMBLE_BAD="$val" || P_PREAMBLE_BAD="?" ;;
+                esac ;;
     esac
   done < <(awk '
     function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); return s }
@@ -271,6 +295,7 @@ parse_profile() {
     /^experts:/   { print "EXPERTS\t"  clean(substr($0, 9));  next }
     /^memory_container:/ { print "MEMCT\t" clean(substr($0, 18)); next }
     /^docs:/      { print "DOCS\t"     clean(substr($0, 6));  next }
+    /^preamble:/  { print "PREAMBLE\t" clean(substr($0, 10)); next }
     /^notes:/     { v = substr($0, 7); gsub(/\t/, " ", v); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); print "NOTES\t" v; next }
   ' "$PROFILE_FILE" 2>/dev/null)
 
@@ -543,6 +568,10 @@ build_and_emit() {
   # a métrica de tiering (ADR-004) e o edits_per_decision (ADR-008).
   sec_instr+="  --agents = quem executa o trabalho principal. Num workflow de vários steps, o revisor e o qa dos steps finais são implícitos e não entram; num workflow cujo único step é review ou qa, eles SÃO o executor e entram."$'\n'
   sec_instr+="Sem decision record válido, o gate registra aviso em toda edição (gate.mode: $GATE_MODE_EFFECTIVE)."$'\n'
+  # E25/S-2502 — decidir NÃO construir é desfecho, e desfecho não registrado não
+  # existe: sem esta linha ninguém digita o verbo, e o descarte volta daqui a três
+  # semanas como ideia nova, sem o porquê que já tinha sido pago.
+  sec_instr+="Decidir NÃO fazer também é desfecho: maestro outcome --session $SESSION_ID killed --reason \"por quê\" — descarte sem registro volta como ideia nova."$'\n'
 
   # S-501 — gate humano. Duas linhas no máximo: quem aprova está no telefone,
   # então a instrução precisa caber num olhar e a pergunta ser de uma palavra.
@@ -719,6 +748,22 @@ build_and_emit() {
     style_body=$(head -c 2000 -- "$style_file" 2>/dev/null || true)
     [[ -n "$style_body" ]] && sec_style=$'\n'"## Estilo de comunicação com o usuário"$'\n'"$style_body"$'\n'
   fi
+
+  # E25/S-2502 — tier do preâmbulo, ANTES do orçamento: o que o projeto dispensou
+  # não deve nem disputar bytes com o que ele quer. A linha vai no cabeçalho, que
+  # nunca trunca, porque ausência anunciada é fato; ausência muda é bug de
+  # confiança (a sessão acharia que o Maestro não tem rotas nenhuma).
+  if [[ -n "$P_PREAMBLE_BAD" ]]; then
+    sec_head+="preâmbulo: valor inválido no .maestro.yaml ('$P_PREAMBLE_BAD') — usando full (full | standard | lean)"$'\n'
+  fi
+  case "$P_PREAMBLE" in
+    standard)
+      sec_routes=""
+      sec_head+="preâmbulo: standard — rotas e workflows fora (íntegros em config/routing-table.yaml; maestro --help lista os workflows)"$'\n' ;;
+    lean)
+      sec_routes=""; sec_heur=""; sec_roster=""
+      sec_head+="preâmbulo: lean — rotas, workflows, heurísticas de execução e roster fora (config/routing-table.yaml e agents/ têm o texto íntegro); roteie com menos catálogo e pergunte quando a rota não for óbvia"$'\n' ;;
+  esac
 
   # Orçamento: head/instr/tail são intocáveis (session_id e instrução canônica).
   # O resto cede na ordem do API_SPEC (heurísticas → roster) e, como rede de
