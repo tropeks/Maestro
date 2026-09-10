@@ -1,6 +1,6 @@
-# Estado local do Maestro — nunca versionado (logs e decision records são efêmeros
-# e podem conter metadados de projetos; DATA_MODEL §3/§4, residência local).
-.maestro/
+# Estado local do Maestro (logs e decision records, efêmeros e com metadados de
+# projeto; DATA_MODEL §3/§4) mora em ~/.maestro, fora do repo. O `.maestro/` do
+# PROJETO carrega artefato que viaja com o repo: INTENT.md (E22) e orders/ (E15).
 *.jsonl
 
 # Runtime / ferramentas
