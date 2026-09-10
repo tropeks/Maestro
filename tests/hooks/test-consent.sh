@@ -10,6 +10,14 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 GATE="$REPO/hooks/pre-tool-gate.sh"
 BIN="$REPO/bin/maestro"
 
+# Ordem 002 / ponta 1: "$GATE"/"$BIN" são chamados abaixo com overrides
+# pontuais de MAESTRO_HOME/CLAUDE_PROJECT_DIR por comando, mas NÃO com
+# `env -u` — as demais MAESTRO_* de uma sessão real (MAESTRO_GATE_POLICY do
+# E26/S-2601, por exemplo) vazavam por todo o arquivo. Mesma classe de bug de
+# test-gate.sh; mesmo helper.
+source "$REPO/tests/lib/env-clean.sh"
+maestro_env_clean_inherit
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

@@ -10,6 +10,13 @@ BIN="$REPO/bin/maestro"
 SS="$REPO/hooks/session-start.sh"
 GATE="$REPO/hooks/pre-tool-gate.sh"
 
+# Ordem 002 / ponta 1: "$BIN"/"$SS"/"$GATE" são chamados abaixo sem `env -u`,
+# então MAESTRO_* de uma sessão real (MAESTRO_GATE_POLICY do E26/S-2601, por
+# exemplo) vazava por todo o arquivo. Mesma classe de bug de test-gate.sh;
+# mesmo helper.
+source "$REPO/tests/lib/env-clean.sh"
+maestro_env_clean_inherit
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export MAESTRO_HOME="$tmp/home"

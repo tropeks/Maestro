@@ -15,6 +15,15 @@ FIX="$REPO/tests/fixtures"
 PROJ="/home/user/proj"
 PLUGIN="/opt/maestro-plugin"
 
+# Ordem 002 / ponta 1: este arquivo chama "$GATE" DIRETO (sem `env -u` por
+# invocação), então MAESTRO_* que uma sessão real exporta de propósito (ex.:
+# MAESTRO_GATE_POLICY do E26/S-2601) vazava para TODO o teste — 40 FAIL fora
+# do runner virgem da CI, mascarados dentro de tests/run-all.sh só porque o
+# MAESTRO_HOME de tmpdir escondia o sintoma. Limpa o ambiente do PRÓPRIO
+# shell uma vez, no início, antes de qualquer export/chamada abaixo.
+source "$REPO/tests/lib/env-clean.sh"
+maestro_env_clean_inherit
+
 fail=0
 ok()   { echo "ok   $1"; }
 bad()  { echo "FAIL $1"; fail=1; }
