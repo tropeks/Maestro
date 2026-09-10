@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Maestro v1.15.0 — trilhos determinísticos, IA nas bordas",
+    "title": "Maestro v1.15.1 — trilhos determinísticos, IA nas bordas",
     "subtitle": "Camada de roteamento MoE para Claude Code · pós-E25: o descarte é desfecho e o preâmbulo é escolha do projeto",
     "output": "maestro-architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/tropeks/Maestro",
-      "revision": "edd38030d06d4067a8f68d91bb974d8eac481bef"
+      "revision": "a978175a4e285813f0f81e98b8c3abbe46215bbe"
     },
     "views": [
       {
@@ -150,7 +150,7 @@
       "type": "security",
       "label": "PreToolUse gates",
       "sublabel": "pre-tool + pre-bash",
-      "tag": "denylist ADR-003",
+      "tag": "política por sessão (E26)",
       "sources": [
         {
           "path": "hooks/pre-tool-gate.sh",
