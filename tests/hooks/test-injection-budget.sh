@@ -9,7 +9,19 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=7230   # bump deliberado 7080→7230 em 2026-09-09 (E25/S-2502): a INSTRUÇÃO
+RATCHET=7400   # bump deliberado 7230→7430 em 2026-09-10 (E26/S-2602): o Capitão pediu a
+               # regra de RELATÓRIO no estilo — relatório é estado, não jornada; obstáculo
+               # vencido não é notícia; erro pego antes de entregar não se relata. +186B
+               # medidos, e já DEPOIS de pagar parte: quatro linhas de tipografia viraram
+               # uma só no mesmo arquivo (-172B). Regra de comportamento vale mais que
+               # regra de formatação, e o corte foi a forma de dizer isso com o byte.
+               #
+               # ATENÇÃO — segundo bump em dois dias (7080→7230→7430). O ratchet não existe
+               # para impedir crescimento, existe para que ele seja dito em voz alta; dois
+               # seguidos é a hora de dizer: a PRÓXIMA adição vem com uma subtração do mesmo
+               # tamanho, ou não vem. Folga até o warn do doctor (7500) é de 100B.
+               #
+               # (bump anterior: 7080→7230 em 2026-09-09, E25/S-2502): a INSTRUÇÃO
                # CANÔNICA ganhou a linha do desfecho `killed` — "decidir NÃO fazer
                # também é desfecho", com o comando pronto. +150B medidos no cenário
                # abaixo (7064B → 7214B). Verbo que não aparece no preâmbulo ninguém

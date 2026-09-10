@@ -6,6 +6,23 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.15.2] — 2026-09-10
+
+### Changed
+- **A regra de estilo passa a governar o RELATÓRIO, não só a prosa.** Pedido do Capitão,
+  com o alvo certo: "peguei um erro meu antes que virasse dano" é trabalho, não notícia —
+  o que ele precisa é o que *ficou* por fazer. Três regras novas em
+  `config/communication-style.md`: relatório é **estado, não jornada** (o que ficou de pé,
+  o que ficou aberto, o que exige decisão dele); erro que **chegou** ao usuário se explica,
+  erro pego antes de entregar **não se relata**; e do que se fez sem perguntar, só o que
+  ele decidiria diferente ou não esperaria.
+- Pago em parte no mesmo arquivo: quatro linhas de tipografia viraram uma (−172B). Regra
+  de comportamento vale mais que regra de formatação, e o corte é a forma de dizer isso
+  com o byte. Saldo: +186B, ratchet da injeção 7230 → 7400.
+- **Segundo bump de ratchet em dois dias** (7080 → 7230 → 7400), dito em voz alta no
+  próprio arquivo do ratchet, que é para isso que ele serve: a próxima adição vem com uma
+  subtração do mesmo tamanho, ou não vem. Folga até o warn do doctor: 100B.
+
 ## [1.15.1] — 2026-09-10
 
 ### Fixed
