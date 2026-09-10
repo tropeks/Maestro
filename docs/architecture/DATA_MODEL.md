@@ -3,7 +3,7 @@ covers:
   - config/routing-table.yaml
   - hooks/lib/common.sh
   - agents/**
-reviewed: a978175
+reviewed: b13eed1
 ---
 # DATA_MODEL.md
 **Projeto:** Maestro | **Skill:** system-architect | **Versão:** 1.8 — 2026-09-05 (emendas E22/E23: §13 direção versionada, §9 ordem carimbada, §3 `delegation_proof`/`verifications`, §4 vocabulário completo, §8 `cmd_match`, §2 `verifications`/`commands`/`habits_ignore`, §10 `update_channel`)
