@@ -409,10 +409,10 @@ for pair in "rotina(passa):bash-rm-node-modules.json:50" \
   maestro_latency_measure "$GUARD" "$FIX/$fx"
   maestro_latency_report "$nome" "$MIN" "$MED" "$MAX" "$lim"
   case "$MAESTRO_LATENCY_VERDICT" in
-    ok) ok "latência ok — $nome (mediana ${MED}ms < teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms)" ;;
+    ok) ok "latência ok — $nome (mediana ${MED}ms < teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO])" ;;
     inconclusivo)
-      echo "INCONCLUSIVO sob carga — $nome (mediana ${MED}ms >= teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs acima do limiar — não conta como falha)" ;;
-    fail) bad "regressão de latência — $nome (mediana ${MED}ms >= teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs dentro do limiar — não é carga)" ;;
+      echo "INCONCLUSIVO sob carga — $nome (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — não conta como falha)" ;;
+    fail) bad "regressão de latência — $nome (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — sem carga para culpar)" ;;
   esac
 done
 

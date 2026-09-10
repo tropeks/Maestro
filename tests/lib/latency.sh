@@ -21,6 +21,19 @@
 # "inconclusivo sob carga" — a regra do diretor (medição inválida sem load ao
 # lado; sob carga, o veredito nunca é regressão) virando código.
 #
+# O TETO EM SI DEPENDE DA CARGA — isto não é detalhe, é o que faz o NFR
+# continuar sendo cobrado: a FOLGA existe para tolerar CONTENÇÃO, então só
+# pode valer quando há contenção medida. Se a folga valesse sempre (inclusive
+# em máquina quieta, como a CI), o teto de facto viraria 2x o orçamento em
+# TODO lugar e o NFR de <50ms deixaria de ser cobrado em qualquer máquina —
+# um hook que regredisse para perto de 2x o orçamento passaria "ok" até na CI
+# quieta, onde não há carga nenhuma para culpar. Por isso:
+#   carga por CPU ABAIXO do limiar (máquina quieta, o caso da CI) → teto =
+#     orçamento, ESTRITO. Mediana acima disso é FAIL de verdade — sem carga
+#     para culpar, é regressão de código, não de escalonamento.
+#   carga por CPU ACIMA do limiar (forge) → teto = orçamento × FOLGA. Abaixo
+#     disso é ok; acima é inconclusivo, nunca fail.
+#
 # Sourceável, não é enumerado como teste: "latency.sh" não casa com o glob
 # `test-*.sh` que tests/run-all.sh usa em tests/hooks|lib|cli (mesmo
 # precedente de tests/lib/env-clean.sh).
@@ -33,12 +46,14 @@ set -u
 # da suíte. Override por ambiente previsto para depuração pontual.
 : "${MAESTRO_LATENCY_N:=31}"
 
-# --- FOLGA: teto da mediana = orçamento × FOLGA -----------------------------
+# --- FOLGA: teto da mediana SOB CARGA = orçamento × FOLGA -------------------
 # NÃO é número novo: é a guarda de regressão que os dois testes já tinham
 # (mediana < 2x orçamento), que já havia pego o bug do `${v#*pat}` custando
 # 634ms no caminho de 22KB do gate. A ordem 002/ponta 3 promove essa guarda de
 # "regressão" a CRITÉRIO DE APROVAÇÃO (no lugar do mínimo de 1 execução) — o
-# número em si não muda, o papel dele muda.
+# número em si não muda, o papel dele muda. MAS só se aplica quando há
+# contenção medida (maestro_latency_read_load acima do limiar); em máquina
+# quieta o teto é o orçamento puro (ver maestro_latency_report).
 : "${MAESTRO_LATENCY_FOLGA:=2}"
 
 # --- limiar de carga por CPU, ×100 ------------------------------------------
@@ -102,17 +117,32 @@ maestro_latency_read_load() {
 # maestro_latency_report <nome> <min> <med> <max> <orcamento_ms>
 # Imprime a linha de diagnóstico (min/max continuam impressos — deixam de ser
 # critério, seguem úteis) e preenche MAESTRO_LATENCY_VERDICT em
-# {ok, inconclusivo, fail}. SÓ a mediana decide: teto = orçamento × FOLGA.
-# Estouro de teto com carga por CPU acima do limiar (maestro_latency_read_load
-# já lido antes) é "inconclusivo", nunca "fail" — chamador decide o que fazer
-# com cada veredito (este helper não sabe se a suíte trata inconclusivo como
-# ok ou como terceira categoria; isso é decisão de cada teste/CI).
+# {ok, inconclusivo, fail}, e MAESTRO_LATENCY_TETO / MAESTRO_LATENCY_TETO_MOTIVO
+# com o teto que DE FATO valeu nesta execução (para o chamador poder citá-lo
+# nas próprias mensagens, sem recalcular).
+#
+# O teto depende da carga (maestro_latency_read_load já lido antes de chamar):
+#   máquina quieta (MAESTRO_LATENCY_OVER=0) → teto = orçamento, ESTRITO.
+#     Mediana acima disso é FAIL — sem carga para culpar, é regressão de
+#     verdade. É como o NFR de <orçamento continua sendo cobrado (na CI, que
+#     roda em runner quieto).
+#   máquina sob carga (MAESTRO_LATENCY_OVER=1) → teto = orçamento × FOLGA.
+#     Abaixo é ok; acima é "inconclusivo", nunca "fail" — chamador decide se
+#     trata inconclusivo como ok ou como terceira categoria de saída; isso é
+#     decisão de cada teste/CI, não deste helper.
 maestro_latency_report() {
   local nome="$1" min="$2" med="$3" max="$4" lim="$5"
-  local teto=$(( lim * MAESTRO_LATENCY_FOLGA ))
-  printf '     %-24s min=%sms  mediana=%sms  max=%sms  (orçamento %sms, teto mediana %sms, load %s/%s CPUs)\n' \
-    "$nome" "$min" "$med" "$max" "$lim" "$teto" "$MAESTRO_LATENCY_LOAD1M" "$MAESTRO_LATENCY_NCPU"
-  if (( med < teto )); then
+  if (( MAESTRO_LATENCY_OVER == 1 )); then
+    MAESTRO_LATENCY_TETO=$(( lim * MAESTRO_LATENCY_FOLGA ))
+    MAESTRO_LATENCY_TETO_MOTIVO="com folga ${MAESTRO_LATENCY_FOLGA}x — carga acima do limiar"
+  else
+    MAESTRO_LATENCY_TETO="$lim"
+    MAESTRO_LATENCY_TETO_MOTIVO="estrito — máquina quieta"
+  fi
+  printf '     %-24s min=%sms  mediana=%sms  max=%sms  (orçamento %sms, teto %sms [%s], load %s/%s CPUs)\n' \
+    "$nome" "$min" "$med" "$max" "$lim" "$MAESTRO_LATENCY_TETO" "$MAESTRO_LATENCY_TETO_MOTIVO" \
+    "$MAESTRO_LATENCY_LOAD1M" "$MAESTRO_LATENCY_NCPU"
+  if (( med < MAESTRO_LATENCY_TETO )); then
     MAESTRO_LATENCY_VERDICT=ok
   elif (( MAESTRO_LATENCY_OVER == 1 )); then
     MAESTRO_LATENCY_VERDICT=inconclusivo
