@@ -23,6 +23,9 @@ PLUGIN="/opt/maestro-plugin"
 # shell uma vez, no início, antes de qualquer export/chamada abaixo.
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+# Ordem 002/ponta 3: protocolo de medição de latência (N, folga da mediana,
+# portão de carga) centralizado — ver tests/lib/latency.sh.
+source "$REPO/tests/lib/latency.sh"
 
 fail=0
 ok()   { echo "ok   $1"; }
@@ -380,44 +383,27 @@ fi
 echo "-- NFR: latência < 50ms"
 write_policy warn
 write_record sess-abc123 14400
-# Cronometragem com $EPOCHREALTIME (builtin): `date +%s%N` forkaria duas vezes
-# por amostra e mediria mais o fork do que o hook.
-# Critério é a MEDIANA: a máquina pode estar carregada (aqui, com outros agentes
-# no mesmo repo) e uma média é refém de um único outlier de escalonamento.
-measure() { # $1 = fixture  → define MED / MIN / MAX
-  local f="$1" n=25 i t0 t1 ts=()
-  for i in 1 2 3; do "$GATE" < "$FIX/$f" >/dev/null 2>&1; done   # aquece
-  for ((i = 0; i < n; i++)); do
-    t0="${EPOCHREALTIME/./}"
-    "$GATE" < "$FIX/$f" >/dev/null 2>&1
-    t1="${EPOCHREALTIME/./}"
-    ts+=( $(( (t1 - t0) / 1000 )) )
-  done
-  local sorted
-  mapfile -t sorted < <(printf '%s\n' "${ts[@]}" | sort -n)
-  MED="${sorted[$((n / 2))]}"; MIN="${sorted[0]}"; MAX="${sorted[$((n - 1))]}"
-}
-# Critério: o MÍNIMO é o estimador do custo do CÓDIGO (o resto da distribuição
-# é ruído de escalonamento — esta máquina é compartilhada). A mediana entra
-# como guarda de regressão a 2x o orçamento: foi ela que pegou a versão em que
-# `${v#*pat}` fazia o caminho de 22 KB custar 634ms.
+# Ordem 002/ponta 3: critério é a MEDIANA de N contra teto = orçamento × folga
+# (não mais o mínimo de 1 execução — o mínimo se move com a carga da máquina
+# compartilhada). Acima do limiar de carga por CPU, estouro de teto é
+# "inconclusivo sob carga", nunca "fail". Protocolo, N, folga e limiar de
+# carga em tests/lib/latency.sh (mesmo helper usado por
+# test-guarda-destrutiva.sh — o método sempre foi compartilhado, agora o
+# arquivo também é).
+maestro_latency_read_load
 # `adv-huge-path` (22 KB) não é carga real — nenhum arquivo tem esse caminho.
 # O orçamento dele existe só para provar que o gate não degenera.
 for pair in "gate_pass:edit-go.json:50" "denylist:deny-hooks-lib.json:50" \
             "allowlist:edit-md-root.json:50" "caminho-22KB(patológico):adv-huge-path.json:150"; do
   nome="${pair%%:*}"; resto="${pair#*:}"; fx="${resto%%:*}"; lim="${resto##*:}"
-  measure "$fx"
-  printf '     %-24s min=%sms  mediana=%sms  max=%sms  (orçamento %sms)\n' "$nome" "$MIN" "$MED" "$MAX" "$lim"
-  if [[ "$MIN" -lt "$lim" ]]; then
-    ok "latência <${lim}ms — $nome (min ${MIN}ms)"
-  else
-    bad "latência estourada — $nome (min ${MIN}ms >= ${lim}ms)"
-  fi
-  if [[ "$MED" -lt $(( lim * 2 )) ]]; then
-    ok "sem regressão de latência — $nome (mediana ${MED}ms)"
-  else
-    bad "regressão de latência — $nome (mediana ${MED}ms >= $(( lim * 2 ))ms)"
-  fi
+  maestro_latency_measure "$GATE" "$FIX/$fx"
+  maestro_latency_report "$nome" "$MIN" "$MED" "$MAX" "$lim"
+  case "$MAESTRO_LATENCY_VERDICT" in
+    ok) ok "latência ok — $nome (mediana ${MED}ms < teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms)" ;;
+    inconclusivo)
+      echo "INCONCLUSIVO sob carga — $nome (mediana ${MED}ms >= teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs acima do limiar — não conta como falha)" ;;
+    fail) bad "regressão de latência — $nome (mediana ${MED}ms >= teto $(( lim * MAESTRO_LATENCY_FOLGA ))ms; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs dentro do limiar — não é carga)" ;;
+  esac
 done
 
 # Sanidade final: o ~/.maestro real não foi tocado por este teste.
