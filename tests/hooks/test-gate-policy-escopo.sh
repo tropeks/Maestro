@@ -26,6 +26,33 @@ fail=0
 ok()  { printf 'ok   %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 
+# Ordem 001 / causa-raiz do falso-verde: `env VAR=VAL ... "$@" bash "$HOOK"`
+# SEM `-u` herda o resto do ambiente do processo que chama este teste. Numa
+# sessão real, MAESTRO_GATE_POLICY (e as demais MAESTRO_* que session-start.sh
+# e pre-tool-gate.sh leem, direto ou via lib/common.sh) já vem exportada — o
+# caso "sem a variável" deixava de existir de verdade, e as asserções sobre o
+# caminho/comportamento PADRÃO caíam só fora da CI (que roda em runner virgem).
+# Lista levantada com `grep -ohP 'MAESTRO_[A-Z_]+' hooks/session-start.sh
+# hooks/pre-tool-gate.sh hooks/lib/common.sh`. MAESTRO_HOME entra também: os
+# `run()`/`gate_rc()` abaixo sempre a redeclaram depois, mas o `-u` aqui
+# documenta a lista completa em vez de uma exceção implícita.
+MAESTRO_LEAK_VARS=(
+  MAESTRO_AGENTS_DIR MAESTRO_DEBUG MAESTRO_ETHOS_FILE MAESTRO_GATE_ALLOW_EXT
+  MAESTRO_GATE_ALLOW_PATHS MAESTRO_GATE_DENY_PATHS MAESTRO_GATE_DENY_SELF
+  MAESTRO_GATE_MAX_PATH MAESTRO_GATE_MODE MAESTRO_GATE_ORDER_FROZEN
+  MAESTRO_GATE_POLICY MAESTRO_GATE_STDIN_TIMEOUT MAESTRO_HOME
+  MAESTRO_INJECTION_BUDGET MAESTRO_LOCK_TRIES MAESTRO_LOG_DIR
+  MAESTRO_LOG_FILE MAESTRO_LOG_MAX_BYTES MAESTRO_OFF MAESTRO_PLUGIN_ROOT
+  MAESTRO_ROUTING_TABLE MAESTRO_SESSIONS_DIR MAESTRO_STYLE_FILE
+  MAESTRO_TTL_SECONDS MAESTRO_UPDATED_FROM MAESTRO_UPDATED_TO
+  MAESTRO_UPDATE_REEXEC
+)
+# NÃO entram: MAESTRO_NO_UPDATE_CHECK e as MAESTRO_TELEMETRY_*/MAESTRO_UPDATE_*
+# de tests/run-all.sh — são a rede de segurança de E19 (sem rede em runtime) e
+# precisam SOBREVIVER herdadas, senão os hooks tentariam checar update de verdade.
+MAESTRO_UNSET_FLAGS=()
+for _v in "${MAESTRO_LEAK_VARS[@]}"; do MAESTRO_UNSET_FLAGS+=(-u "$_v"); done
+
 H="$SANDBOX/home"
 PA="$SANDBOX/alpha"; PB="$SANDBOX/beta"
 mkdir -p "$H" "$PA" "$PB"
@@ -36,7 +63,8 @@ printf 'project: beta\nexperts: [revisor]\n'  >"$PB/.maestro.yaml"
 run() {
   local sid="$1" proj="$2"; shift 2
   printf '{"session_id":"%s"}' "$sid" \
-    | env MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$proj" MAESTRO_NO_UPDATE_CHECK=1 "$@" \
+    | env "${MAESTRO_UNSET_FLAGS[@]}" \
+      MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$proj" MAESTRO_NO_UPDATE_CHECK=1 "$@" \
       bash "$HOOK" >/dev/null 2>"$SANDBOX/err"
   return 0
 }
@@ -68,7 +96,8 @@ sed -i 's/^MAESTRO_GATE_MODE=.*/MAESTRO_GATE_MODE="block"/' "$PAF"
 sed -i 's/^MAESTRO_GATE_MODE=.*/MAESTRO_GATE_MODE="warn"/'  "$PBF"
 gate_rc() { # gate_rc <arquivo de política> → rc do hook sem decision record
   printf '{"session_id":"nao-existe","tool_name":"Edit","tool_input":{"file_path":"%s/x.go"}}' "$PA" \
-    | env MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$PA" MAESTRO_GATE_POLICY="$1" \
+    | env "${MAESTRO_UNSET_FLAGS[@]}" \
+      MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$PA" MAESTRO_GATE_POLICY="$1" \
       bash "$GATE" >/dev/null 2>&1
   printf '%s' "$?"
 }
