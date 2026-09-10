@@ -329,8 +329,12 @@ function hd_is_close(l,   s) {
       sub(/^(#+|\/\/+|\/\*+|\*+|--+)[ \t]?/, "", body)
       sub(/^[ \t]+/, "", body)
       # item de LISTA é prosa, mesmo citando código que termina em `;` — o
-      # rodapé de limitações do pre-bash-guard era falso positivo (2026-08-29)
-      if (body ~ /^[-•*] /) body = ""
+      # rodapé de limitações do pre-bash-guard era falso positivo (2026-08-29).
+      # Lista NUMERADA (`1. `, `2) `) entra pela mesma porta: nenhuma linguagem
+      # começa instrução com dígito seguido de ponto, então não há como confundir
+      # com código, e sem isto o autor é levado a reescrever a prosa para calar o
+      # sensor — o anti-hábito que o guia deste sensor justamente proíbe (E26).
+      if (body ~ /^([-•*]|[0-9][0-9]?[.)]) /) body = ""
       # TABELA de documentação no cabeçalho (`MAESTRO_UPDATE_TIMEOUT=5   segundos
       # de timeout`) é prosa em colunas, não atribuição comentada: o que a
       # denuncia é o espaço LARGO separando o valor da descrição, que ninguém

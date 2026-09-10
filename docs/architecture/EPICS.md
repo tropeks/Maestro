@@ -852,6 +852,35 @@ de fora (mesmo princípio do `no-stable` do E19 e do `direção: nenhuma` do E22
 
 ---
 
+### E26 — Sessões concorrentes: a política do gate deixa de ser global (P1, S) — emenda 2026-09-10, aprovada pelo Romulo
+Origem: o desenho de **um gerente por projeto** (cada projeto com a sua sessão Claude num
+pane do herdr, e o Spock cobrando os gerentes em vez de o Capitão). O levantamento achou o
+bloqueio antes da primeira linha de código: `hooks/pre-tool-gate.sh` sempre leu
+`${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}`, mas o `session-start.sh` gravava
+sempre no caminho fixo — e **nada no plugin escrevia a variável**. Com duas sessões vivas
+na mesma máquina, abrir a do projeto B sobrescrevia a política da sessão do projeto A:
+`MAESTRO_GATE_MODE`, as zonas congeladas da ordem em execução (`MAESTRO_GATE_ORDER_FROZEN`,
+E15/S-1504) e a raiz do plugin. A partir dali A era policiada pelas regras de B, sem um
+aviso sequer. Uma sessão só nunca expôs isso; o buraco é da forma "só aparece quando o
+sistema cresce", que é a pior de descobrir em produção.
+
+**S-2601 — escrita e leitura no mesmo caminho.** `write_gate_policy` honra
+`MAESTRO_GATE_POLICY`; sem a variável, caminho e conteúdo idênticos aos de antes (nenhuma
+instalação muda por atualizar). Caminho absoluto sem espaço; torto degrada para o padrão
+com aviso. Diretório criado se faltar, temporário irmão do destino. O teste
+(`tests/hooks/test-gate-policy-escopo.sh`) prova as duas pontas do contrato — que a
+sessão de B não toca na política de A, e que o **gate lê** o arquivo escopado —, e foi
+verificado reprovando contra o código anterior.
+
+**Fora do épico:** os gerentes e o supervisor em si. O plugin de persona (`spock`) vive
+num marketplace próprio (`~/dev/personas`) e a camada determinística de cobrança vive no
+`bridge.py` do legatus-vnext — nenhum dos dois é código do Maestro. O que o Maestro deve a
+esse desenho é exatamente isto: suportar N sessões na mesma máquina sem se corromper.
+
+**Dependências:** E2 (gate), E15 (zonas congeladas).
+
+---
+
 ## Grafo de dependências
 
 ```

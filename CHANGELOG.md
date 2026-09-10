@@ -6,6 +6,30 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.15.1] — 2026-09-10
+
+### Fixed
+- **A política do gate era um arquivo global, e duas sessões se corrompiam em silêncio.**
+  `hooks/pre-tool-gate.sh` sempre leu `${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}`,
+  mas o `session-start.sh` gravava sempre no caminho fixo — e nada no plugin escrevia a
+  variável. Com duas sessões vivas na mesma máquina, abrir a do projeto B sobrescrevia a
+  política da sessão do projeto A: modo do gate, zonas congeladas da ordem em execução
+  (E15/S-1504) e a raiz do plugin. A partir dali A era policiada pelas regras de B, sem um
+  aviso sequer. Agora escrita e leitura usam o mesmo caminho. Sem a variável, caminho e
+  conteúdo são byte a byte os de antes. Valor aceito: absoluto, sem espaço nem quebra;
+  torto degrada para o padrão com aviso. O teste novo foi verificado **reprovando contra o
+  código anterior** — teste que passa dos dois lados não prova nada.
+- **Falso positivo do sensor `dead-code`, mesma família da correção anterior:** lista
+  NUMERADA em comentário (`#  1. faz isto;`) era lida como código comentado, porque o
+  guarda de item de lista cobria `-`, `•` e `*` mas não `1.`/`2)`. Nenhuma linguagem começa
+  instrução com dígito seguido de ponto. Sem o conserto, o autor é levado a reescrever a
+  prosa para calar o sensor — exatamente o anti-hábito que o guia deste sensor proíbe.
+
+### Docs
+- E26 no EPICS (o que o Maestro deve ao desenho de um gerente por projeto: suportar N
+  sessões na mesma máquina sem se corromper) e a emenda correspondente no contrato do
+  `session-start.sh` no API_SPEC §1.
+
 ## [1.15.0] — 2026-09-09
 
 Duas ideias lidas no [pstack](https://github.com/no-session/pstack) (fork do gstack para

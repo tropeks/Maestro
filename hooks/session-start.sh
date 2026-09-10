@@ -2,7 +2,8 @@
 # maestro hooks/session-start.sh — E2 / S-201
 #
 # Injeta o bloco <maestro-routing> no contexto da sessão (stdout), compila a
-# política do gate para $MAESTRO_HOME/gate-policy.sh (fonte de verdade única:
+# política do gate para $MAESTRO_GATE_POLICY (default $MAESTRO_HOME/gate-policy.sh;
+# E26: por sessão, para N gerentes na mesma máquina) — fonte de verdade única:
 # config/routing-table.yaml), limpa decision records expirados e rotaciona o log.
 #
 # REGRAS DURAS (CLAUDE.md + CONTRATO):
@@ -427,7 +428,30 @@ write_gate_policy() {
   GATE_MODE_EFFECTIVE="$mode"
 
   maestro_ensure_dirs
-  local dst="$MAESTRO_HOME/gate-policy.sh" tmp="$MAESTRO_HOME/.gate-policy.$$.tmp"
+  # E26/S-2601 — o caminho da política é o MESMO que o gate lê
+  # (pre-tool-gate.sh: `${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}`). Enquanto
+  # a escrita ignorava a variável, o arquivo era ÚNICO e global: abrir sessão no projeto
+  # B sobrescrevia a política da sessão viva do projeto A — modo do gate, zonas
+  # congeladas da ordem em execução e a raiz do plugin —, e A passava a ser policiada
+  # pelas regras de B. Sem valor na env, o caminho é o de sempre; com valor, cada sessão
+  # tem o seu, que é o que permite mais de um gerente na mesma máquina.
+  # Caminho ABSOLUTO e sem espaço/quebra: valor torto degrada para o default em vez de
+  # espalhar arquivo por aí — perfil de sessão é dado de ambiente, não contrato.
+  local dst="$MAESTRO_HOME/gate-policy.sh"
+  if [[ -n "${MAESTRO_GATE_POLICY:-}" ]]; then
+    if [[ "$MAESTRO_GATE_POLICY" == /*/?* && "$MAESTRO_GATE_POLICY" != *[$' \t\n']* ]]; then
+      dst="$MAESTRO_GATE_POLICY"
+    else
+      warn "MAESTRO_GATE_POLICY inválido (exige caminho absoluto sem espaço); usando o padrão"
+    fi
+  fi
+  # O tmp é IRMÃO do destino: o mv atômico exige o mesmo sistema de arquivos. `${dst##*/}`
+  # em vez de basename porque o session-start tem NFR de latência e não paga fork por isso.
+  local tmp="${dst%/*}/.${dst##*/}.$$.tmp"
+  [[ -d "${dst%/*}" ]] || mkdir -p "${dst%/*}" 2>/dev/null || {
+    warn "não consigo criar ${dst%/*}; usando o padrão"
+    dst="$MAESTRO_HOME/gate-policy.sh"; tmp="$MAESTRO_HOME/.gate-policy.$$.tmp"
+  }
   {
     printf '# gerado por maestro session-start — nao editar\n'
     printf 'MAESTRO_GATE_MODE="%s"\n'        "$mode"

@@ -127,7 +127,7 @@ config/routing-table.yaml + .maestro.yaml + agents/*.md
 3. valida tokens antes de colocá-los na injeção ou na policy;
 4. lê o `.maestro.yaml` do projeto, se existir;
 5. filtra o roster conforme `experts:`;
-6. compila `$MAESTRO_HOME/gate-policy.sh`;
+6. compila `$MAESTRO_GATE_POLICY` (default `$MAESTRO_HOME/gate-policy.sh`);
 7. remove decision records expirados e pode rotacionar o log;
 8. emite `<maestro-routing>` com session id, rotas, heurísticas, bindings,
    gates humanos, profile, brief e roster;

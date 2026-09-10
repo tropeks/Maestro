@@ -22,7 +22,7 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 ### `hooks/session-start.sh` — evento SessionStart
 - **Lê:** `$CLAUDE_PROJECT_DIR/.maestro.yaml` (se existir), `config/routing-table.yaml`, índice do roster.
 - **Emite (stdout → contexto):** bloco `<maestro-routing>` com: **o `session_id` literal da sessão** (para o Claude passar ao CLI), tabela de rotas, heurísticas de execução, lista de agentes (nome + 1 linha + modelo), instrução canônica: *"antes de editar código, registre a decisão com `maestro-decide --session <id>`"*.
-- **Também:** limpa decision records expirados (TTL 4h) e **recompila a política do gate** (`~/.maestro/gate-policy.sh`) a partir do YAML — fonte de verdade única.
+- **Também:** limpa decision records expirados (TTL 4h) e **recompila a política do gate** (`$MAESTRO_GATE_POLICY`, default `~/.maestro/gate-policy.sh`) a partir do YAML — fonte de verdade única.
 - **Erros:** qualquer falha → exit 0 com stderr logado (degrada, nunca bloqueia sessão).
 - **Orçamento:** saída ≤ **8.000 bytes** (proxy determinístico de ~2k tokens). Truncamento em ordem: heurísticas → índice do roster → nunca a instrução canônica nem o session_id.
 - **Emenda E7 (S-707/S-709):** emite também `## Mote de execução` (`config/execution-ethos.md`) e `## Estilo de comunicação com o usuário` (`config/communication-style.md`) — teto de 2.000 bytes por arquivo; ausente → seção omitida em silêncio. No orçamento cedem ANTES de tudo, nesta ordem: estilo primeiro, mote depois — referência de comportamento, não instrução de ação.
@@ -70,6 +70,18 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   `config/routing-table.yaml` e `agents/`; valor fora do enum degrada para `full` e o diz.
   Ratchet da injeção bumpado deliberadamente por (a), no mesmo commit, conforme o
   protocolo no cabeçalho de `tests/hooks/test-injection-budget.sh`.
+
+- **Emenda E26 (S-2601):** a política do gate passa a ser gravada em
+  `${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}` — **o mesmo caminho que o
+  `pre-tool-gate.sh` sempre leu**. Enquanto a escrita ignorava a variável, o arquivo era
+  único e global: abrir sessão no projeto B sobrescrevia a política da sessão VIVA do
+  projeto A (modo do gate, `MAESTRO_GATE_ORDER_FROZEN` da ordem em execução e
+  `MAESTRO_PLUGIN_ROOT`), e A passava a ser policiada pelas regras de B, em silêncio. Sem
+  a variável, caminho e conteúdo são byte a byte os de antes — nenhuma instalação muda de
+  comportamento por atualizar. Valor aceito: caminho **absoluto, sem espaço nem quebra de
+  linha**; torto degrada para o padrão com aviso no stderr. O diretório é criado se
+  faltar; o temporário é irmão do destino (o `mv` atômico exige o mesmo sistema de
+  arquivos). Motivação: mais de um gerente na mesma máquina, cada um com o seu escopo.
 
 ### `hooks/pre-tool-gate.sh` — evento PreToolUse, matcher `Edit|Write|MultiEdit`
 - **Dependência declarada:** `jq` (parsing de stdin; validado pelo doctor). Fixtures adversariais em `tests/fixtures/`.
