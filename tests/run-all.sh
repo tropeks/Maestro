@@ -3,6 +3,17 @@
 # (review P2-8) — cada teste ainda isola o seu próprio, isto é a rede de segurança.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Ordem 002 / ponta 1: rodar a suíte de DENTRO de uma sessão real herdava
+# MAESTRO_* que a sessão exporta de propósito (MAESTRO_GATE_POLICY do E26/
+# S-2601 é o caso que expôs isto) — cada arquivo de teste isolado mentia
+# dezenas de FAIL, e a própria suíte dava verde por um motivo ERRADO: o
+# MAESTRO_HOME de tmpdir abaixo mascarava a fuga, não a eliminava. Limpa o
+# PRÓPRIO ambiente do runner ANTES de despachar qualquer arquivo de teste —
+# so a suíte rodando aqui dentro fica equivalente ao runner virgem da CI.
+source "$ROOT/tests/lib/env-clean.sh"
+maestro_env_clean_inherit
+
 SUITE_HOME=$(mktemp -d)
 export MAESTRO_HOME="$SUITE_HOME"
 # E19: a suíte nunca toca a rede — o teste do update usa remoto file:// e liga por conta própria.

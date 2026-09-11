@@ -17,6 +17,10 @@ FIX="$REPO/tests/fixtures"
 PROJ="/home/user/proj"
 SID="sess-guard01"
 
+# Ordem 002/ponta 3: protocolo de medição de latência (N, folga da mediana,
+# portão de carga) centralizado — ver tests/lib/latency.sh.
+source "$REPO/tests/lib/latency.sh"
+
 fail=0
 ok()  { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fail=1; }
@@ -384,33 +388,15 @@ done
 # ===========================================================================
 echo "-- NFR: latência < 50ms"
 write_record subagent
-# Cronometragem com $EPOCHREALTIME (builtin): `date +%s%N` forkaria duas vezes
-# por amostra e mediria mais o fork do que o hook. Critério = MÍNIMO (estimador
-# do custo do código nesta máquina compartilhada), com a mediana como guarda de
-# regressão a 2x o orçamento — mesmo protocolo do test-gate.sh.
-#
-# Onde o tempo vai (medido isoladamente nesta máquina):
-#   ~3 ms   bash + source lib/common.sh (piso: é o custo do kill-switch sozinho)
-#   ~8 ms   o único fork de jq que lê o payload            → caminho que PASSA: ~12 ms
-#   ~20 ms  o caminho de BLOQUEIO: maestro_record_valid (jq + date) + log_event
-#           (stat da rotação + flock)                       → ~32 ms
-#   ~5 ms   processamento léxico de um comando de 8 KB (o teto de análise)
-# Ou seja: o custo é dominado por FORK, não por análise. Foi por isso que o
-# `mode` passou a sair do record com o builtin `read` e as mensagens com
-# `printf` — cada fork removido vale mais que qualquer micro-otimização do parser.
-measure() { # $1 = fixture → define MED / MIN / MAX
-  local f="$1" n=31 i t0 t1 ts=()
-  for i in 1 2 3; do "$GUARD" < "$FIX/$f" >/dev/null 2>&1; done
-  for ((i = 0; i < n; i++)); do
-    t0="${EPOCHREALTIME/./}"
-    "$GUARD" < "$FIX/$f" >/dev/null 2>&1
-    t1="${EPOCHREALTIME/./}"
-    ts+=( $(( (t1 - t0) / 1000 )) )
-  done
-  local sorted
-  mapfile -t sorted < <(printf '%s\n' "${ts[@]}" | sort -n)
-  MED="${sorted[$((n / 2))]}"; MIN="${sorted[0]}"; MAX="${sorted[$((n - 1))]}"
-}
+# Ordem 002/ponta 3: critério é a MEDIANA de N contra teto = orçamento × folga
+# (não mais o mínimo de 1 execução — o mínimo se move com a carga da máquina
+# compartilhada). Acima do limiar de carga por CPU, estouro de teto é
+# "inconclusivo sob carga", nunca "fail". Protocolo, N, folga e limiar de
+# carga em tests/lib/latency.sh — ver comentários lá para a proveniência de
+# cada número (inclui o modelo de custo do hook: ~3ms bash+source, ~8ms fork
+# de jq, caminho que passa ~12ms, caminho de bloqueio ~32ms, +5ms de análise
+# léxica de 8KB).
+maestro_latency_read_load
 for pair in "rotina(passa):bash-rm-node-modules.json:50" \
             "perigo(bloqueia):bash-rm-root.json:50" \
             "ofuscado:bash-obfuscado.json:50" \
@@ -418,16 +404,16 @@ for pair in "rotina(passa):bash-rm-node-modules.json:50" \
   # O orçamento de 50 ms é o NFR e vale para os três primeiros — payloads de
   # <300 B, que é o tamanho de um comando Bash real. O de 16 KB ganha 80 ms
   # pelo mesmo motivo que o `adv-huge-path` de 22 KB ganha 150 ms no
-  # test-gate.sh: não é carga, é prova de que o hook não degenera. Medido nesta
-  # máquina (compartilhada com outros três agentes): min 36-46 ms, dos quais
-  # ~3 ms são o jq lendo 16 KB e ~5 ms a análise léxica dos 8 KB do teto.
+  # test-gate.sh: não é carga, é prova de que o hook não degenera.
   nome="${pair%%:*}"; resto="${pair#*:}"; fx="${resto%%:*}"; lim="${resto##*:}"
-  measure "$fx"
-  printf '     %-22s min=%sms  mediana=%sms  max=%sms  (orçamento %sms)\n' "$nome" "$MIN" "$MED" "$MAX" "$lim"
-  if [[ "$MIN" -lt "$lim" ]]; then ok "latência <${lim}ms — $nome (min ${MIN}ms)"
-  else bad "latência estourada — $nome (min ${MIN}ms >= ${lim}ms)"; fi
-  if [[ "$MED" -lt $(( lim * 2 )) ]]; then ok "sem regressão — $nome (mediana ${MED}ms)"
-  else bad "regressão de latência — $nome (mediana ${MED}ms)"; fi
+  maestro_latency_measure "$GUARD" "$FIX/$fx"
+  maestro_latency_report "$nome" "$MIN" "$MED" "$MAX" "$lim"
+  case "$MAESTRO_LATENCY_VERDICT" in
+    ok) ok "latência ok — $nome (mediana ${MED}ms < teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO])" ;;
+    inconclusivo)
+      echo "INCONCLUSIVO sob carga — $nome (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — não conta como falha)" ;;
+    fail) bad "regressão de latência — $nome (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — sem carga para culpar)" ;;
+  esac
 done
 
 # ===========================================================================

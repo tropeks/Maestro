@@ -23,26 +23,11 @@ chk()  { if [[ "$1" == "yes" ]]; then ok "$2"; else bad "$2${3:+ — $3}"; fi; }
 # e pre-tool-gate.sh leem, direto ou via lib/common.sh) já vem exportada — o
 # caso "sem a variável" deixava de existir de verdade, e as asserções sobre o
 # caminho/comportamento PADRÃO caíam só fora da CI (que roda em runner virgem).
-# Lista levantada com `grep -ohP 'MAESTRO_[A-Z_]+' hooks/session-start.sh
-# hooks/pre-tool-gate.sh hooks/lib/common.sh`. MAESTRO_HOME entra também: os
-# `run()` abaixo sempre a redeclaram depois, mas o `-u` aqui documenta a lista
-# completa em vez de uma exceção implícita.
-MAESTRO_LEAK_VARS=(
-  MAESTRO_AGENTS_DIR MAESTRO_DEBUG MAESTRO_ETHOS_FILE MAESTRO_GATE_ALLOW_EXT
-  MAESTRO_GATE_ALLOW_PATHS MAESTRO_GATE_DENY_PATHS MAESTRO_GATE_DENY_SELF
-  MAESTRO_GATE_MAX_PATH MAESTRO_GATE_MODE MAESTRO_GATE_ORDER_FROZEN
-  MAESTRO_GATE_POLICY MAESTRO_GATE_STDIN_TIMEOUT MAESTRO_HOME
-  MAESTRO_INJECTION_BUDGET MAESTRO_LOCK_TRIES MAESTRO_LOG_DIR
-  MAESTRO_LOG_FILE MAESTRO_LOG_MAX_BYTES MAESTRO_OFF MAESTRO_PLUGIN_ROOT
-  MAESTRO_ROUTING_TABLE MAESTRO_SESSIONS_DIR MAESTRO_STYLE_FILE
-  MAESTRO_TTL_SECONDS MAESTRO_UPDATED_FROM MAESTRO_UPDATED_TO
-  MAESTRO_UPDATE_REEXEC
-)
-# NÃO entram: MAESTRO_NO_UPDATE_CHECK e as MAESTRO_TELEMETRY_*/MAESTRO_UPDATE_*
-# de tests/run-all.sh — são a rede de segurança de E19 (sem rede em runtime) e
-# precisam SOBREVIVER herdadas, senão os hooks tentariam checar update de verdade.
-MAESTRO_UNSET_FLAGS=()
-for _v in "${MAESTRO_LEAK_VARS[@]}"; do MAESTRO_UNSET_FLAGS+=(-u "$_v"); done
+# Ordem 002 / ponta 1: a lista e o helper viraram fonte única compartilhada
+# com test-gate-policy-escopo.sh (e com os arquivos fechados nesta mesma
+# ordem) — ver tests/lib/env-clean.sh.
+source "$REPO/tests/lib/env-clean.sh"
+maestro_env_clean_flags
 
 HEUR_HDR='## Heurísticas de execução'
 ROSTER_HDR='## Roster — nome (modelo). A descrição de cada agente já está no contexto.'
