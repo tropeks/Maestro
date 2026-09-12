@@ -343,6 +343,17 @@ rótulo exigido. Ordem que não toca área declarada segue na regra anterior.
 **Emenda E23a/S-2301 (2026-09-05):** todo `--accept` emite também `delegation
 phase=accepted` com `n` = id da ordem — a última fase do funil.
 
+**Emenda (issue #6, 2026-09-12) — o carimbo do aceite não invalida o próprio
+recibo.** `.maestro/` não entra no que a suíte prova — é estado de
+governança. `bin/maestro-wtree` (DATA_MODEL §3 emenda v1.10) passa a excluir
+`.maestro/**` do fingerprint em `git add -A`, então o `accepted_at`/
+`accepted_session`/`accepted_tree` que este mesmo `--accept` grava em
+`.maestro/orders/NNN.md` deixa de mover o `wtree_after` comparado na linha
+339 e em `maestro evidence` (DATA_MODEL §8). Antes desta emenda, projeto que
+rastreia `.maestro/` (E15/E22) via o próprio aceite vencer o recibo que o
+autorizou — caso real: NetForge, ordem 016. Prova: `tests/cli/test-order.sh`,
+falhando contra o `bin/maestro-wtree` anterior e passando com a exclusão.
+
 ### `maestro intent` (E22/S-2201)
 ```
 maestro intent [--show|--check|--init|--bump] [--project d] [--session s]

@@ -252,6 +252,31 @@ omitido em silêncio (nunca é erro de fluxo). Formato validado pelo doctor
 de conteúdo, não caminho nem texto, mas o vocabulário do JSONL só muda por emenda própria.
 `# classification: confidential` — **PROIBIDO** campo com texto do prompt do usuário.
 
+#### Emenda v1.10 (issue #6, 2026-09-12) — `.maestro/**` sai do fingerprint
+`bin/maestro-wtree` passa a montar o index temporário com `git add -A -- ':(exclude).maestro/**'`
+em vez de `git add -A` cru (mesma forma de pathspec de exclusão já usada em
+`bin/maestro:1699` para o drift de docs canônicos). Causa: projeto que segue E15
+(work order versionada) e E22 (`INTENT.md` versionado) **rastreia** `.maestro/`
+— não é `.gitignore` — então o `git add -A` sem exclusão enxergava o próprio
+carimbo que `maestro order --accept` grava em `.maestro/orders/NNN.md`
+(`accepted_at`/`accepted_session`/`accepted_tree`). O ciclo era circular:
+aceitar a ordem escrevia no disco, o fingerprint ao vivo (§8) divergia do
+`wtree_after` congelado no recibo, e a leitura seguinte do ledger relatava
+"conteúdo mudou desde a prova" — **o aceite invalidava o recibo que o
+autorizou**. Caso real: NetForge, ordem 016 (2026-09-12), suíte de ~8 minutos
+re-rodada só para provar código byte-idêntico.
+
+`.maestro/` não entra no que a suíte prova — é estado de governança. A
+exclusão vale para TODO consumidor de `bin/maestro-wtree` (este campo `wtree`
+do decision record e o `wtree_before`/`wtree_after` do ledger de evidência,
+§8): mudança dentro de `.maestro/` (nova ordem, carimbo de aceite, edição do
+INTENT) nunca move o fingerprint; as propriedades 1–3 do cabeçalho de
+`bin/maestro-wtree` continuam valendo integralmente para todo o resto da
+árvore. Teste: `tests/cli/test-order.sh` (issue #6) — reproduz o caso do
+NetForge (recibo verde, `--accept` depois, leitura direta do ledger exige
+`VÁLIDA`), provado FALHANDO contra o `bin/maestro-wtree` anterior a esta
+emenda e PASSANDO com a exclusão aplicada.
+
 #### Emenda v1.5 (E10/S-1001) — desfecho no decision record
 `maestro outcome` acrescenta `outcome` (accepted|rework|reverted), `outcome_ts` e
 opcionalmente `suite` (pass|fail) ao record da sessão — a variável dependente do
@@ -602,6 +627,18 @@ a MESMA fórmula do recibo — derivação em dois lugares viraria falso "VENCID
 sempre foi gravado; até o E23b nunca era comparado, e era por isso que
 `maestro evidence --record -- true` valia como prova da suíte. Com declaração no
 projeto, a linha de VENCIDA traz o comando exato para regravar.
+
+#### Emenda (issue #6, 2026-09-12) — `wtree atual`/`wtree_after` não veem `.maestro/`
+`bin/maestro-wtree` (§3 emenda v1.10) exclui `.maestro/**` do fingerprint em
+ambas as pontas desta comparação — gravação (`wtree_before`/`wtree_after`) e
+leitura (`wtree atual`). Bookkeeping do próprio Maestro sob `.maestro/`
+(carimbo de `order --accept`, edição de ordem/INTENT) deixa de contar como
+"conteúdo mudou desde a prova". Não foi preciso um campo novo nem uma
+equivalência extra contra `accepted_tree` (§9): a árvore que `order --accept`
+grava em `accepted_tree` já É o `wtree_after` do recibo que autorizou o
+aceite (`_order_proof_tree`, `bin/maestro`), e com `.maestro/` fora do
+fingerprint essa igualdade sobrevive ao próprio carimbo — decidido "não
+coube" na ordem 003 (issue #6), com prova em `tests/cli/test-order.sh`.
 `# classification: confidential` (paths derivados + hashes locais)
 
 ### 9. Work order — `<projeto>/.maestro/orders/NNN-slug.md` (E15, VERSIONADO)
