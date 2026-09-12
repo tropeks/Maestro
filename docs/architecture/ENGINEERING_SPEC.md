@@ -98,6 +98,32 @@ API_SPEC.md (contratos hook+CLI) · EPICS.md (escopo — nada fora dele sem emen
 - editar vendor/ no lugar
 ```
 
+## Convenção `[spock] aguardando:` (protocolo de fim de rodada)
+
+Ordem do Capitão da Vulcan, 2026-09-12. Quando uma sessão de agente **termina a
+rodada precisando de algo de quem a supervisiona** — aprovo/ajusta, aceite,
+decisão, "vai", credencial, root —, a **última linha da resposta** é exatamente:
+
+```
+[spock] aguardando: <o quê, em até 10 palavras>
+```
+
+Rodada que termina sem precisar de nada **não** leva a linha.
+
+**Por que é linha de resposta e não arquivo de estado:** quem lê é a ronda do
+supervisor, varrendo a tela da pane pelo herdr. Um agente que travou no meio do
+turno não consegue escrever arquivo nenhum, mas o que ele já imprimiu continua
+na tela — e o caso que mais custa é justamente esse.
+
+**Por que existe:** sem ela, o supervisor descobre que um agente parou só quando
+olha. Custou 6 h de trabalho parado num dia em que quatro agentes terminaram a
+rodada esperando resposta e nada os denunciou. A ronda cobre o resto com
+"pane idle há mais de 20 min", porque protocolo só pega quem o segue: agente que
+morreu ou esqueceu a linha não declara nada, e é o que fica invisível mais tempo.
+
+**Assimetria de custo, declarada pelo Capitão:** *"falso positivo custa um olhar
+meu; falso negativo custou 6h hoje"*. Na dúvida, avisar.
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md
