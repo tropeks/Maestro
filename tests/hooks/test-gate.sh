@@ -385,9 +385,9 @@ write_policy warn
 write_record sess-abc123 14400
 # Ordem 002/ponta 3: critério é a MEDIANA de N contra teto = orçamento × folga
 # (não mais o mínimo de 1 execução — o mínimo se move com a carga da máquina
-# compartilhada). Acima do limiar de carga por CPU, estouro de teto é
-# "inconclusivo sob carga", nunca "fail". Protocolo, N, folga e limiar de
-# carga em tests/lib/latency.sh (mesmo helper usado por
+# compartilhada). Acima do limiar de carga (load average de 1 min, absoluto),
+# estouro de teto é "inconclusivo sob carga", nunca "fail". Protocolo, N,
+# folga e limiar de carga em tests/lib/latency.sh (mesmo helper usado por
 # test-guarda-destrutiva.sh — o método sempre foi compartilhado, agora o
 # arquivo também é).
 maestro_latency_read_load

@@ -17,9 +17,10 @@
 # reflete a contenção típica. Sob load 10/8 CPUs, min ficou em 57–71ms mas a
 # mediana subiu a 99–108ms, estourando até a guarda de regressão pré-existente
 # (mediana < 2x orçamento). Por isso o critério novo é mediana + PORTÃO DE
-# CARGA: acima de um limiar de carga por CPU, estouro de teto não é FAIL, é
-# "inconclusivo sob carga" — a regra do diretor (medição inválida sem load ao
-# lado; sob carga, o veredito nunca é regressão) virando código.
+# CARGA: acima de um limiar de carga (load average de 1 min, ver decisão do
+# supervisor abaixo), estouro de teto não é FAIL, é "inconclusivo sob carga"
+# — a regra do diretor (medição inválida sem load ao lado; sob carga, o
+# veredito nunca é regressão) virando código.
 #
 # O TETO EM SI DEPENDE DA CARGA — isto não é detalhe, é o que faz o NFR
 # continuar sendo cobrado: a FOLGA existe para tolerar CONTENÇÃO, então só
@@ -28,11 +29,11 @@
 # TODO lugar e o NFR de <50ms deixaria de ser cobrado em qualquer máquina —
 # um hook que regredisse para perto de 2x o orçamento passaria "ok" até na CI
 # quieta, onde não há carga nenhuma para culpar. Por isso:
-#   carga por CPU ABAIXO do limiar (máquina quieta, o caso da CI) → teto =
-#     orçamento, ESTRITO. Mediana acima disso é FAIL de verdade — sem carga
-#     para culpar, é regressão de código, não de escalonamento.
-#   carga por CPU ACIMA do limiar (forge) → teto = orçamento × FOLGA. Abaixo
-#     disso é ok; acima é inconclusivo, nunca fail.
+#   load ABAIXO do limiar (máquina quieta, o caso da CI) → teto = orçamento,
+#     ESTRITO. Mediana acima disso é FAIL de verdade — sem carga para culpar,
+#     é regressão de código, não de escalonamento.
+#   load ACIMA do limiar (forge) → teto = orçamento × FOLGA. Abaixo disso é
+#     ok; acima é inconclusivo, nunca fail.
 #
 # Sourceável, não é enumerado como teste: "latency.sh" não casa com o glob
 # `test-*.sh` que tests/run-all.sh usa em tests/hooks|lib|cli (mesmo
@@ -56,21 +57,35 @@ set -u
 # quieta o teto é o orçamento puro (ver maestro_latency_report).
 : "${MAESTRO_LATENCY_FOLGA:=2}"
 
-# --- limiar de carga por CPU, ×100 ------------------------------------------
-# CLAUDE.md proíbe float em métrica; comparação em aritmética inteira de bash.
-# /proc/loadavg sempre formata o load com 2 casas decimais no kernel Linux
-# ("7.84"), então remover o ponto dá o valor ×100 direto ("784"); 1.00 de
-# limiar vira 100. O valor 1.00 é a convenção clássica de administração Unix:
-# load average == número de CPUs é 100% de utilização; abaixo disso a máquina
-# não está saturada. Evidência da ordem 002: com load 1.91–4.08/8 CPUs
-# (0.24–0.51 por CPU, ABAIXO do limiar) o MÍNIMO já não era confiável
-# (57–71ms contra teto de 50ms) — por isso o critério muda para mediana. Com
-# load ~10/8 CPUs (1.25 por CPU, ACIMA do limiar) a própria mediana subiu a
-# 99–108ms, quase 2x o orçamento — acima do limiar a máquina está saturada e
-# a medição deixa de estimar o custo do código. Override por ambiente é o que
-# permite provar, em máquina carregada, que o portão ainda reprova latência
-# de verdade quando a carga é forçada a contar como "normal" (limiar alto).
-: "${MAESTRO_LATENCY_LOAD_PER_CPU_X100:=100}"
+# --- limiar de carga: load average de 1 min, ABSOLUTO, ×100 -----------------
+# Decisão do supervisor (2026-09-12): limiar de carga para medição de latência
+# válida é load average de 1 minuto ≤ 2,00 NESTA FORGE DE 8 CPUS — um número
+# ABSOLUTO, não por CPU. CLAUDE.md proíbe float em métrica; comparação em
+# aritmética inteira de bash. /proc/loadavg sempre formata o load com 2 casas
+# decimais no kernel Linux ("7.84"), então remover o ponto dá o valor ×100
+# direto ("784"); 2.00 de limiar vira 200.
+#
+# A ARMADILHA QUE ESTE NÚMERO PRECISA CONTINUAR EVITANDO: "generalizar" para
+# por-CPU (2,0 ÷ 8 = 0,25/CPU) parece mais "correto" e é justamente o que NÃO
+# fazer. O runner da CI tem 4 CPUs, não 8. No PR #5 ele mediu load 0.88/4 CPUs
+# e 1.05/4 CPUs — 0,22 e 0,2625 por CPU. Um limiar por-CPU de 0,25 faria a
+# SEGUNDA medição (0,2625) cair ACIMA do limiar, a CI passaria a reportar
+# "inconclusivo", e o teto ESTRITO — o único lugar onde o NFR de latência é
+# de fato cobrado — seria desligado em silêncio na máquina de referência. Com
+# limiar absoluto de 2,0 a CI (0,88–1,05 absoluto) fica folgadamente na faixa
+# "quieta", e o NFR continua sendo cobrado lá.
+#
+# Evidência que sustenta o número 2,0: a CI (referência de "quieta") mediu
+# min≈mediana entre 0,88 e 1,05 de load ABSOLUTO (PR #5, 4 CPUs); esta forge,
+# sob a mesma carga de trabalho concorrente que motivou o portão de carga
+# (ordem 002/ponta 3, comentário no topo do arquivo), mostrou load 6–10 —
+# mediana 2 a 4x maior que o pico já observado como "quieto". 2,0 fica acima
+# do que já foi medido como quieto e bem abaixo do que já foi medido como
+# saturado — não é ponto médio arbitrário, é a fronteira entre os dois
+# regimes já observados. Override por ambiente é o que permite provar, em
+# máquina carregada, que o portão ainda reprova latência de verdade quando a
+# carga é forçada a contar como "normal" (limiar alto).
+: "${MAESTRO_LATENCY_LOAD1M_LIMIAR_X100:=200}"
 
 # Modelo de custo (medido isoladamente, documentado nos dois testes que usam
 # este helper): ~3ms bash+source de lib/common.sh (piso: custo do kill-switch
@@ -99,10 +114,15 @@ maestro_latency_measure() {
 
 # maestro_latency_read_load — lê /proc/loadavg e nproc UMA VEZ (fora do laço
 # de medição, que não pode ter fork extra). Preenche MAESTRO_LATENCY_LOAD1M
-# (string, ex. "7.84"), MAESTRO_LATENCY_NCPU e MAESTRO_LATENCY_OVER (1 = carga
-# por CPU acima do limiar declarado; 0 = máquina não saturada).
+# (string, ex. "7.84"), MAESTRO_LATENCY_NCPU e MAESTRO_LATENCY_OVER (1 = load
+# absoluto de 1 min acima do limiar declarado; 0 = máquina não saturada).
+# MAESTRO_LATENCY_NCPU NÃO entra mais na conta do limiar (o limiar é
+# absoluto, não por CPU — ver comentário de proveniência acima) — mantido de
+# propósito só porque maestro_latency_report e os chamadores (test-gate.sh,
+# test-guarda-destrutiva.sh) usam para exibir "load X/N CPUs" no diagnóstico,
+# informação útil para quem lê o log mesmo não entrando mais no cálculo.
 maestro_latency_read_load() {
-  local loadavg load_x100 limiar_x100
+  local loadavg load_x100
   read -r loadavg < /proc/loadavg
   MAESTRO_LATENCY_LOAD1M="${loadavg%% *}"
   MAESTRO_LATENCY_NCPU=$(nproc 2>/dev/null || echo 1)
@@ -110,8 +130,7 @@ maestro_latency_read_load() {
   # decimal para "084" não ser lido como octal inválido.
   load_x100="${MAESTRO_LATENCY_LOAD1M/./}"
   load_x100=$((10#$load_x100))
-  limiar_x100=$(( MAESTRO_LATENCY_LOAD_PER_CPU_X100 * MAESTRO_LATENCY_NCPU ))
-  if (( load_x100 > limiar_x100 )); then MAESTRO_LATENCY_OVER=1; else MAESTRO_LATENCY_OVER=0; fi
+  if (( load_x100 > MAESTRO_LATENCY_LOAD1M_LIMIAR_X100 )); then MAESTRO_LATENCY_OVER=1; else MAESTRO_LATENCY_OVER=0; fi
 }
 
 # maestro_latency_report <nome> <min> <med> <max> <orcamento_ms>
