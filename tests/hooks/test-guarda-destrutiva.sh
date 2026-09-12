@@ -390,9 +390,9 @@ echo "-- NFR: latência < 50ms"
 write_record subagent
 # Ordem 002/ponta 3: critério é a MEDIANA de N contra teto = orçamento × folga
 # (não mais o mínimo de 1 execução — o mínimo se move com a carga da máquina
-# compartilhada). Acima do limiar de carga por CPU, estouro de teto é
-# "inconclusivo sob carga", nunca "fail". Protocolo, N, folga e limiar de
-# carga em tests/lib/latency.sh — ver comentários lá para a proveniência de
+# compartilhada). Acima do limiar de carga (load average de 1 min, absoluto),
+# estouro de teto é "inconclusivo sob carga", nunca "fail". Protocolo, N,
+# folga e limiar de carga em tests/lib/latency.sh — ver comentários lá para a proveniência de
 # cada número (inclui o modelo de custo do hook: ~3ms bash+source, ~8ms fork
 # de jq, caminho que passa ~12ms, caminho de bloqueio ~32ms, +5ms de análise
 # léxica de 8KB).

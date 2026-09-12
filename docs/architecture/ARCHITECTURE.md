@@ -364,6 +364,7 @@ Sem outros usos de IA. `ai-architect` **não é necessário** — o AI Touchpoin
 - Overhead dos hooks: < 100ms por invocação (percebido zero no fluxo)
 - Injeção do SessionStart: ≤ ~2k tokens (routing table + roster resumido) — o Maestro não pode causar o inchaço que combate
 - Rede nunca é dependência em runtime: a única chamada de rede é o fetch do auto-update (E19) — timeout ≤5s, uma vez por intervalo, falha silenciosa e registrada; tudo o mais é local
+- Medição de latência (guarda destrutiva, gate) só é válida com load average de 1 minuto ≤ 2,0 (decisão do supervisor, nesta forge de 8 CPUs) — acima disso o veredito é `inconclusivo sob carga`, nunca `regressão`. O limiar é ABSOLUTO, não por CPU: um runner de CI com menos núcleos (ex. 4) mede um load absoluto baixo mesmo perto de saturação relativa, e um limiar por-CPU desligaria o teto estrito de latência em silêncio bem na máquina de referência onde o NFR é cobrado de verdade (`tests/lib/latency.sh` traz a evidência completa)
 
 ## Flags para o orchestrator
 
