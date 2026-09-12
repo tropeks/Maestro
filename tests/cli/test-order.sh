@@ -113,6 +113,25 @@ else
   bad "ordem aceita ainda reporta prova ao vivo ($("$BIN" order --status 1 --project "$P" | grep 'prova' | head -1))"
 fi
 
+# issue #6 (ordem 003) / caso real NetForge ordem 016: o PRÓPRIO carimbo do
+# `--accept` grava accepted_at/accepted_session/accepted_tree em
+# `.maestro/orders/001.md` (E15: rastreado, não `.gitignore`). O carimbo
+# ainda está SÓ NO DISCO aqui — antes de qualquer `git add`/commit — que é
+# exatamente o estado em que alguém rodaria `maestro evidence --label` para
+# conferir a prova logo depois de aceitar. Sem `bin/maestro-wtree` excluir
+# `.maestro/**` do fingerprint, esse `git add -A` cego enxerga o carimbo, o
+# `w_now` ao vivo diverge do `wtree_after` congelado no recibo, e a leitura
+# direta do LEDGER (não do `order --status`, que já contorna isto via
+# S-1803/accepted_tree) relata "conteúdo mudou desde a prova" — o aceite
+# invalida o recibo que o autorizou.
+git -C "$P" status --porcelain -- .maestro | grep -q '^ M .*/orders/001-.*\.md$' \
+  && ok "fixture: carimbo do aceite está no disco, AINDA não commitado" \
+  || bad "fixture: pré-condição do carimbo não commitado (git status: $(git -C "$P" status --porcelain -- .maestro))"
+out=$("$BIN" evidence --label order-1 --project "$P")
+grep -q 'VÁLIDA' <<<"$out" \
+  && ok "issue #6: evidência lida direto (ledger) segue VÁLIDA após --accept" \
+  || bad "issue #6: evidência lida direto (ledger) após --accept (obtido: $out)"
+
 git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "aceite 001"
 
 # S-1805: aceite é sobre CONTEÚDO. Enquanto o branch não anda, "encerrada".
