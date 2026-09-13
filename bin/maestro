@@ -3720,6 +3720,9 @@ brief_auto_skeleton() { # <proj> → esqueleto determinístico no stdout (sem LL
   shopt -u nullglob
   printf '\n## Maestro\n- %s decision record(s) no estado local\n' "$n_rec"
   printf '\n## Em curso / próximo passo\n- (a sessão que fecha o trabalho escreve isto)\n'
+  # Convenção `[spock] aguardando:` (ENGINEERING_SPEC): a ronda do supervisor lê
+  # essa linha na tela da pane. Sem ela, agente parado espera até alguém olhar.
+  printf -- '- rodada que termina precisando de algo do supervisor fecha a resposta com a linha exata: `[spock] aguardando: <o quê>`\n'
   return 0
 }
 
