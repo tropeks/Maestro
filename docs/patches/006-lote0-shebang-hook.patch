@@ -1,0 +1,21 @@
+--- a/hooks/post-edit-habits.sh
++++ b/hooks/post-edit-habits.sh
+@@ -59,13 +59,12 @@
+ [[ -n "$FILE" && -f "$FILE" && -r "$FILE" ]] || exit 0
+ case "$FILE" in */vendor/*|*/node_modules/*|*/.git/*) exit 0 ;; esac
+ 
++# E24 Lote 0/0.2: extensão OU shebang (maestro_lang_ext, hooks/lib/common.sh)
++# — sensor único com o cmd_habits do CLI (I-4). Custo zero p/ arquivo COM
++# extensão: nenhuma leitura extra além do que este hook já fazia.
+ base="${FILE##*/}"
+-ext="${base##*.}"
+-[[ "$ext" != "$base" ]] || exit 0
+-case "$ext" in
+-  py|js|jsx|ts|tsx|go|rs|java|rb|php|c|h|cpp|hpp|cs|lua|sh|bash|zsh) ;;
+-  *) exit 0 ;;
+-esac
++ext=$(maestro_lang_ext "$FILE")
++[[ -n "$ext" ]] || exit 0
+ 
+ size=$(wc -c < "$FILE" 2>/dev/null | tr -d ' ') || exit 0
+ [[ "$size" =~ ^[0-9]+$ ]] && (( size <= 512000 )) || exit 0

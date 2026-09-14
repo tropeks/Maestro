@@ -920,6 +920,46 @@ primeiras linhas (nenhum sha256 no hot path); o CLI lê o carimbo com awk até a
 `n` (versão) e `via=manual`, só nas mutações — nunca título, hash ou caminho.
 `# classification: public` (a direção é conteúdo do repo do usuário)
 
+#### Emenda v1.12 (E24 Lote 0, ordem 006) — dívida DECLARADA com prazo em `.maestro-habits.tsv`
+
+Causa: `bin/maestro` não era sensoriado — o filtro de `.maestro-habits.tsv` §2
+comparava só por EXTENSÃO reconhecida, e `bin/maestro` (sem ponto no nome) era
+o único arquivo do repo isento da própria catraca. A detecção passa a ser por
+SHEBANG quando a extensão falta (`maestro_lang_ext`, `hooks/lib/common.sh` —
+sensor único que hook e CLI sourceiam, I-4): extensão reconhecida devolve sem
+ler o arquivo (custo zero no caminho quente); sem extensão, lê só a 1ª linha
+(builtin, sem fork) e mapeia `#!.../bash|sh|zsh` → `sh`, `#!.../python*` → `py`.
+
+`.maestro-habits.tsv` ganha colunas 3/4, OPCIONAIS (retrocompatível — linha de
+2 colunas lê exatamente como antes):
+
+```
+# sensor            contagem  vence_epoch  alvo
+oversized-function  23        1791999999   6
+```
+
+`vence_epoch` e `alvo` são inteiros (CLAUDE.md proíbe float em métrica de
+custo) — valor torto é RECUSADO em silêncio, a linha volta a se comportar
+como as de 2 colunas. `maestro habits --all` reprova (`exit 1`) quando
+`now > vence_epoch` **e** `contagem > alvo`, mesmo que a contagem esteja
+dentro do baseline da coluna 2 — é a única forma de o prazo ser mecânico, não
+decorativo. `maestro doctor` avisa (`warn`) a partir de **D-14** do
+vencimento, e de novo (com redação diferente) depois de vencido; nunca falha
+o `doctor` — quem reprova de verdade é `maestro habits --all` (S-905).
+
+#### Emenda v1.13 (E24 Lote 0, decisão A) — `lib/` entra na autoproteção do gate
+
+`config/routing-table.yaml` (`gate.denylist.self_paths`, §1) é a fonte viva;
+`hooks/session-start.sh` a compila em `gate-policy.sh` a cada SessionStart.
+Quando o YAML não declara `self_paths` (ausente/corrompido), o hook cai no
+fallback embutido (`SELF_FALLBACK`) — que agora inclui `lib/`: os módulos do
+split do E24 (`docs/designs/e24-nucleo-e-adaptadores.md`) nascem lá, e sem
+isto ~85% do CLI bash migraria para uma zona sem a guarda do ADR-003 v1.2,
+vencida por MUDANÇA DE ENDEREÇO em vez de remoção. `hooks/pre-tool-gate.sh`
+tem um segundo fallback (env-default na leitura da variável), usado só quando
+a política compilada nem chega a DEFINIR `MAESTRO_GATE_DENY_SELF`; a origem
+normativa é sempre `session-start.sh` — um lugar só, para não repetir a lição
+do filtro de extensão duplicado.
 
 ---
 

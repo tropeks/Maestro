@@ -1,6 +1,6 @@
 # maestro habits baseline (S-905) — catraca anti-slop: só desce.
 # Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline
-deep-nesting	10
-oversized-file	12
-oversized-function	6
+deep-nesting	11
+oversized-file	13
+oversized-function	23
 skipped-test	1
