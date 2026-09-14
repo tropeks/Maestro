@@ -1,0 +1,31 @@
+--- a/hooks/lib/common.sh
++++ b/hooks/lib/common.sh
+@@ -68,6 +68,28 @@
+ # shellcheck source=project-state.sh
+ [[ -f "${BASH_SOURCE[0]%/*}/project-state.sh" ]] && source "${BASH_SOURCE[0]%/*}/project-state.sh"
+ 
++# maestro_lang_ext <arquivo> — token de linguagem (py, sh, ...) ou vazio.
++# Custo zero (E24 Lote 0/0.2): extensão reconhecida devolve na hora sem ler o
++# arquivo; sem extensão lê só a 1a linha (builtin `read`, sem fork/head) e
++# mapeia o shebang. Sensor único — hook e CLI sourceiam DAQUI, por I-4.
++maestro_lang_ext() {
++  local f="$1" base="${1##*/}" ext line=""
++  ext="${base##*.}"
++  if [[ "$ext" != "$base" ]]; then
++    case "$ext" in
++      py|js|jsx|ts|tsx|go|rs|java|rb|php|c|h|cpp|hpp|cs|lua|sh|bash|zsh) printf '%s' "$ext" ;;
++    esac
++    return 0
++  fi
++  IFS= read -r line < "$f" 2>/dev/null || line=""
++  if [[ "$line" =~ ^#\![[:space:]]*[^[:space:]]*/(env[[:space:]]+)?(bash|sh|zsh)([[:space:]]|$) ]]; then
++    printf 'sh'
++  elif [[ "$line" =~ ^#\!.*[/[:space:]]python[0-9.]*([[:space:]]|$) ]]; then
++    printf 'py'
++  fi
++  return 0
++}
++
+ maestro_now_epoch() {
+   local e=""
+   printf -v e '%(%s)T' -1 2>/dev/null || e=""

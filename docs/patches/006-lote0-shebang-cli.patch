@@ -1,0 +1,33 @@
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -3638,6 +3638,14 @@
+   local engine="$REPO_DIR/hooks/lib/habit-sensors.awk"
+   local guides="${MAESTRO_HABIT_GUIDES:-$REPO_DIR/config/habit-guides}"
+   [[ -f "$engine" ]] || die env "hooks/lib/habit-sensors.awk ausente" "reinstale o plugin (maestro doctor)" 2
++  # E24 Lote 0/0.2: maestro_lang_ext (detecção por shebang) — sensor único com
++  # o hook (I-4). Degrada com die env, igual ao engine acima.
++  # shellcheck source=hooks/lib/common.sh
++  if [[ -f "$REPO_DIR/hooks/lib/common.sh" ]]; then
++    source "$REPO_DIR/hooks/lib/common.sh"
++  else
++    die env "hooks/lib/common.sh não encontrado" "reinstale o plugin (maestro doctor)" 2
++  fi
+ 
+   # sensores ativos: mesma resolução do hook (MAESTRO_HABITS > .maestro.yaml > all)
+   local enabled="all" hline=""
+@@ -3701,12 +3709,9 @@
+       done
+       (( skipf == 1 )) && { ignored=$(( ignored + 1 )); continue; }
+     fi
+-    base="${f##*/}"; ext="${base##*.}"
+-    [[ "$ext" != "$base" ]] || continue
+-    case "$ext" in
+-      py|js|jsx|ts|tsx|go|rs|java|rb|php|c|h|cpp|hpp|cs|lua|sh|bash|zsh) ;;
+-      *) continue ;;
+-    esac
++    base="${f##*/}"
++    ext=$(maestro_lang_ext "$f")
++    [[ -n "$ext" ]] || continue
+     is_test=0
+     case "$base" in test*|*_test.*|*.test.*|*.spec.*|conftest.py) is_test=1 ;; esac
+     case "$f" in */tests/*|*/test/*|*/__tests__/*) is_test=1 ;; esac

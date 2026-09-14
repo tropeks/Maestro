@@ -1,0 +1,101 @@
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -1357,6 +1357,37 @@
+   fi
+ }
+ 
++check_habits_debt() { # E24 Lote 0/0.3: dívida declarada com prazo — avisa a
++  # partir de D-14 do vencimento. Nunca falha o doctor; quem reprova de
++  # verdade é `maestro habits --all` (S-905). Colunas 3/4 são OPCIONAIS —
++  # linha de 2 colunas não tem prazo e não entra na conta.
++  local proj="${CLAUDE_PROJECT_DIR:-$PWD}"
++  local f="$proj/.maestro-habits.tsv"
++  [[ -f "$f" && -r "$f" ]] \
++    || { report skip "dívida declarada (.maestro-habits.tsv)" "arquivo ausente"; return 0; }
++  local sm bl vence alvo now due=() soon=() n=0
++  now=$(now_epoch)
++  while IFS=$'\t' read -r sm bl vence alvo; do
++    [[ "$sm" =~ ^[a-z][a-z-]{2,23}$ ]] || continue
++    [[ "$vence" =~ ^[0-9]+$ && "$alvo" =~ ^[0-9]+$ ]] || continue
++    n=$(( n + 1 ))
++    if (( now > vence )); then
++      due+=("$sm: venceu há $(( (now - vence) / 86400 ))d (alvo $alvo)")
++    elif (( vence - now <= 14 * 86400 )); then
++      soon+=("$sm: vence em $(( (vence - now) / 86400 ))d (alvo $alvo)")
++    fi
++  done < "$f"
++  if (( n == 0 )); then
++    report skip "dívida declarada (.maestro-habits.tsv)" "nenhuma linha com prazo (colunas 3/4)"
++  elif (( ${#due[@]} > 0 )); then
++    report warn "dívida declarada VENCIDA" "$(join_semi "${due[@]}")"
++  elif (( ${#soon[@]} > 0 )); then
++    report warn "dívida declarada perto do prazo (D-14)" "$(join_semi "${soon[@]}")"
++  else
++    report ok "dívida declarada dentro do prazo"
++  fi
++}
++
+ # ------------------------------------------------------------------ decision records
+ 
+ now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
+@@ -1544,6 +1575,7 @@
+   check_roster
+   check_project_profiles
+   check_release_diagram
++  check_habits_debt
+ 
+   # --- estado ----------------------------------------------------------------
+   if [[ "$MAESTRO_HOME" != "$MAESTRO_HOME_DEFAULT" ]]; then
+@@ -3760,10 +3792,21 @@
+   fi
+ 
+   if [[ "$scope" == "all" && -f "$bfile" && -r "$bfile" ]]; then
+-    local over=() sm bl cur improved=0
+-    declare -A base=()
+-    while IFS=$'\t' read -r sm bl; do
+-      [[ "$sm" =~ ^[a-z][a-z-]{2,23}$ && "$bl" =~ ^[0-9]+$ ]] && base["$sm"]=$bl
++    local over=() due=() sm bl cur improved=0 vence alvo now_epoch=""
++    declare -A base=() base_vence=() base_alvo=()
++    # E24 Lote 0/0.3 — dívida DECLARADA com prazo (I-6: epoch é inteiro, sem
++    # float). Colunas 3/4 são OPCIONAIS: linha de 2 colunas lê exatamente
++    # como antes (retrocompatível — outros projetos usam esta catraca sem
++    # elas). `read` com 4 variáveis já cobre os dois formatos: linha de 2
++    # colunas deixa vence/alvo vazios sozinha, sem `read` derramar sobras de
++    # coluna dentro de `bl` (o que aconteceria com só 2 variáveis nomeadas).
++    # Valor tosco (epoch com ponto, não-dígito) é RECUSADO em silêncio — vira
++    # baseline sem prazo, nunca aborta a leitura.
++    while IFS=$'\t' read -r sm bl vence alvo; do
++      [[ "$sm" =~ ^[a-z][a-z-]{2,23}$ && "$bl" =~ ^[0-9]+$ ]] || continue
++      base["$sm"]=$bl
++      [[ "$vence" =~ ^[0-9]+$ && "$alvo" =~ ^[0-9]+$ ]] || continue
++      base_vence["$sm"]=$vence; base_alvo["$sm"]=$alvo
+     done < "$bfile"
+     for sm in "${!count[@]}"; do
+       cur=${count[$sm]}; bl=${base[$sm]:-0}
+@@ -3773,9 +3816,23 @@
+     for sm in "${!base[@]}"; do
+       [[ -n "${count[$sm]:-}" ]] || { (( base[$sm] > 0 )) && improved=1; }
+     done
+-    if (( ${#over[@]} > 0 )); then
+-      printf -- '---\nCATRACA: slop novo acima do baseline — %s\n' "$(join_semi "${over[@]}")"
+-      printf 'Conserte o que entrou; a régua não sobe para acomodar o novo.\n'
++    if (( ${#base_vence[@]} > 0 )); then
++      now_epoch=$(maestro_now_epoch)
++      for sm in "${!base_vence[@]}"; do
++        vence=${base_vence[$sm]}; alvo=${base_alvo[$sm]}; cur=${count[$sm]:-0}
++        (( now_epoch > vence && cur > alvo )) \
++          && due+=("$sm: vencida há $(( (now_epoch - vence) / 86400 ))d, $cur > alvo $alvo")
++      done
++    fi
++    if (( ${#over[@]} > 0 || ${#due[@]} > 0 )); then
++      (( ${#over[@]} > 0 )) && {
++        printf -- '---\nCATRACA: slop novo acima do baseline — %s\n' "$(join_semi "${over[@]}")"
++        printf 'Conserte o que entrou; a régua não sobe para acomodar o novo.\n'
++      }
++      (( ${#due[@]} > 0 )) && {
++        printf -- '---\nCATRACA: dívida declarada VENCEU sem chegar ao alvo — %s\n' "$(join_semi "${due[@]}")"
++        printf 'O prazo (vence_epoch) passou e a contagem segue acima do alvo declarado.\n'
++      }
+       return 1
+     fi
+     printf -- '---\ndentro da catraca: %s achado(s), nenhum smell acima do baseline\n' "$total"
