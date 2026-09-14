@@ -196,7 +196,14 @@ guia é config versionada, não corpo de agente — método ≠ executor.
   grita errado ensina o agente a ignorá-lo; shell não aciona swallowed-error (`|| true` é
   degradação-por-design NESTA casa). Anti-ruído: cooldown 15min por (arquivo, smell), ≤3
   achados + ≤2 guias por emissão. Warn-only estrutural: PostToolUse nunca bloqueia (a
-  edição já valeu); exit 2 só entrega o texto ao agente. Log: `habit_warn` com
+  edição já valeu); exit 2 só entrega o texto ao agente. **Emenda (issue #9, ordem 005):**
+  o MESMO achado alimenta a catraca de baseline `maestro habits --all` (S-905 abaixo,
+  `.maestro-habits.tsv`) — que REPROVA com exit 1 e pode derrubar a CI. A mensagem do
+  hook deixa de dizer só "warn-only" e passa a nomear os dois mecanismos; dispara um aviso
+  específico de "CRUZOU o baseline" quando o smell é NOVO neste arquivo (comparado ao
+  conteúdo em `git show HEAD:<arquivo>`, não ao repo inteiro — `--all` por edição
+  custaria ~970ms medidos neste repo, contra o orçamento de dezenas de ms do hook).
+  Log: `habit_warn` com
   smell+n+file_ext (DATA_MODEL §4 emendado) — jamais caminho. *AC: positivos por sensor;
   adversariais (código limpo, idioma de shell, console.log EM teste); cooldown; test-gap
   1 nag no degrau; kill-switch; vendor/ fora; degradações exit 0; latência medida 39ms

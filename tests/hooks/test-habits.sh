@@ -50,7 +50,11 @@ grep -q '<maestro-habit>' <<<"$OUT" && ok "bloco maestro-habit no stderr" || bad
 for smell in too-many-params risky-shortcut debug-leftover; do
   grep -q "$smell" <<<"$OUT" && ok "sensor $smell disparou" || bad "sensor $smell disparou"
 done
-grep -q 'Warn-only' <<<"$OUT" && ok "deixa claro que é warn-only" || bad "deixa claro que é warn-only"
+# issue #9 (ordem 005): a redação mudou (warn-only aqui, MAS o mesmo achado
+# alimenta a catraca `maestro habits --all`/S-905, que reprova de verdade) —
+# grep case-insensitive porque a palavra continua lá, só não mais capitalizada
+# no início da frase.
+grep -qi 'warn-only' <<<"$OUT" && ok "deixa claro que é warn-only" || bad "deixa claro que é warn-only"
 grep -qE '\*\*[a-z-]+\*\*' <<<"$OUT" && ok "GUIA acompanha o sensor (par indissociável)" \
                                      || bad "GUIA acompanha o sensor"
 

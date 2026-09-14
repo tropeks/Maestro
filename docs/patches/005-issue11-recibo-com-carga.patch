@@ -1,0 +1,172 @@
+--- a/bin/maestro	2026-09-14 11:53:04.089433141 -0300
++++ b/bin/maestro	2026-09-14 13:31:11.315064703 -0300
+@@ -2603,6 +2603,11 @@
+   # vira checagem mecânica, não sistema de honra. Bash puro; estado local
+   # (classe do brief); nada disto toca o routing.jsonl.
+   local mode="read" label="suite" check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}" maxage="${MAESTRO_EVIDENCE_MAX_AGE:-86400}"
++  # issue #11 (ordem 005): limiar de carga para a QUALIFICAÇÃO da leitura —
++  # mesmo número (load 1min ABSOLUTO ≤ 2,0) e mesma justificativa de
++  # tests/lib/latency.sh (ARCHITECTURE.md §NFRs); duplicado aqui de propósito
++  # — bin/ não sourceia tests/ — em vez de acoplado.  Override só para depurar.
++  local load_limiar="${MAESTRO_EVIDENCE_LOAD1M_LIMIAR_X100:-200}"
+   local cmd_args=()
+   while (( $# )); do
+     case "$1" in
+@@ -2618,6 +2623,7 @@
+   done
+   [[ "$label" =~ ^[a-z][a-z0-9-]{0,23}$ ]] || die validation "rótulo inválido" "minúsculas/dígitos/hífen, ≤24" 1
+   [[ "$maxage" =~ ^[0-9]{1,8}$ ]] || maxage=86400
++  [[ "$load_limiar" =~ ^[0-9]{1,6}$ ]] || load_limiar=200
+ 
+   # shellcheck source=hooks/lib/common.sh
+   source "$REPO_DIR/hooks/lib/common.sh"
+@@ -2640,9 +2646,59 @@
+     if [[ -n "$decl" ]]; then
+       [[ "$decl" == "$cmd_str" ]] && cmd_match="yes" || cmd_match="no"
+     fi
++    # issue #11 (ordem 005): o recibo grava a CARGA — sem ela, "exit 0"
++    # byte-idêntico é lido como prova válida mesmo quando a máquina estava a
++    # load 12 e a medição de latência embutida na suíte não valia nada
++    # (ARCHITECTURE.md §NFRs: load 1min ≤ 2,0 para medição de latência valer).
++    # `CLAUDE.md` proíbe float em métrica: load1m_x100 é o load de 1min ×100
++    # (mesma técnica de tests/lib/latency.sh — remove o ponto do formato de
++    # 2 casas que o kernel Linux sempre usa em /proc/loadavg). Lido aqui, não
++    # sourceado de tests/lib/latency.sh: bin/ não depende de tests/.
++    local load1m_x100=0 ncpu=1 _loadavg
++    if read -r _loadavg _ < /proc/loadavg 2>/dev/null; then
++      load1m_x100="${_loadavg/./}"
++      [[ "$load1m_x100" =~ ^[0-9]+$ ]] && load1m_x100=$((10#$load1m_x100)) || load1m_x100=0
++    fi
++    ncpu=$(nproc 2>/dev/null) || ncpu=1
++    [[ "$ncpu" =~ ^[0-9]+$ ]] || ncpu=1
+     # set -e: exit != 0 é DADO (a falha é o que mais precisa de recibo), não
+     # aborto — o || rc=$? blinda a captura.
+-    ( cd "$proj" && "${cmd_args[@]}" ) || rc=$?
++    #
++    # issue #11 (3º item): quantas asserções saíram `inconclusivo` NA CORRIDA.
++    # `exit 0 limpo` e `exit 0 com três medições dispensadas por carga` eram
++    # indistinguíveis no ledger. tests/lib/latency.sh não expõe um contador
++    # (é sourceado por cada teste, morre com o subshell do teste); acoplar o
++    # ledger ao FORMATO exato da linha de um teste específico (test-gate.sh,
++    # test-guarda-destrutiva.sh) seria frágil pra sempre. Em vez disso: o
++    # comando roda por um `tee`, e a contagem é de quantas LINHAS da saída
++    # citam a palavra do próprio VOCABULÁRIO do protocolo compartilhado
++    # (`MAESTRO_LATENCY_VERDICT=inconclusivo`, tests/lib/latency.sh) — dado do
++    # protocolo de medição, não de um `echo` específico de um teste. Se algum
++    # teste novo passar a usar o protocolo e imprimir a mesma palavra por
++    # outro motivo, o número super-conta; não há como isso ficar mais estrito
++    # sem acoplar a um formato de linha, o que é pior (ver relatório da
++    # ordem 005). Com `pipefail` (já ligado por `set -euo pipefail` no topo
++    # do arquivo), a falha do comando sobrevive ao pipe em PIPESTATUS[0] — MAS
++    # um `|| true` colado na mesma linha do pipe RESETA PIPESTATUS (o `true`
++    # vira o último comando simples executado, medido isoladamente). Testado
++    # a mão: `( exit 3 ) | cat || true; echo "${PIPESTATUS[0]}"` imprime 0,
++    # não 3. Por isso o pipe vai dentro de um `if`: a condição de um `if` é a
++    # única forma de driblar o `set -e` sem rodar outro comando simples entre
++    # o pipe e a leitura de PIPESTATUS.
++    local out_tmp inconclusive=0
++    out_tmp=$(mktemp 2>/dev/null) || out_tmp=""
++    if [[ -n "$out_tmp" ]]; then
++      if ( cd "$proj" && "${cmd_args[@]}" ) 2>&1 | tee "$out_tmp"; then
++        rc=0
++      else
++        rc="${PIPESTATUS[0]}"
++      fi
++      inconclusive=$(grep -ci -- 'inconclusivo' "$out_tmp" 2>/dev/null) || inconclusive=0
++      [[ "$inconclusive" =~ ^[0-9]+$ ]] || inconclusive=0
++      rm -f "$out_tmp" 2>/dev/null
++    else
++      ( cd "$proj" && "${cmd_args[@]}" ) || rc=$?
++    fi
+     [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+       w_after=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_after="none"
+     mkdir -p "${ef%/*}" 2>/dev/null || die env "não consigo criar ${ef%/*}" "cheque MAESTRO_HOME" 2
+@@ -2653,6 +2709,11 @@
+       printf 'cmd_hash=%s\nexit=%s\n' "$cmd_hash" "$rc"
+       printf 'wtree_before=%s\nwtree_after=%s\n' "$w_before" "$w_after"
+       printf 'cmd_match=%s\n' "$cmd_match"
++      # issue #11 — campos ADITIVOS, no FIM (DATA_MODEL §8): cmd_match não sai
++      # da janela do leitor (velho OU novo); campo desconhecido no meio teria
++      # empurrado tudo que vem depois. Schema continua maestro-evidence-v1 —
++      # ver decisão v1/v2 (item 4 da ordem 005) em DATA_MODEL.md §8.
++      printf 'load1m_x100=%s\nncpu=%s\ninconclusive=%s\n' "$load1m_x100" "$ncpu" "$inconclusive"
+     } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null \
+       || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar recibo" "cheque permissões" 2; }
+     if [[ "$w_before" != "$w_after" ]]; then
+@@ -2673,17 +2734,31 @@
+     echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
+     (( check == 1 )) && return 1 || return 0
+   fi
+-  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match=""
+-  eval "$(awk -F= 'NR>12 { exit }
++  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc=""
++  # issue #11 (ordem 005): janela alargada de 12 para 20. Em 9 (pré-005) +
++  # cmd_match, os 3 campos novos (load1m_x100/ncpu/inconclusive) — TODOS
++  # acrescentados no FIM, propositalmente, para cmd_match não sair da janela
++  # — chegavam a exatamente 12: zero folga para o PRÓXIMO campo. 20 casa com
++  # o número já usado alhures no repo para "cabeçalho com headroom"
++  # (_order_field/_maestro_order_stamp_ok, docs/patches/004-*), não é
++  # arbitrário: dá espaço para +8 campos futuros antes de precisar mexer
++  # aqui de novo — alargue de novo (com o mesmo comentário) se chegar lá.
++  eval "$(awk -F= 'NR>20 { exit }
+     /^epoch=/        { if ($2 ~ /^[0-9]+$/)          print "e_epoch=" $2 }
+     /^exit=/         { if ($2 ~ /^[0-9]+$/)          print "e_exit="  $2 }
+     /^cmd_hash=/     { if ($2 ~ /^([0-9a-f]{16}|none)$/) print "e_hash=\047" $2 "\047" }
+     /^cmd_match=/    { if ($2 ~ /^(yes|no|free)$/)   print "e_match=\047" $2 "\047" }
+     /^wtree_before=/ { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wb=\047" $2 "\047" }
+-    /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }' \
++    /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }
++    /^load1m_x100=/  { if ($2 ~ /^[0-9]+$/)          print "e_load=" $2 }
++    /^ncpu=/         { if ($2 ~ /^[0-9]+$/)          print "e_ncpu=" $2 }
++    /^inconclusive=/ { if ($2 ~ /^[0-9]+$/)          print "e_inc="  $2 }' \
+     "$ef" 2>/dev/null)" 2>/dev/null || :
+   # Recibo anterior ao E23b não tem a linha: `free` (nada era declarado então).
+   [[ -n "$e_match" ]] || e_match="free"
++  # Recibo anterior ao issue #11 não tem carga/inconclusivo: qualificação
++  # fica muda para ele (não dá pra qualificar o que não foi medido) — mesmo
++  # padrão de tolerância do E23b acima, não regra nova.
+   if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
+     echo "evidência ($label): recibo ilegível — regrave"
+     (( check == 1 )) && return 1 || return 0
+@@ -2709,15 +2784,38 @@
+     # comando) deixa de valer quando o projeto passa a declarar commands.<label>.
+     reasons+="${reasons:+; }comando do recibo ≠ commands.$label (.maestro.yaml)"
+   fi
++  # issue #11 (ordem 005): qualificação por carga — recibo gravado a load
++  # acima do limiar de medição válida (ARCHITECTURE.md §NFRs) prova exit 0 e
++  # conteúdo (isso o wtree já cobria), mas NÃO prova latência dentro do
++  # orçamento: a suíte pode ter dispensado medições como "inconclusivo sob
++  # carga" (ver `inconclusive` abaixo) sem que isso apareça em lugar nenhum
++  # do exit code. Caso real: recibo a load 12,12 lido como VÁLIDA sem
++  # ressalva — o diretor recusou, o CLI não tinha como saber.
++  local load_qualif="" load_str=""
++  if [[ -n "$e_load" ]]; then
++    load_str="$(( e_load / 100 )).$(printf '%02d' $(( e_load % 100 )))"
++    if (( e_load > load_limiar )); then
++      load_qualif=", mas fora do limiar de medição (load $load_str)"
++    else
++      load_qualif=" (load $load_str)"
++    fi
++  fi
++  # issue #11 (3º item): "exit 0 limpo" e "exit 0 com N medições dispensadas
++  # por carga" deixam de ser indistinguíveis — a contagem viaja com o recibo.
++  local inc_qualif=""
++  if [[ -n "$e_inc" ]] && (( e_inc > 0 )); then
++    inc_qualif="; ${e_inc} medição(ões) INCONCLUSIVA(S) sob carga durante a corrida"
++  fi
+   if [[ -z "$reasons" ]]; then
+-    printf 'evidência (%s): VÁLIDA — exit 0 há %smin, conteúdo byte-idêntico ao provado\n' "$label" "$(( age / 60 ))"
++    printf 'evidência (%s): VÁLIDA%s — exit 0 há %smin, conteúdo byte-idêntico ao provado%s\n' \
++      "$label" "$load_qualif" "$(( age / 60 ))" "$inc_qualif"
+     return 0
+   fi
+   if [[ -n "$decl_r" ]]; then
+-    printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave: %s\n' "$label" "$reasons" \
++    printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave: %s\n' "$label" "$reasons" "$inc_qualif" \
+       "$(verif_record_hint "$proj" "$label")"
+   else
+-    printf 'evidência (%s): VENCIDA — %s. Re-rode e regrave.\n' "$label" "$reasons"
++    printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave.\n' "$label" "$reasons" "$inc_qualif"
+   fi
+   (( check == 1 )) && return 1 || return 0
+ }
