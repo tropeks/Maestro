@@ -201,6 +201,49 @@ done <<<"$findings"
 fresh="${fresh%$'\n'}"
 [[ -n "$fresh" ]] || exit 0
 
+# ---------------------------------------------------------------------------
+# issue #9 (ordem 005): a mensagem dizia "warn-only" e parava aí — verdade
+# para ESTE hook (PostToolUse não bloqueia edição já feita), mas o MESMO
+# achado alimenta `maestro habits --all` (catraca `.maestro-habits.tsv`,
+# S-905), que REPROVA com exit 1 e pode derrubar a CI. Caso real: arquivo de
+# teste foi de 399 para 418 linhas, cruzou o teto de 400 (oversized-file),
+# virou o 13º acima do baseline de 12 — o PostToolUse disse "warn-only", a CI
+# do PR #8 ficou vermelha.
+#
+# O item que mais paga: o aviso deveria disparar quando a edição CRUZA o
+# baseline, não só quando encontra achado. Rodar `--all` aqui para saber ISSO
+# de verdade custaria uma varredura do repo inteiro POR EDIÇÃO — medido neste
+# repo (223 arquivos rastreados): ~970ms (`time maestro habits --all`),
+# contra o orçamento deste hook (dezenas de ms, S-901). Inviável a cada Edit.
+#
+# Alternativa mais barata implementada: compara o sensor no conteúdo NOVO
+# (já computado acima, em `fresh`) contra o MESMO sensor no conteúdo de ANTES
+# da edição — um único blob via `git show HEAD:<rel>` (~7ms medidos) + uma
+# passada extra de awk NO MESMO ARQUIVO (~7ms medidos), nunca no repo
+# inteiro. Um smell presente AGORA e AUSENTE antes desta edição é candidato a
+# ter cruzado o total do repo para aquele smell — é uma APROXIMAÇÃO por
+# arquivo, honesta sobre o que é: não sabe o total exato do repo (só
+# `--all` decide de verdade; outro arquivo pode já estar sobre o baseline, ou
+# esta pode ser só a Nª ocorrência de um smell que já estava estourado). Sem
+# git, ou arquivo novo (sem HEAD anterior), tudo em `fresh` conta como
+# "novo" — é exatamente o caso do arquivo novo: contribuição nova para
+# qualquer smell que carregue.
+crossing=""
+if command -v git >/dev/null 2>&1; then
+  rel="${FILE#"$PROJECT_DIR"/}"
+  old_smells=""
+  old_tmp="$MAESTRO_SESSIONS_DIR/.habits-old-$$"
+  if mkdir -p "$MAESTRO_SESSIONS_DIR" 2>/dev/null \
+    && git -C "$PROJECT_DIR" show "HEAD:$rel" > "$old_tmp" 2>/dev/null; then
+    old_smells=$(awk -v EXT="$ext" -v ENABLED="$ENABLED" -v ISTEST="$is_test" -v ISGEN="$is_gen" \
+      -f "$ENGINE" "$old_tmp" 2>/dev/null | cut -f1 | sort -u)
+  fi
+  rm -f "$old_tmp" 2>/dev/null
+  for _sm in $(cut -f1 <<<"$fresh" | awk '!seen[$0]++'); do
+    grep -qxF "$_sm" <<<"$old_smells" || crossing+="${crossing:+, }$_sm"
+  done
+fi
+
 if mkdir -p "$MAESTRO_SESSIONS_DIR" 2>/dev/null; then
   {
     # compacta o estado: só entradas ainda dentro do cooldown
@@ -224,7 +267,13 @@ first_smell=$(head -1 <<<"$fresh" | cut -f1)
 
 {
   printf '<maestro-habit>\n'
-  printf 'Habit sensor no arquivo editado (%s): %s achado(s). Warn-only — a edição valeu; considere resolver ANTES de seguir.\n' "$base" "$n_total"
+  if [[ -n "$crossing" ]]; then
+    printf 'Habit sensor no arquivo editado (%s): %s achado(s) — CRUZOU o baseline em: %s (novo neste arquivo). Aqui é warn-only (a edição já valeu), mas o MESMO achado alimenta a catraca `maestro habits --all` (.maestro-habits.tsv, S-905), que REPROVA com exit 1 e pode derrubar a CI — confirme com `maestro habits --all` antes do commit.\n' \
+      "$base" "$n_total" "$crossing"
+  else
+    printf 'Habit sensor no arquivo editado (%s): %s achado(s). Aqui é warn-only (a edição já valeu; considere resolver ANTES de seguir) — mas o MESMO achado também alimenta a catraca `maestro habits --all` (.maestro-habits.tsv, S-905), que REPROVA com exit 1 e pode derrubar a CI.\n' \
+      "$base" "$n_total"
+  fi
   i=0
   while IFS=$'\t' read -r smell lineno detail; do
     [[ -n "$smell" ]] || continue
