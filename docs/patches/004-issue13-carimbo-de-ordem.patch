@@ -1,0 +1,114 @@
+--- a/hooks/session-start.sh	2026-09-14 10:14:52.334472549 -0300
++++ b/hooks/session-start.sh	2026-09-14 10:17:13.650674112 -0300
+@@ -407,6 +407,29 @@
+ }
+ 
+ # ---------------------------------------------------------------------------
++# issue #13 (ordem 004) — nem todo `.md` em .maestro/orders/ é ordem. Antes
++# de considerar QUALQUER arquivo do diretório (zonas congeladas, contagem de
++# pendentes), exige-se o carimbo mínimo: cabeçalho `<!-- maestro-order v1` +
++# `id:` bem-formado, os dois dentro da janela de 20 linhas do cabeçalho (a
++# mesma janela que já protegia `frozen:` do corpo escrito à mão). Sem isso,
++# doc de rollback, rascunho ou cópia solta não vira ordem por acidente (caso
++# Vitali: cutucão do supervisor 5x por um `.md` que nunca foi ordem).
++# Pura bash (read + [[ =~ ]]) — ZERO fork extra por arquivo; o laço de
++# contagem (build_and_emit) só tinha um grep por arquivo e continua tendo só
++# isso. `absorbed_by` fica para a rodada B (issue #12): esta função não sabe
++# dele.
++_maestro_order_stamp_ok() { # <arquivo> → rc 0 se carimbo de ordem válido
++  local f="$1" n=0 line hdr=0 idok=0
++  while IFS= read -r line; do
++    n=$(( n + 1 ))
++    (( n > 20 )) && break
++    [[ "$line" == '<!-- maestro-order v1'* ]] && hdr=1
++    [[ "$line" =~ ^id:\ [0-9]{1,3}$ ]] && idok=1
++  done < "$f" 2>/dev/null
++  [[ $hdr -eq 1 && $idok -eq 1 ]]
++}
++
++# ---------------------------------------------------------------------------
+ # 5. Compilação da política do gate (CONTRATO §2). Escrita atômica (tmp + mv):
+ # o GATE nunca vê um arquivo pela metade.
+ # ---------------------------------------------------------------------------
+@@ -465,6 +488,9 @@
+     if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
+       shopt -s nullglob
+       for _of in "$PROJECT_DIR/.maestro/orders"/*.md; do
++        # issue #13: sem carimbo de ordem válido, o arquivo não é ordem — não
++        # acumula frozen (caso Vitali). Checagem em bash puro, sem fork extra.
++        _maestro_order_stamp_ok "$_of" || continue
+         grep -q '^accepted_at: ' "$_of" 2>/dev/null && continue
+         # Janela = CABEÇALHO da ordem (20 linhas cobrem o carimbo cheio, com os
+         # intent_version/intent_hash do E22) — nunca o corpo, onde `frozen:`
+@@ -725,6 +751,10 @@
+   if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
+     shopt -s nullglob
+     for _ofl in "$PROJECT_DIR/.maestro/orders"/*.md; do
++      # issue #13: só carimbo de ordem válido conta como pendente — rollback,
++      # rascunho e cópia solta não inflam a contagem nem o cutucão do
++      # supervisor (caso Vitali: 5 cutucões por um .md que nunca foi ordem).
++      _maestro_order_stamp_ok "$_ofl" || continue
+       grep -q '^accepted_at: ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
+     done
+     shopt -u nullglob
+--- a/bin/maestro	2026-09-14 10:14:52.346472905 -0300
++++ b/bin/maestro	2026-09-14 10:19:14.962279810 -0300
+@@ -2071,6 +2071,19 @@
+   # mão pelo humano não pode virar campo. Era 14 até o E22 acrescentar
+   # intent_version/intent_hash — cabeçalho maior, mesma garantia.
+   _order_field() { awk -F': ' -v k="$2" 'NR>20 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null; }
++  # issue #13 (ordem 004) — nem todo `.md` em .maestro/orders/ é ordem. Mesmo
++  # carimbo mínimo exigido pelo session-start (hooks/session-start.sh): o
++  # cabeçalho `<!-- maestro-order v1` E um `id:` bem-formado, os dois dentro
++  # da janela de 20 linhas. `--list` usa isto para não listar (nem contar
++  # duplicata de) doc solto — rollback, rascunho, cópia — como se fosse ordem.
++  _order_valid_stamp() { # <arquivo> → rc 0 se carimbo de ordem válido
++    awk -F': ' '
++      NR>20 { exit }
++      $0 ~ /^<!-- maestro-order v1/ { hdr=1 }
++      $1 == "id" && $2 ~ /^[0-9]{1,3}$/ { idok=1 }
++      END { exit !(hdr && idok) }
++    ' "$1" 2>/dev/null
++  }
+   _order_status() { # <arquivo> → status derivado no stdout
+     local f="$1" br ev_f ev_w tip_tree
+     grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
+@@ -2238,19 +2251,36 @@
+ 
+   if [[ "$action" == "list" ]]; then
+     [[ -d "$odir" ]] || { echo "nenhuma ordem em $odir (crie: maestro order --create)"; return 0; }
+-    local f any=0 iv_now mark
++    local f any=0 iv_now mark id _skip="" _seen=" " _dupe=""
+     # Uma leitura de INTENT para a lista inteira (o arquivo não muda no laço).
+     iv_now=$(_intent_version "$(_intent_file "$proj")")
+     shopt -s nullglob
+     for f in "$odir"/*.md; do
++      # issue #13: sem carimbo de ordem válido, o arquivo não é ordem — não
++      # entra na lista, não conta, não pode fingir duplicata de id (caso
++      # Vitali: doc de rollback tratado como ordem). Decisão desta ordem: NÃO
++      # avisar disso a cada sessão (session-start fica em silêncio, orçamento
++      # de preâmbulo é apertado) — mas `--list`, que é sob demanda do humano,
++      # reporta o que ignorou. Traço sem custo recorrente.
++      if ! _order_valid_stamp "$f"; then
++        _skip+="${_skip:+ }${f##*/}"
++        continue
++      fi
+       any=1
+       mark=""
+       _order_intent_stale "$f" "$iv_now" && mark="  [direção mudou]"
+-      printf '%s  [%s]%s  %s\n' "$(_order_field "$f" id)" "$(_order_status "$f")" "$mark" \
++      id=$(_order_field "$f" id)
++      if [[ -n "$id" ]]; then
++        [[ "$_seen" == *" $id "* ]] && _dupe+="${_dupe:+ }$id"
++        _seen+="$id "
++      fi
++      printf '%s  [%s]%s  %s\n' "$id" "$(_order_status "$f")" "$mark" \
+         "$(grep -m1 '^# ' "$f" | sed 's/^# //')"
+     done
+     shopt -u nullglob
+     (( any == 0 )) && echo "nenhuma ordem em $odir"
++    [[ -n "$_dupe" ]] && printf 'ATENÇÃO: id de ordem duplicado — %s (dois arquivos com o mesmo id; renomeie/ajuste um)\n' "$_dupe"
++    [[ -n "$_skip" ]] && printf '(ignorado(s) em %s sem carimbo de ordem: %s)\n' "$odir" "$_skip"
+     return 0
+   fi
+ 
