@@ -407,6 +407,29 @@ parse_roster() {
 }
 
 # ---------------------------------------------------------------------------
+# issue #13 (ordem 004) — nem todo `.md` em .maestro/orders/ é ordem. Antes
+# de considerar QUALQUER arquivo do diretório (zonas congeladas, contagem de
+# pendentes), exige-se o carimbo mínimo: cabeçalho `<!-- maestro-order v1` +
+# `id:` bem-formado, os dois dentro da janela de 20 linhas do cabeçalho (a
+# mesma janela que já protegia `frozen:` do corpo escrito à mão). Sem isso,
+# doc de rollback, rascunho ou cópia solta não vira ordem por acidente (caso
+# Vitali: cutucão do supervisor 5x por um `.md` que nunca foi ordem).
+# Pura bash (read + [[ =~ ]]) — ZERO fork extra por arquivo; o laço de
+# contagem (build_and_emit) só tinha um grep por arquivo e continua tendo só
+# isso. `absorbed_by` fica para a rodada B (issue #12): esta função não sabe
+# dele.
+_maestro_order_stamp_ok() { # <arquivo> → rc 0 se carimbo de ordem válido
+  local f="$1" n=0 line hdr=0 idok=0
+  while IFS= read -r line; do
+    n=$(( n + 1 ))
+    (( n > 20 )) && break
+    [[ "$line" == '<!-- maestro-order v1'* ]] && hdr=1
+    [[ "$line" =~ ^id:\ [0-9]{1,3}$ ]] && idok=1
+  done < "$f" 2>/dev/null
+  [[ $hdr -eq 1 && $idok -eq 1 ]]
+}
+
+# ---------------------------------------------------------------------------
 # 5. Compilação da política do gate (CONTRATO §2). Escrita atômica (tmp + mv):
 # o GATE nunca vê um arquivo pela metade.
 # ---------------------------------------------------------------------------
@@ -465,7 +488,14 @@ write_gate_policy() {
     if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
       shopt -s nullglob
       for _of in "$PROJECT_DIR/.maestro/orders"/*.md; do
-        grep -q '^accepted_at: ' "$_of" 2>/dev/null && continue
+        # issue #13: sem carimbo de ordem válido, o arquivo não é ordem — não
+        # acumula frozen (caso Vitali). Checagem em bash puro, sem fork extra.
+        _maestro_order_stamp_ok "$_of" || continue
+        # issue #12 (ordem 004): ordem ABSORVIDA (por outra ordem ou pelo
+        # main) é terminal igual a aceita — não tem trabalho próprio em
+        # andamento, então também não deve continuar congelando zona. Mesmo
+        # grep, zero fork a mais (era uma alternativa fixa; segue sendo uma).
+        grep -qE '^(accepted_at|absorbed_by): ' "$_of" 2>/dev/null && continue
         # Janela = CABEÇALHO da ordem (20 linhas cobrem o carimbo cheio, com os
         # intent_version/intent_hash do E22) — nunca o corpo, onde `frozen:`
         # escrito à mão pelo humano não pode virar política de gate.
@@ -725,7 +755,14 @@ build_and_emit() {
   if [[ -d "$PROJECT_DIR/.maestro/orders" ]]; then
     shopt -s nullglob
     for _ofl in "$PROJECT_DIR/.maestro/orders"/*.md; do
-      grep -q '^accepted_at: ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
+      # issue #13: só carimbo de ordem válido conta como pendente — rollback,
+      # rascunho e cópia solta não inflam a contagem nem o cutucão do
+      # supervisor (caso Vitali: 5 cutucões por um .md que nunca foi ordem).
+      _maestro_order_stamp_ok "$_ofl" || continue
+      # issue #12 (ordem 004): absorvida é terminal — não conta como
+      # pendente, mesmo motivo de accepted_at (o cutucão cobra aceite de
+      # trabalho que a absorção já fechou em outro lugar).
+      grep -qE '^(accepted_at|absorbed_by): ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
     done
     shopt -u nullglob
   fi
