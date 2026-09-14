@@ -107,14 +107,36 @@ else
   bad "MAESTRO_LEAK_VARS sem valor poisoned neste teste: ${missing[*]}"
 fi
 
+# Ambiente LIMPO: as mesmas variáveis REMOVIDAS, para a segunda corrida que
+# distingue "vazou" de "o teste interno está quebrado".
+CLEAN_ENV=()
+# MAESTRO_HOME fica de fora, igual ao laço de verificação do poisoned: removê-la
+# mudaria uma variável que não é o objeto desta guarda.
+for _v in "${MAESTRO_LEAK_VARS[@]}"; do
+  [[ "$_v" == "MAESTRO_HOME" ]] && continue
+  CLEAN_ENV+=(-u "$_v")
+done
+
 for t in "${TARGETS[@]}"; do
   name=$(basename "$t")
   out=$(env "${POISON_ENV[@]}" bash "$t" 2>&1); rc=$?
   if [[ $rc -eq 0 ]]; then
     ok "$name continua OK com MAESTRO_* poisoned no ambiente do processo pai"
   else
-    bad "$name vazou MAESTRO_* do ambiente (rc=$rc) — o \`env -u\` do helper regrediu"
-    printf '%s\n' "$out" | tail -20 | sed 's/^/    /'
+    # E24 Lote 0: olhar só o rc do envenenado ATRIBUI ao ambiente qualquer falha
+    # do teste interno. Aconteceu de verdade: uma asserção de contrato quebrada
+    # (DENY_SELF sem `lib/`) foi reportada como "vazou MAESTRO_*", e mandou o
+    # humano procurar regressão de `env -u` que não existia. A segunda corrida,
+    # com o ambiente LIMPO, é o que separa as duas causas — sem ela esta guarda
+    # afirma mais do que mediu.
+    out_limpo=$(env "${CLEAN_ENV[@]}" bash "$t" 2>&1); rc_limpo=$?
+    if [[ $rc_limpo -ne 0 ]]; then
+      bad "$name falha com o ambiente LIMPO também (rc=$rc_limpo) — NÃO é vazamento de MAESTRO_*; conserte o teste interno"
+      printf '%s\n' "$out_limpo" | tail -20 | sed 's/^/    /'
+    else
+      bad "$name vazou MAESTRO_* do ambiente (rc=$rc, limpo=0) — o \`env -u\` do helper regrediu"
+      printf '%s\n' "$out" | tail -20 | sed 's/^/    /'
+    fi
   fi
 done
 
