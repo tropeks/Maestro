@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: 20667150c74194554a901721c77db00f341c9bb5
+absorbed_at: 2026-09-14T20:55:24-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 007 — E24 Lote 1: telemetry sai de bin/maestro — o lote que existe para provar o mecanismo
 
