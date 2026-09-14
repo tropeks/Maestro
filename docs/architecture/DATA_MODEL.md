@@ -605,6 +605,8 @@ cmd_hash=<16 hex do sha256 do comando>
 exit=<código>
 wtree_before=<hash40|none> / wtree_after=<hash40|none>
 cmd_match=yes|no|free            # E23b — o comando rodado é o DECLARADO?
+load1m_x100=<int> / ncpu=<int>   # issue #11 (ordem 005) — carga no momento do record
+inconclusive=<int>               # issue #11 — nº de asserções INCONCLUSIVO sob carga
 ```
 
 VÁLIDA exige: wtree atual == wtree_after (conteúdo byte-idêntico ao provado), before ==
@@ -627,6 +629,56 @@ a MESMA fórmula do recibo — derivação em dois lugares viraria falso "VENCID
 sempre foi gravado; até o E23b nunca era comparado, e era por isso que
 `maestro evidence --record -- true` valia como prova da suíte. Com declaração no
 projeto, a linha de VENCIDA traz o comando exato para regravar.
+
+#### Emenda (issue #11, ordem 005) — o recibo passa a guardar a CARGA
+
+Antes desta emenda, o recibo provava conteúdo + exit + comando, mas nada sobre a
+condição da máquina durante a corrida — e `ARCHITECTURE.md §NFRs` exige load de 1min
+ABSOLUTO ≤ 2,0 (mesmo limiar de `tests/lib/latency.sh`) para uma medição de latência
+valer. Caso real: recibo gravado a load 12,12 foi lido como `VÁLIDA — exit 0, conteúdo
+byte-idêntico ao provado`, sem ressalva; o diretor recusou, o CLI não tinha como saber.
+
+Três campos novos, **todos aditivos, no FIM do arquivo** (para `cmd_match` não sair da
+janela do leitor — ver armadilha da janela abaixo):
+- `load1m_x100` / `ncpu`: carga de 1min ×100 (inteiro — `CLAUDE.md` proíbe float em
+  métrica; mesma técnica de `tests/lib/latency.sh`: remove o ponto do formato de 2 casas
+  que `/proc/loadavg` sempre usa no Linux) e nº de CPUs, lidos no momento em que o
+  `--record` grava o recibo (não sourceado de `tests/lib/latency.sh`: `bin/` não depende
+  de `tests/`; o limiar de 200 — load 2,00 — é duplicado com comentário de proveniência).
+- `inconclusive`: quantas linhas da saída do comando citam a palavra `inconclusivo`
+  (case-insensitive) — o vocabulário do próprio protocolo compartilhado de medição de
+  latência (`MAESTRO_LATENCY_VERDICT=inconclusivo`, `tests/lib/latency.sh`, emitido por
+  `tests/hooks/test-gate.sh` e `test-guarda-destrutiva.sh` como `INCONCLUSIVO sob carga`).
+  A saída do comando roda por um `tee` para isto ser contável sem acoplar o ledger ao
+  FORMATO exato da linha de um teste específico. Resolve o 3º item da issue #11: "exit 0
+  limpo" e "exit 0 com N medições dispensadas por carga" eram indistinguíveis no ledger.
+
+A leitura qualifica `VÁLIDA` em vez de tratar carga como binário: `VÁLIDA (load 1.8)`
+quando dentro do limiar; `VÁLIDA, mas fora do limiar de medição (load 12.1)` quando não
+— nos dois casos ainda é `VÁLIDA` (conteúdo/exit/comando continuam provados; só a
+medição de LATÊNCIA embutida na suíte é que fica suspeita); e um sufixo `N medição(ões)
+INCONCLUSIVA(S) sob carga durante a corrida` quando `inconclusive > 0`, em VÁLIDA e em
+VENCIDA. Recibo anterior a esta emenda não tem os três campos: qualificação fica muda
+(não dá pra qualificar carga que não foi medida) — mesmo padrão de tolerância do E23b.
+
+**Decisão de versionamento (item 4 da ordem 005, por MEDIÇÃO, não preferência):**
+campo aditivo e opcional não merece schema novo SE o leitor atual (pré-emenda) ignorar
+campo desconhecido. Provado por experimento: um recibo com os 3 campos novos, lido pelo
+leitor de `bin/maestro` do `main` em `3b300bc` (SEM esta emenda), retornou
+`VÁLIDA — exit 0 há 0min, conteúdo byte-idêntico ao provado` — idêntico ao que o leitor
+velho já dizia sem os campos, porque o awk do leitor casa por NOME de campo (`/^epoch=/`
+etc.) e ignora em silêncio qualquer linha que não bata em nenhum padrão. Decisão:
+**continua `maestro-evidence-v1`**, sem migração. Regressão automatizada (a mesma lógica
+do leitor pré-005, congelada como referência) em `tests/cli/test-order-issue11.sh`.
+
+**Armadilha da janela verificada e fechada nesta emenda:** o leitor fazia
+`awk -F= 'NR>12 { exit }` — a janela já vinha com headroom de 3 linhas (9 campos
+pré-005 + 3 de folga), e os 3 campos novos, por serem exatamente 3, ocupam esse
+headroom TODO: chegam a 12 linhas, zero folga sobrando. Alargada para `NR>20` no mesmo
+patch (`docs/patches/005-issue11-recibo-com-carga.patch`) — mesmo número já usado alhures
+no repo para "cabeçalho com headroom" (`_order_field`/`_maestro_order_stamp_ok`, ordem
+004) — com comentário no código explicando a conta, para o PRÓXIMO campo não cair fora
+da janela em silêncio outra vez.
 
 #### Emenda (issue #6, 2026-09-12) — `wtree atual`/`wtree_after` não veem `.maestro/`
 `bin/maestro-wtree` (§3 emenda v1.10) exclui `.maestro/**` do fingerprint em

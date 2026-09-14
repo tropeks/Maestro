@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: ba6da2694df2154efc9f3fc854ba22e140912561
+absorbed_at: 2026-09-14T12:58:00-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 004 — o modelo de estados da ordem: absorvida termina, e nem todo .md e ordem (issues 12 e 13)
 
