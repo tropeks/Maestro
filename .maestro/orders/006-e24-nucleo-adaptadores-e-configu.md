@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: 9347dec33147be90d625bc74ad1722689d30e8d3
+absorbed_at: 2026-09-14T18:43:33-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 006 — E24: nucleo, adaptadores e configuracao — o arquivo que audita os outros passa a ser auditado
 
