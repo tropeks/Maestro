@@ -95,7 +95,12 @@ MARK=$'… (truncado pelo orçamento de injeção)\n'
 # desatualizada, então ela tem default embutido — a allowlist não tem (allowlist
 # vazia só torna o gate mais rigoroso, denylist vazia abriria o próprio Maestro).
 DENY_FALLBACK=".claude/ .github/workflows/"
-SELF_FALLBACK="agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/"
+# lib/ nasce DENYLISTED (E24 Lote 0, decisão A do supervisor): os módulos do
+# split de bin/maestro vão nascer aí, e sem isto ~85% do CLI bash migraria
+# para uma zona sem a autoproteção do ADR-003 v1.2 — vencida por mudança de
+# endereço, não por remoção. config/routing-table.yaml continua sendo a fonte
+# viva (self_paths); este fallback só entra quando ela falta/vem parcial.
+SELF_FALLBACK="agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml .claude-plugin/"
 
 warn() { printf 'maestro: session-start: %s\n' "$1" >&2 || :; }
 
