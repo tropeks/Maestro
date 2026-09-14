@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: fcd81054daaa0dce52f0f9a14bc0908bf7297757
+absorbed_at: 2026-09-14T14:31:29-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 005 — prova que parece prova: o recibo sem carga (#11) e o warn-only que esconde a catraca (#9)
 
