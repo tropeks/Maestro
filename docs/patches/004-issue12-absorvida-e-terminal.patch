@@ -1,0 +1,176 @@
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -1967,7 +1967,7 @@
+   #   aceita       → aceite explícito do diretor (--accept, auditado)
+   # Executor não escreve o próprio boletim; o diretor assina o aceite.
+   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
+-  local b_steps="" b_min="" b_cents="" intent_reviewed=0
++  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by=""
+   while (( $# )); do
+     case "$1" in
+       --create)  action="create" ;;
+@@ -1982,10 +1982,11 @@
+       --budget-cents) b_cents="${2:-}"; shift ;;
+       --doc)     odoc="${2:-}"; shift ;;
+       --intent-reviewed) intent_reviewed=1 ;;   # E22: o diretor releu o plano contra a direção nova
++      --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12 (ordem 004): usa-se COM --accept
+       --session) sid="${2:-}"; shift ;;
+       --project) proj="${2:-}"; shift ;;
+       *) die validation "flag desconhecida '$1'" \
+-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N [--intent-reviewed]" 1 ;;
++           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
+     esac
+     shift
+   done
+@@ -2087,6 +2088,13 @@
+   _order_status() { # <arquivo> → status derivado no stdout
+     local f="$1" br ev_f ev_w tip_tree
+     grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
++    # issue #12 (ordem 004): terminal DISTINTO de 'aceita' — esta ordem não
++    # provou o PRÓPRIO trabalho; foi provada JUNTO com outra (M) ou com o main.
++    # `_order_field` (janela de 20 linhas) é quem lê, porque `--accept
++    # --absorbed-by` grava o carimbo DENTRO do cabeçalho, não ao final do
++    # arquivo (ao contrário de accepted_at) — mesma proteção contra
++    # `absorbed_by:` escrito à mão no corpo virar campo por acidente.
++    [[ -n "$(_order_field "$f" absorbed_by)" ]] && { printf 'absorvida'; return 0; }
+     br=$(_order_field "$f" branch)
+     if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+       printf 'aberta'; return 0
+@@ -2307,7 +2315,15 @@
+     # sobrescrever, e o aceite VIGENTE e o mais recente. Com `-m1` a linha de
+     # prova ficava congelada no primeiro aceite mesmo depois de reaceitar.
+     [[ "$st" == "aceita" ]] && _ptree=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+-    if [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
++    if [[ "$st" == "absorvida" ]]; then
++      # issue #12: leitura ao vivo aqui seria ruído puro — esta ordem não tem
++      # branch/recibo PRÓPRIOS (é o motivo de existir o carimbo). Reporta-se o
++      # fato gravado no `--accept --absorbed-by`.
++      local _ab _atr
++      _ab=$(_order_field "$of" absorbed_by); _atr=$(_order_field "$of" absorbed_tree)
++      printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)\n' \
++        "${_ab:-?}" "${_atr:0:12}"
++    elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
+       printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
+     else
+       "$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$of")" --project "$proj" 2>/dev/null | head -1 || echo "?"
+@@ -2378,6 +2394,12 @@
+           echo '  encerrada.'
+         fi
+         ;;
++      absorvida)
++        # issue #12: estado terminal, mas DISTINTO de 'aceita' — quem audita
++        # precisa ver que o trabalho desta ordem não foi provado sozinho.
++        local _ab3; _ab3=$(_order_field "$of" absorbed_by)
++        printf '  encerrada por absorção — provada junto de %s; nada mais a executar aqui.\n' "${_ab3:-?}"
++        ;;
+       *)       echo '  próximo : executor abre o branch, entrega e prova via ledger' ;;
+     esac
+     return 0
+@@ -2385,6 +2407,80 @@
+ 
+   if [[ "$action" == "accept" ]]; then
+     local st; st=$(_order_status "$of")
++
++    if [[ -n "$absorbed_by" ]]; then
++      # issue #12 (ordem 004): a ordem N não prova o PRÓPRIO trabalho — foi
++      # absorvida por OUTRA ordem (M) ou pelo MAIN via PR (NetForge 018 dentro
++      # da 016; Maestro 001/002 nos PRs #4/#5/#10). "Absorver" não pode virar
++      # porta dos fundos para aceitar sem prova: a condição de recusa única e
++      # sem brecha é "a absorvente não está, ela mesma, provada AGORA" — nem
++      # M com status diferente de provada/aceita, nem main sem recibo válido
++      # (label 'main', exit=0, wtree_after == tip ATUAL de main) passam.
++      case "$st" in
++        aceita)
++          die validation "ordem $oid já está aceita (provou o próprio trabalho)" \
++            "--absorbed-by não se aplica a ordem já aceita" 1 ;;
++        absorvida)
++          printf 'ordem %s já absorvida por %s — nada a fazer\n' "$oid" "$(_order_field "$of" absorbed_by)"
++          return 0 ;;
++      esac
++      [[ "$absorbed_by" != "$oid" && "$absorbed_by" != "$((10#$oid))" ]] \
++        || die validation "ordem $oid não pode absorver a si mesma" "" 1
++      local abs_tree=""
++      if [[ "$absorbed_by" == "main" ]]; then
++        git -C "$proj" rev-parse --verify --quiet main >/dev/null 2>&1 \
++          || die validation "'main' não existe neste repositório" "" 1
++        local m_tip m_ef m_ew=""
++        m_tip=$(git -C "$proj" rev-parse --verify --quiet "main^{tree}" 2>/dev/null)
++        m_ef=$(maestro_evidence_file "$proj" main 2>/dev/null)
++        if [[ -n "$m_ef" && -f "$m_ef" ]] && grep -q '^exit=0$' "$m_ef" 2>/dev/null; then
++          m_ew=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$m_ef" 2>/dev/null)
++        fi
++        [[ -n "$m_ew" && -n "$m_tip" && "$m_ew" == "$m_tip" ]] \
++          || die validation "main não tem recibo válido (label 'main') no conteúdo ATUAL" \
++               "grave no tip do main: maestro evidence --record --label main -- <suíte>" 1
++        abs_tree="$m_tip"
++      elif [[ "$absorbed_by" =~ ^[0-9]{1,3}$ ]]; then
++        local m_oid m_of m_st
++        m_oid=$(printf '%03d' "$((10#$absorbed_by))")
++        m_of=$(ls "$odir/$m_oid"-*.md "$odir/$m_oid.md" 2>/dev/null | head -1 || true)
++        [[ -n "$m_of" && -f "$m_of" ]] \
++          || die validation "ordem absorvente $absorbed_by não existe" "maestro order --list" 1
++        m_st=$(_order_status "$m_of")
++        case "$m_st" in
++          provada) abs_tree=$(_order_proof_tree "$m_of") ;;
++          aceita)  abs_tree=$(grep '^accepted_tree: ' "$m_of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') ;;
++          *) die validation "ordem $absorbed_by está '$m_st', não 'provada' nem 'aceita'" \
++               "a absorvente tem de provar o PRÓPRIO trabalho antes de absorver outra — prove $absorbed_by: maestro evidence --record --label order-$((10#$absorbed_by)) -- <suíte>" 1 ;;
++        esac
++        [[ -n "$abs_tree" && "$abs_tree" != "desconhecida" ]] \
++          || die validation "ordem $absorbed_by não tem árvore provada legível" "" 1
++      else
++        die validation "--absorbed-by exige 'main' ou o id numérico (1-3 dígitos) de uma ordem" "" 1
++      fi
++      # Carimbo vai DENTRO do cabeçalho (antes do `-->`), não ao final do
++      # arquivo como accepted_at: é `_order_field` (janela de 20 linhas) quem
++      # lê absorbed_by/absorbed_tree — mesma proteção contra o campo virar
++      # texto solto no corpo.
++      local stamp
++      stamp=$(printf 'absorbed_by: %s\nabsorbed_tree: %s\nabsorbed_at: %s\nabsorbed_session: %s' \
++        "$absorbed_by" "$abs_tree" "$(date -Iseconds)" "${sid:-desconhecido}")
++      awk -v ins="$stamp" '
++        !done && $0 == "-->" { print ins; done=1 }
++        { print }
++      ' "$of" > "$of.tmp.$$" && mv -f "$of.tmp.$$" "$of" \
++        || { rm -f "$of.tmp.$$" 2>/dev/null; die env "falha ao gravar $of" "" 2; }
++      # Reaproveita o vocabulário fechado de eventos (DATA_MODEL §4): absorver
++      # é uma forma de fechar o funil de delegação, não um evento novo — quem
++      # audita distingue aceita de absorvida pelo PRÓPRIO campo no arquivo,
++      # não pelo tipo de evento no ledger.
++      log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
++      log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
++      printf 'ordem %s ABSORVIDA por %s — árvore %s; estado terminal, DISTINTO de aceita (esta ordem não provou o próprio trabalho)\n' \
++        "$oid" "$absorbed_by" "${abs_tree:0:12}"
++      return 0
++    fi
++
+     if [[ "$st" == "aceita" ]]; then
+       # S-1806: re-aceite continua no-op quando nada andou — o invariante
+       # "executor nao fecha a propria ordem" nao muda. Mas branch que andou
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -491,7 +491,11 @@
+         # issue #13: sem carimbo de ordem válido, o arquivo não é ordem — não
+         # acumula frozen (caso Vitali). Checagem em bash puro, sem fork extra.
+         _maestro_order_stamp_ok "$_of" || continue
+-        grep -q '^accepted_at: ' "$_of" 2>/dev/null && continue
++        # issue #12 (ordem 004): ordem ABSORVIDA (por outra ordem ou pelo
++        # main) é terminal igual a aceita — não tem trabalho próprio em
++        # andamento, então também não deve continuar congelando zona. Mesmo
++        # grep, zero fork a mais (era uma alternativa fixa; segue sendo uma).
++        grep -qE '^(accepted_at|absorbed_by): ' "$_of" 2>/dev/null && continue
+         # Janela = CABEÇALHO da ordem (20 linhas cobrem o carimbo cheio, com os
+         # intent_version/intent_hash do E22) — nunca o corpo, onde `frozen:`
+         # escrito à mão pelo humano não pode virar política de gate.
+@@ -755,7 +759,10 @@
+       # rascunho e cópia solta não inflam a contagem nem o cutucão do
+       # supervisor (caso Vitali: 5 cutucões por um .md que nunca foi ordem).
+       _maestro_order_stamp_ok "$_ofl" || continue
+-      grep -q '^accepted_at: ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
++      # issue #12 (ordem 004): absorvida é terminal — não conta como
++      # pendente, mesmo motivo de accepted_at (o cutucão cobra aceite de
++      # trabalho que a absorção já fechou em outro lugar).
++      grep -qE '^(accepted_at|absorbed_by): ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
+     done
+     shopt -u nullglob
+   fi

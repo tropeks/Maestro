@@ -649,8 +649,10 @@ direção, §13): a ordem atravessa clone e máquina via git. Carimbo
 author_session; corpo markdown livre (objetivo, critérios, Ask-First) + contrato de
 execução gerado. Estado NUNCA gravado — derivado: branch existe (git) · provada
 (recibo §8 com wtree_after == árvore do tip do branch) · aceita (`accepted_at`
-anexado pelo diretor via --accept, que exige provada). Log: `order_create`/
-`order_accept` com `n` (id) — nunca título/caminho.
+anexado pelo diretor via --accept, que exige provada) · absorvida (`absorbed_by`
+anexado via `--accept --absorbed-by`, que exige a ABSORVENTE já provada/aceita —
+emenda v1.11). Log: `order_create`/`order_accept` com `n` (id) — nunca
+título/caminho (absorção reaproveita `order_accept`; §4 não ganha vocábulo novo).
 
 #### Emenda E22 (S-2202) — a ordem cita a direção que a autorizou
 
@@ -678,6 +680,59 @@ tocou (`merge-base(main|master, branch)`..`branch`, §2): por rótulo, recibo co
 `exit=0`, `wtree_after` == árvore do tip do branch e `cmd_match ≠ no`. Nenhum campo
 novo no arquivo da ordem — o estado segue 100% derivado. Ordem que não toca área
 declarada segue exatamente na regra anterior (o recibo `order-N` prova).
+
+#### Emenda v1.11 (issue #12, 2026-09-14) — `absorbed_by`/`absorbed_tree` e o terceiro estado terminal
+
+Causa: `_order_status` tinha UM caminho terminal, `accepted_at`, e ele exige
+prova no tip do branch DAQUELA ordem. Ordem cujo trabalho foi absorvido por
+outra fica sem branch nem recibo próprios — `aberta` (ou `em_execucao`) para
+sempre, cobrando um aceite que o modelo torna impossível. Dois casos reais,
+duas portas: NetForge 018 absorvida DENTRO da 016 (absorção por outra ordem);
+Maestro 001/002 absorvidas pelo MAIN via PR (#4, #5, #10), hoje carimbadas à
+mão (`absorbed_by: main` em `d394a47`) só como documentação — o CLI ignorava
+o campo.
+
+`maestro order --accept N --absorbed-by <M|main>` grava, no CABEÇALHO da
+ordem N (dentro das 20 linhas que `_order_field` lê — mesma janela e mesma
+garantia contra `absorbed_by:` escrito à mão no corpo virar campo por
+acidente; ao contrário de `accepted_at`/`accepted_tree`, que são anexados ao
+FINAL do arquivo e lidos por grep sem janela):
+
+```
+absorbed_by: <id numérico de 1-3 dígitos | "main">
+absorbed_tree: <árvore (sha) que a ABSORVENTE provou>
+absorbed_at: <timestamp>
+absorbed_session: <session_id de quem carimbou>
+```
+
+**Condição de recusa (sem brecha):** a absorção só grava se a ABSORVENTE já
+está, ela mesma, provada no momento do carimbo — nunca a ordem que está sendo
+absorvida.
+- `--absorbed-by M`: a ordem M precisa derivar `provada` ou `aceita` (mesma
+  leitura de `_order_status`); qualquer outro estado — inclusive `aberta` ou
+  `em_execucao` — recusa com `die validation`. Autoabsorção (`M == N`) e M
+  inexistente também recusam.
+- `--absorbed-by main`: exige recibo (`maestro evidence --record --label
+  main`) com `exit=0` **e** `wtree_after` == árvore do tip ATUAL de `main` —
+  a mesma equação de frescor que já protege `order-N`/`accepted_tree` (§8).
+  `main` que andou depois do recibo (ou que nunca teve recibo) recusa; não há
+  como reaproveitar um recibo velho, então "absorver pelo main" nunca vira
+  atalho para pular a suíte.
+- Ordem já `aceita` não aceita `--absorbed-by` por cima; ordem já `absorvida`
+  é no-op idempotente (repete a mensagem, não regrava).
+
+**Estado derivado `absorvida`**, terceiro caminho terminal, DISTINTO de
+`aceita`: quem audita precisa ver a diferença entre a ordem que provou o
+PRÓPRIO trabalho (`aceita`) e a ordem que foi provada JUNTO de outra
+(`absorvida`) — a leitura de `--status`/`--list` não funde as duas. `absorbed_by`
+entra no MESMO teste de exclusão que `accepted_at` nos dois laços de
+`hooks/session-start.sh` (frozen zones e contagem de `ordens: N pendente(s)`):
+ordem absorvida não tem trabalho próprio em andamento e não deve continuar
+congelando caminho nem gerando cutucão de aceite pendente.
+
+Log: reaproveita `order_accept` (chave `n`) e `delegation phase=accepted` —
+nenhum vocábulo novo em §4; quem audita distingue aceita de absorvida pelo
+campo gravado no ARQUIVO da ordem, não pelo tipo de evento no ledger.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
