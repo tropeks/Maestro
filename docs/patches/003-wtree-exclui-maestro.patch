@@ -1,0 +1,30 @@
+--- a/bin/maestro-wtree
++++ b/bin/maestro-wtree
+@@ -12,6 +12,18 @@
+ #   2. arquivo novo não-rastreado (fora do .gitignore) MUDA o fingerprint;
+ #   3. o index real nunca é tocado — o staging do usuário fica intacto.
+ #
++# issue #6 / DATA_MODEL §3 emenda v1.10: `.maestro/**` fica de fora do que este
++# fingerprint prova — é estado de governança (ordens, INTENT), não o conteúdo
++# que a suíte exercita. Projeto que segue E15/E22 rastreia `.maestro/` (não é
++# `.gitignore`), então um `git add -A` sem exclusão ENXERGA o carimbo que
++# `maestro order --accept` grava em `.maestro/orders/NNN.md` — o aceite passava
++# a invalidar o próprio recibo que o autorizou. `:(exclude).maestro/**` (mesma
++# forma de `bin/maestro:1699`) resolve porque `git add -A` com pathspec de
++# exclusão NÃO atualiza as entradas cobertas — elas ficam congeladas no que já
++# estava no index copiado, e o resultado bate com o commit vigente sempre que
++# só `.maestro/` mudou no disco. Propriedade 2 continua valendo para todo o
++# resto da árvore: só o que mora sob `.maestro/` fica fora.
++#
+ # Efeito colateral conhecido e aceito (igual ao upstream): `git add -A` grava
+ # blobs soltos no object store do repo; são lixo coletável pelo gc, não estado.
+ #
+@@ -40,5 +52,7 @@
+   rm -f "$tmpidx"
+ fi
+ 
+-GIT_INDEX_FILE="$tmpidx" git -C "$top" add -A >/dev/null 2>&1 || exit 3
++# issue #6: `.maestro/**` fora do fingerprint — estado de governança, não
++# conteúdo provado pela suíte (DATA_MODEL §3 emenda v1.10).
++GIT_INDEX_FILE="$tmpidx" git -C "$top" add -A -- ':(exclude).maestro/**' >/dev/null 2>&1 || exit 3
+ GIT_INDEX_FILE="$tmpidx" git -C "$top" write-tree 2>/dev/null || exit 3
