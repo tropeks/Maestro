@@ -124,18 +124,41 @@ if [[ -f "$POL" ]]; then
   # 7ª variável: MAESTRO_GATE_ORDER_FROZEN (E15/S-1504)
   [[ "$n" -eq 7 ]] && ok "exatamente 7 variáveis" || bad "exatamente 7 variáveis (achou $n)"
   # sourceável pelo GATE, sem efeito colateral
+  # E24/006: este bloco PROMETIA comparar com config/routing-table.yaml e
+  # comparava com um LITERAL — uma cópia congelada do arquivo. Nunca verificou a
+  # política contra a fonte de verdade; verificou contra um duplicado que
+  # envelhece. Quando o humano acrescentou `lib/` ao self_paths (E24 Lote 0), a
+  # política compilada acompanhou e o teste que "compara com o arquivo"
+  # reprovou. O rótulo afirmava mais do que o código media — mesma família da
+  # issue #9. Agora a expectativa é DERIVADA do arquivo, e o teste faz o que diz.
+  #
+  # `[a, b, c]` do YAML vira `a b c` na política compilada.
+  _rt_list() { # <chave> <bloco: allowlist|denylist> → valor esperado, espaçado
+    awk -v key="$1" -v blk="$2" '
+      $0 ~ "^  " blk ":" { inblk = 1; next }
+      /^  [a-z_]+:/ && $0 !~ "^  " blk ":" { inblk = 0 }
+      inblk && $0 ~ "^    " key ": \\[" {
+        sub(/^[^[]*\[/, ""); sub(/\].*$/, ""); gsub(/, */, " "); print; exit
+      }' "$REPO/config/routing-table.yaml"
+  }
+  EXP_EXT=$(_rt_list extensions allowlist)
+  EXP_ALLOW=$(_rt_list paths allowlist)
+  EXP_DENY=$(_rt_list paths denylist)
+  EXP_SELF=$(_rt_list self_paths denylist)
+  [[ -n "$EXP_SELF" && -n "$EXP_DENY" && -n "$EXP_ALLOW" && -n "$EXP_EXT" ]] \
+    || bad "não consegui derivar os valores de config/routing-table.yaml (parser do teste)"
   ( set -euo pipefail
     # shellcheck disable=SC1090
     source "$POL"
     # promovido a block em 2026-08-29 (retro 14d + live E2E) — acompanhar a tabela
     [[ "$MAESTRO_GATE_MODE" == "block" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
-    [[ "$MAESTRO_GATE_ALLOW_EXT" == ".md .txt" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT" >&2; exit 1; }
-    [[ "$MAESTRO_GATE_ALLOW_PATHS" == ".maestro/ docs/" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS" >&2; exit 1; }
+    [[ "$MAESTRO_GATE_ALLOW_EXT" == "$EXP_EXT" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT esperado=$EXP_EXT" >&2; exit 1; }
+    [[ "$MAESTRO_GATE_ALLOW_PATHS" == "$EXP_ALLOW" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS esperado=$EXP_ALLOW" >&2; exit 1; }
     # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)
-    [[ "$MAESTRO_GATE_DENY_PATHS" == ".claude/ .github/workflows/" ]] \
-      || { echo "deny=$MAESTRO_GATE_DENY_PATHS" >&2; exit 1; }
-    [[ "$MAESTRO_GATE_DENY_SELF" == "agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml .claude-plugin/" ]] \
-      || { echo "self=$MAESTRO_GATE_DENY_SELF" >&2; exit 1; }
+    [[ "$MAESTRO_GATE_DENY_PATHS" == "$EXP_DENY" ]] \
+      || { echo "deny=$MAESTRO_GATE_DENY_PATHS esperado=$EXP_DENY" >&2; exit 1; }
+    [[ "$MAESTRO_GATE_DENY_SELF" == "$EXP_SELF" ]] \
+      || { echo "self=$MAESTRO_GATE_DENY_SELF esperado=$EXP_SELF" >&2; exit 1; }
     [[ "$MAESTRO_PLUGIN_ROOT" == "$REPO" ]] || { echo "root=$MAESTRO_PLUGIN_ROOT" >&2; exit 1; }
     [[ "${MAESTRO_GATE_ORDER_FROZEN-unset}" == "" ]] || { echo "frozen=$MAESTRO_GATE_ORDER_FROZEN" >&2; exit 1; }
   ) && ok "7 valores batem com config/routing-table.yaml" || bad "7 valores batem com config/routing-table.yaml"
