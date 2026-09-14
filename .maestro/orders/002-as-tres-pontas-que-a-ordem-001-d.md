@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: 2cd8c98d764b45c1490a6e3aa09a16acaa2941be
+absorbed_at: 2026-09-14T12:19:01-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 002 — as três pontas que a 001 deixou: fuga isolada, overhead do session-start e o método do teste de latência
 
