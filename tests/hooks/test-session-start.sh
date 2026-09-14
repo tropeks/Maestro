@@ -134,7 +134,7 @@ if [[ -f "$POL" ]]; then
     # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)
     [[ "$MAESTRO_GATE_DENY_PATHS" == ".claude/ .github/workflows/" ]] \
       || { echo "deny=$MAESTRO_GATE_DENY_PATHS" >&2; exit 1; }
-    [[ "$MAESTRO_GATE_DENY_SELF" == "agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/" ]] \
+    [[ "$MAESTRO_GATE_DENY_SELF" == "agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml .claude-plugin/" ]] \
       || { echo "self=$MAESTRO_GATE_DENY_SELF" >&2; exit 1; }
     [[ "$MAESTRO_PLUGIN_ROOT" == "$REPO" ]] || { echo "root=$MAESTRO_PLUGIN_ROOT" >&2; exit 1; }
     [[ "${MAESTRO_GATE_ORDER_FROZEN-unset}" == "" ]] || { echo "frozen=$MAESTRO_GATE_ORDER_FROZEN" >&2; exit 1; }
