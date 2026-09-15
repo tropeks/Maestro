@@ -1,0 +1,746 @@
+diff --git a/bin/maestro b/bin/maestro
+index decba7a..cd00381 100755
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -2059,230 +2059,25 @@ verif_record_hint() { # <projeto> <rótulo> → comando sugerido para registrar
+ }
+ 
+ # -------------------------------------------------------------- evidence (E13)
+-
+-cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gstack-evidence)
+-  # "Testes passaram" deixa de ser prosa: o recibo grava wtree (S-701) ANTES e
+-  # DEPOIS da execução, hash do comando, exit e idade. A leitura só diz VÁLIDA
+-  # se o conteúdo de AGORA é byte-idêntico ao provado, o comando é o mesmo, a
+-  # idade cabe no teto e nada mexeu na árvore DURANTE a corrida. A IRON LAW
+-  # vira checagem mecânica, não sistema de honra. Bash puro; estado local
+-  # (classe do brief); nada disto toca o routing.jsonl.
+-  local mode="read" label="suite" check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}" maxage="${MAESTRO_EVIDENCE_MAX_AGE:-86400}"
+-  # issue #11 (ordem 005): limiar de carga para a QUALIFICAÇÃO da leitura —
+-  # mesmo número (load 1min ABSOLUTO ≤ 2,0) e mesma justificativa de
+-  # tests/lib/latency.sh (ARCHITECTURE.md §NFRs); duplicado aqui de propósito
+-  # — bin/ não sourceia tests/ — em vez de acoplado.  Override só para depurar.
+-  local load_limiar="${MAESTRO_EVIDENCE_LOAD1M_LIMIAR_X100:-200}"
+-  local cmd_args=()
+-  while (( $# )); do
+-    case "$1" in
+-      --record)  mode="record" ;;
+-      --check)   check=1 ;;
+-      --label)   label="${2:-}"; shift ;;
+-      --project) proj="${2:-}"; shift ;;
+-      --)        shift; cmd_args=("$@"); break ;;
+-      *) die validation "flag desconhecida '$1'" \
+-           "maestro evidence [--label l] [--check] | --record [--label l] -- <comando...>" 1 ;;
+-    esac
+-    shift
+-  done
+-  [[ "$label" =~ ^[a-z][a-z0-9-]{0,23}$ ]] || die validation "rótulo inválido" "minúsculas/dígitos/hífen, ≤24" 1
+-  [[ "$maxage" =~ ^[0-9]{1,8}$ ]] || maxage=86400
+-  [[ "$load_limiar" =~ ^[0-9]{1,6}$ ]] || load_limiar=200
+-
+-  # shellcheck source=hooks/lib/common.sh
+-  source "$REPO_DIR/hooks/lib/common.sh"
+-  local ef; ef=$(maestro_evidence_file "$proj" "$label")
+-
+-  if [[ "$mode" == "record" ]]; then
+-    [[ ${#cmd_args[@]} -gt 0 ]] || die validation "comando ausente" \
+-      "maestro evidence --record -- bash tests/run-all.sh" 1
+-    local w_before="none" w_after="none" cmd_str cmd_hash rc=0
+-    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+-      w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"
+-    cmd_str="${cmd_args[*]}"
+-    cmd_hash=$(printf '%s' "$cmd_str" | sha256sum 2>/dev/null | head -c 16) || cmd_hash="none"
+-    # E23b: o recibo passa a dizer se rodou O COMANDO DECLARADO. Sem isto,
+-    # `evidence --record -- true` valia como prova da suíte — a assinatura era
+-    # de execução, não de verificação.
+-    maestro_verif_load
+-    local decl cmd_match="free"
+-    decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+-    if [[ -n "$decl" ]]; then
+-      [[ "$decl" == "$cmd_str" ]] && cmd_match="yes" || cmd_match="no"
+-    fi
+-    # issue #11 (ordem 005): o recibo grava a CARGA — sem ela, "exit 0"
+-    # byte-idêntico é lido como prova válida mesmo quando a máquina estava a
+-    # load 12 e a medição de latência embutida na suíte não valia nada
+-    # (ARCHITECTURE.md §NFRs: load 1min ≤ 2,0 para medição de latência valer).
+-    # `CLAUDE.md` proíbe float em métrica: load1m_x100 é o load de 1min ×100
+-    # (mesma técnica de tests/lib/latency.sh — remove o ponto do formato de
+-    # 2 casas que o kernel Linux sempre usa em /proc/loadavg). Lido aqui, não
+-    # sourceado de tests/lib/latency.sh: bin/ não depende de tests/.
+-    local load1m_x100=0 ncpu=1 _loadavg
+-    if read -r _loadavg _ < /proc/loadavg 2>/dev/null; then
+-      load1m_x100="${_loadavg/./}"
+-      [[ "$load1m_x100" =~ ^[0-9]+$ ]] && load1m_x100=$((10#$load1m_x100)) || load1m_x100=0
+-    fi
+-    ncpu=$(nproc 2>/dev/null) || ncpu=1
+-    [[ "$ncpu" =~ ^[0-9]+$ ]] || ncpu=1
+-    # set -e: exit != 0 é DADO (a falha é o que mais precisa de recibo), não
+-    # aborto — o || rc=$? blinda a captura.
+-    #
+-    # issue #11 (3º item): quantas asserções saíram `inconclusivo` NA CORRIDA.
+-    # `exit 0 limpo` e `exit 0 com três medições dispensadas por carga` eram
+-    # indistinguíveis no ledger. tests/lib/latency.sh não expõe um contador
+-    # (é sourceado por cada teste, morre com o subshell do teste); acoplar o
+-    # ledger ao FORMATO exato da linha de um teste específico (test-gate.sh,
+-    # test-guarda-destrutiva.sh) seria frágil pra sempre. Em vez disso: o
+-    # comando roda por um `tee`, e a contagem é de quantas LINHAS da saída
+-    # citam a palavra do próprio VOCABULÁRIO do protocolo compartilhado
+-    # (`MAESTRO_LATENCY_VERDICT=inconclusivo`, tests/lib/latency.sh) — dado do
+-    # protocolo de medição, não de um `echo` específico de um teste. Se algum
+-    # teste novo passar a usar o protocolo e imprimir a mesma palavra por
+-    # outro motivo, o número super-conta; não há como isso ficar mais estrito
+-    # sem acoplar a um formato de linha, o que é pior (ver relatório da
+-    # ordem 005). Com `pipefail` (já ligado por `set -euo pipefail` no topo
+-    # do arquivo), a falha do comando sobrevive ao pipe em PIPESTATUS[0] — MAS
+-    # um `|| true` colado na mesma linha do pipe RESETA PIPESTATUS (o `true`
+-    # vira o último comando simples executado, medido isoladamente). Testado
+-    # a mão: `( exit 3 ) | cat || true; echo "${PIPESTATUS[0]}"` imprime 0,
+-    # não 3. Por isso o pipe vai dentro de um `if`: a condição de um `if` é a
+-    # única forma de driblar o `set -e` sem rodar outro comando simples entre
+-    # o pipe e a leitura de PIPESTATUS.
+-    local out_tmp inconclusive=0
+-    out_tmp=$(mktemp 2>/dev/null) || out_tmp=""
+-    if [[ -n "$out_tmp" ]]; then
+-      if ( cd "$proj" && "${cmd_args[@]}" ) 2>&1 | tee "$out_tmp"; then
+-        rc=0
+-      else
+-        rc="${PIPESTATUS[0]}"
+-      fi
+-      inconclusive=$(grep -ci -- 'inconclusivo' "$out_tmp" 2>/dev/null) || inconclusive=0
+-      [[ "$inconclusive" =~ ^[0-9]+$ ]] || inconclusive=0
+-      rm -f "$out_tmp" 2>/dev/null
+-    else
+-      ( cd "$proj" && "${cmd_args[@]}" ) || rc=$?
+-    fi
+-    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+-      w_after=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_after="none"
+-    mkdir -p "${ef%/*}" 2>/dev/null || die env "não consigo criar ${ef%/*}" "cheque MAESTRO_HOME" 2
+-    local tmp="$ef.tmp.$$"
+-    {
+-      printf 'schema=maestro-evidence-v1\n'
+-      printf 'label=%s\nts=%s\nepoch=%s\n' "$label" "$(date -Iseconds)" "$(maestro_now_epoch)"
+-      printf 'cmd_hash=%s\nexit=%s\n' "$cmd_hash" "$rc"
+-      printf 'wtree_before=%s\nwtree_after=%s\n' "$w_before" "$w_after"
+-      printf 'cmd_match=%s\n' "$cmd_match"
+-      # issue #11 — campos ADITIVOS, no FIM (DATA_MODEL §8): cmd_match não sai
+-      # da janela do leitor (velho OU novo); campo desconhecido no meio teria
+-      # empurrado tudo que vem depois. Schema continua maestro-evidence-v1 —
+-      # ver decisão v1/v2 (item 4 da ordem 005) em DATA_MODEL.md §8.
+-      printf 'load1m_x100=%s\nncpu=%s\ninconclusive=%s\n' "$load1m_x100" "$ncpu" "$inconclusive"
+-    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null \
+-      || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar recibo" "cheque permissões" 2; }
+-    if [[ "$w_before" != "$w_after" ]]; then
+-      printf 'evidência gravada: %s — exit %s, mas a árvore MUDOU durante a execução (recibo nasce contaminado)\n' "$label" "$rc"
+-    else
+-      printf 'evidência gravada: %s — exit %s, conteúdo %s\n' "$label" "$rc" "${w_after:0:12}"
+-    fi
+-    if [[ "$cmd_match" == "no" ]]; then
+-      printf '  ATENÇÃO: não é o comando declarado em .maestro.yaml (commands.%s: %s) — este recibo NÃO conta como verificação\n' \
+-        "$label" "$decl"
+-    fi
+-    return "$rc"
+-  fi
+-
+-  # --- leitura: o veredito ---------------------------------------------------
+-  maestro_verif_load
+-  if [[ ! -f "$ef" || ! -r "$ef" ]]; then
+-    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
+-    (( check == 1 )) && return 1 || return 0
+-  fi
+-  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc=""
+-  # issue #11 (ordem 005): janela alargada de 12 para 20. Em 9 (pré-005) +
+-  # cmd_match, os 3 campos novos (load1m_x100/ncpu/inconclusive) — TODOS
+-  # acrescentados no FIM, propositalmente, para cmd_match não sair da janela
+-  # — chegavam a exatamente 12: zero folga para o PRÓXIMO campo. 20 casa com
+-  # o número já usado alhures no repo para "cabeçalho com headroom"
+-  # (_order_field/_maestro_order_stamp_ok, docs/patches/004-*), não é
+-  # arbitrário: dá espaço para +8 campos futuros antes de precisar mexer
+-  # aqui de novo — alargue de novo (com o mesmo comentário) se chegar lá.
+-  eval "$(awk -F= 'NR>20 { exit }
+-    /^epoch=/        { if ($2 ~ /^[0-9]+$/)          print "e_epoch=" $2 }
+-    /^exit=/         { if ($2 ~ /^[0-9]+$/)          print "e_exit="  $2 }
+-    /^cmd_hash=/     { if ($2 ~ /^([0-9a-f]{16}|none)$/) print "e_hash=\047" $2 "\047" }
+-    /^cmd_match=/    { if ($2 ~ /^(yes|no|free)$/)   print "e_match=\047" $2 "\047" }
+-    /^wtree_before=/ { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wb=\047" $2 "\047" }
+-    /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }
+-    /^load1m_x100=/  { if ($2 ~ /^[0-9]+$/)          print "e_load=" $2 }
+-    /^ncpu=/         { if ($2 ~ /^[0-9]+$/)          print "e_ncpu=" $2 }
+-    /^inconclusive=/ { if ($2 ~ /^[0-9]+$/)          print "e_inc="  $2 }' \
+-    "$ef" 2>/dev/null)" 2>/dev/null || :
+-  # Recibo anterior ao E23b não tem a linha: `free` (nada era declarado então).
+-  [[ -n "$e_match" ]] || e_match="free"
+-  # Recibo anterior ao issue #11 não tem carga/inconclusivo: qualificação
+-  # fica muda para ele (não dá pra qualificar o que não foi medido) — mesmo
+-  # padrão de tolerância do E23b acima, não regra nova.
+-  if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
+-    echo "evidência ($label): recibo ilegível — regrave"
+-    (( check == 1 )) && return 1 || return 0
+-  fi
+-  local age=$(( $(maestro_now_epoch) - e_epoch )) reasons=""
+-  (( age < 0 )) && age=0
+-  [[ "$e_wb" != "$e_wa" ]] && reasons+="${reasons:+; }árvore mudou durante a corrida"
+-  (( age >= maxage )) && reasons+="${reasons:+; }idade no teto (${maxage}s)"
+-  local w_now="none"
+-  [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
+-    w_now=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_now="none"
+-  [[ "$w_now" == "none" || "$e_wa" == "none" ]] && reasons+="${reasons:+; }sem git para comparar conteúdo"
+-  [[ "$w_now" != "none" && "$e_wa" != "none" && "$w_now" != "$e_wa" ]] \
+-    && reasons+="${reasons:+; }conteúdo mudou desde a prova"
+-  [[ "$e_exit" != "0" ]] && reasons+="${reasons:+; }a execução provou FALHA (exit $e_exit)"
+-  # E23b: prova é do COMANDO que o projeto declara, não de um comando qualquer.
+-  local decl_r; decl_r=$(maestro_verif_cmd "$proj" "$label") || decl_r=""
+-  if [[ "$e_match" == "no" ]]; then
+-    reasons+="${reasons:+; }comando diferente do declarado em .maestro.yaml"
+-  elif [[ -n "$decl_r" && -n "$e_hash" && "$e_hash" != "none" ]] \
+-    && [[ "$e_hash" != "$(maestro_verif_hash "$decl_r")" ]]; then
+-    # O hash sempre foi gravado, só nunca comparado: recibo velho (ou de outro
+-    # comando) deixa de valer quando o projeto passa a declarar commands.<label>.
+-    reasons+="${reasons:+; }comando do recibo ≠ commands.$label (.maestro.yaml)"
+-  fi
+-  # issue #11 (ordem 005): qualificação por carga — recibo gravado a load
+-  # acima do limiar de medição válida (ARCHITECTURE.md §NFRs) prova exit 0 e
+-  # conteúdo (isso o wtree já cobria), mas NÃO prova latência dentro do
+-  # orçamento: a suíte pode ter dispensado medições como "inconclusivo sob
+-  # carga" (ver `inconclusive` abaixo) sem que isso apareça em lugar nenhum
+-  # do exit code. Caso real: recibo a load 12,12 lido como VÁLIDA sem
+-  # ressalva — o diretor recusou, o CLI não tinha como saber.
+-  local load_qualif="" load_str=""
+-  if [[ -n "$e_load" ]]; then
+-    load_str="$(( e_load / 100 )).$(printf '%02d' $(( e_load % 100 )))"
+-    if (( e_load > load_limiar )); then
+-      load_qualif=", mas fora do limiar de medição (load $load_str)"
+-    else
+-      load_qualif=" (load $load_str)"
+-    fi
+-  fi
+-  # issue #11 (3º item): "exit 0 limpo" e "exit 0 com N medições dispensadas
+-  # por carga" deixam de ser indistinguíveis — a contagem viaja com o recibo.
+-  local inc_qualif=""
+-  if [[ -n "$e_inc" ]] && (( e_inc > 0 )); then
+-    inc_qualif="; ${e_inc} medição(ões) INCONCLUSIVA(S) sob carga durante a corrida"
+-  fi
+-  if [[ -z "$reasons" ]]; then
+-    printf 'evidência (%s): VÁLIDA%s — exit 0 há %smin, conteúdo byte-idêntico ao provado%s\n' \
+-      "$label" "$load_qualif" "$(( age / 60 ))" "$inc_qualif"
+-    return 0
+-  fi
+-  if [[ -n "$decl_r" ]]; then
+-    printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave: %s\n' "$label" "$reasons" "$inc_qualif" \
+-      "$(verif_record_hint "$proj" "$label")"
+-  else
+-    printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave.\n' "$label" "$reasons" "$inc_qualif"
+-  fi
+-  (( check == 1 )) && return 1 || return 0
++#
++# `maestro evidence`: E24 (ordem 009) moveu o FORMATO do recibo (escrita e
++# leitura crua) para lib/core-evidence.sh — o dono do formato — e as ações do
++# CLI para lib/cmd-evidence.sh (docs/designs/e24-nucleo-e-adaptadores.md).
++# Aqui fica só o carregador, no molde de maestro_verif_load, com die env no
++# lugar dos stubs: módulo ausente derruba SÓ este comando (I-2), nunca o CLI.
++# cmd_evidence é chamado de fora do dispatch (cmd_verify, cmd_outcome) — cada
++# um desses sítios chama _ev_lib_load antes, mesma técnica de _order_lib_load.
++
++_ev_lib_load() { # carrega core-evidence.sh + cmd-evidence.sh — uma vez, degradando por comando (I-2)
++  declare -f cmd_evidence >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/core-evidence.sh" && -f "$REPO_DIR/lib/cmd-evidence.sh" ]]; then
++    # shellcheck source=lib/core-evidence.sh
++    source "$REPO_DIR/lib/core-evidence.sh"
++    # shellcheck source=lib/cmd-evidence.sh
++    source "$REPO_DIR/lib/cmd-evidence.sh" && return 0
++  fi
++  die env "lib/cmd-evidence.sh (ou core-evidence.sh) não encontrado em $REPO_DIR" \
++    "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # ---------------------------------------------------------------- verify (E23b)
+@@ -2338,6 +2133,7 @@ cmd_verify() { # S-2302: que prova ESTE changeset deve ter, e quanto dela existe
+     log_event verify n=0
+     return 0
+   fi
++  _ev_lib_load   # cmd_evidence é chamado daqui, fora do dispatch (E24/ordem 009)
+   for lb in $labels; do
+     if line=$(cmd_evidence --check --label "$lb" --project "$proj" 2>/dev/null); then
+       printf '  %s\n' "$line"
+@@ -2586,6 +2382,7 @@ cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao l
+   local proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+   # E13/S-1302: --suite deixa de ser palavra de honra — consulta o ledger.
+   local ev="none"
++  _ev_lib_load   # cmd_evidence é chamado daqui, fora do dispatch (E24/ordem 009)
+   if [[ -n "$suite" ]]; then
+     if cmd_evidence --check --label suite --project "$proj" >/dev/null 2>&1; then
+       ev="cited"
+@@ -2859,433 +2656,38 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
+ }
+ 
+ # ----------------------------------------------------------------- retro (E10)
++#
++# `maestro retro`: E24 (ordem 009) moveu as ações para lib/cmd-retro.sh
++# (docs/designs/e24-nucleo-e-adaptadores.md). A cobertura do ledger de
++# evidência (E13) passou a vir de lib/core-evidence.sh (_ev_ledger_summary) —
++# retro deixou de reimplementar o formato do recibo por conta própria. Aqui
++# fica só o carregador, no molde de maestro_verif_load, com die env no lugar
++# dos stubs: módulo ausente derruba SÓ este comando (I-2), nunca o CLI.
+ 
+-_retro_count_decisions() { # _retro_count_decisions <cutoff> <arquivos...> → nº de `decision` na janela
+-  local cut="$1"; shift
+-  (( $# == 0 )) && { echo 0; return 0; }
+-  jq -rs --arg cut "$cut" \
+-    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' \
+-    "$@" 2>/dev/null || echo 0
+-}
+-
+-cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
+-  # Agregação DETERMINÍSTICA da janela (default 14 dias): o que aconteceu, em
+-  # números — override rate, gates, smells, desfecho por modo, workflows sem
+-  # uso. A INTERPRETAÇÃO é da IA nas bordas (/maestro:retro), que propõe diffs;
+-  # o exame é o eval-on-diff; o commit é o aprendizado versionado.
+-  local days=14 all=0
+-  while (( $# )); do
+-    case "$1" in
+-      --days) days="${2:-}"; shift ;;
+-      --all)  all=1 ;;
+-      *) die validation "flag desconhecida '$1'" "maestro retro [--days N] [--all]" 1 ;;
+-    esac
+-    shift
+-  done
+-  [[ "$days" =~ ^[0-9]{1,3}$ ]] && (( days >= 1 )) || die validation "--days exige 1–999" "" 1
+-  has jq || die env "retro exige jq" "instale jq (dependência declarada)" 2
+-
+-  # shellcheck source=hooks/lib/common.sh
+-  source "$REPO_DIR/hooks/lib/common.sh"
+-  local cutoff logs=() local_logs=() f
+-  cutoff=$(date -Iseconds -d "-$days days" 2>/dev/null) || cutoff=""
+-  shopt -s nullglob
+-  local_logs=("$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl)
+-  shopt -u nullglob
+-  logs=("${local_logs[@]}")
+-
+-  # E20/S-2001 — --all une o barramento de telemetria ao log local: cada
+-  # máquina publica SEUS routing*.jsonl em logs/<host>/ (telemetry-sync.sh). O
+-  # host local já está em $MAESTRO_LOG_DIR — somar de novo pelo clone contaria
+-  # o mesmo evento duas vezes, e isso é mentira, não agregação.
+-  local tel_msg="" machine_line=""
+-  if (( all == 1 )); then
+-    # shellcheck source=hooks/lib/telemetry-sync.sh
+-    source "$REPO_DIR/hooks/lib/telemetry-sync.sh"
+-    if ! maestro_telemetry_enabled; then
+-      tel_msg="-- telemetria: desligada nesta máquina (retro só local)"
+-    else
+-      if ! maestro_telemetry_pull; then
+-        tel_msg="-- telemetria: pull falhou ($TEL_REASON) — agregando o clone que já existe"
+-      fi
+-      local self_host hd hid hlogs host_label n
+-      self_host=$(maestro_telemetry_host_id)
+-      n=$(_retro_count_decisions "$cutoff" "${local_logs[@]}")
+-      machine_line="$self_host (local): $n decisões"
+-      shopt -s nullglob
+-      for hd in "$TEL_DIR"/logs/*/; do
+-        hid="${hd%/}"; hid="${hid##*/}"
+-        [[ "$hid" == "$self_host" ]] && continue
+-        hlogs=("$hd"routing*.jsonl)
+-        (( ${#hlogs[@]} > 0 )) && logs+=("${hlogs[@]}")
+-        host_label="?"
+-        [[ -f "${hd}HOST" ]] && host_label=$(head -c 200 -- "${hd}HOST" 2>/dev/null | tr -d '\n\r')
+-        [[ -n "$host_label" ]] || host_label="?"
+-        n=$(_retro_count_decisions "$cutoff" "${hlogs[@]}")
+-        machine_line+=" · $hid ($host_label): $n decisões"
+-      done
+-      shopt -u nullglob
+-    fi
+-  fi
+-
+-  local have=0; for f in "${logs[@]}"; do [[ -f "$f" ]] && have=1; done
+-  if (( have == 0 )); then
+-    [[ -n "$tel_msg" ]] && printf '%s\n' "$tel_msg"
+-    printf 'retro: log vazio — sem dados na janela de %sd, sem conclusão a tirar.\n' "$days"
+-    return 0
+-  fi
+-
+-  # S-1801 — o SENSOR (hooks/user-prompt-submit.sh, ADR-008) loga `override_manual`
+-  # para TODO prompt que começa com `/`; boa parte é ciclo de vida do plugin
+-  # (gstack-context-restore, login, cancel...), nunca teve rota automática pra
+-  # "override". O CONSUMIDOR separa: ROTEÁVEL = cmd bate com um alvo `skill:`
+-  # dos bindings (prefixo removido) OU com um nome de workflow — é só isso que
+-  # entra na taxa. `agent:`/`native:` não são slash command, ficam fora do
+-  # conjunto por definição. Tabela = fonte única (mesmo padrão de
+-  # profile_experts()); ausente/vazia degrada SEM quebrar o retro (S-1801 AC).
+-  local rt="${MAESTRO_ROUTING_TABLE:-$REPO_DIR/config/routing-table.yaml}"
+-  local routable="" routable_warn=""
+-  if [[ -f "$rt" && -r "$rt" ]]; then
+-    routable=$(awk '
+-      /^bindings:/ { in_b = 1; next }
+-      in_b && /^[a-zA-Z]/ { in_b = 0 }
+-      in_b {
+-        line = $0; sub(/#.*/, "", line)
+-        if (line ~ /^  [a-z_]+:/) {
+-          sub(/^  [a-z_]+:[ \t]*/, "", line)
+-          gsub(/[][]/, "", line)
+-          n = split(line, arr, /,[ \t]*/)
+-          for (i = 1; i <= n; i++) {
+-            tok = arr[i]; gsub(/^[ \t]+|[ \t]+$/, "", tok)
+-            if (tok ~ /^skill:/) { sub(/^skill:/, "", tok); print tok }
+-          }
+-        }
+-      }
+-      /^  [a-z]+:.*steps:/ { w = $0; gsub(/^  |:.*/, "", w); print w }
+-    ' "$rt" 2>/dev/null | awk '!s[$0]++') || routable=""
+-    [[ -z "$routable" ]] && routable_warn="routing-table sem bindings skill:/workflows reconhecíveis ($rt)"
+-  else
+-    routable_warn="routing-table.yaml ausente/ilegível ($rt)"
+-  fi
+-  local degrade=false
+-  [[ -n "$routable_warn" ]] && degrade=true
+-  local routable_json
+-  routable_json=$(printf '%s\n' "$routable" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null) || routable_json='[]'
+-  [[ -z "$routable_json" ]] && routable_json='[]'
+-
+-  printf '== maestro retro — janela de %s dia(s)%s\n' "$days" "${cutoff:+ (desde $cutoff)}"
+-  if [[ "$degrade" == true ]]; then
+-    printf -- '-- aviso: filtro roteável indisponível (%s) — override conta como no total (degradado, sem separar roteável/não-roteável)\n' "$routable_warn"
+-  fi
+-  [[ -n "$tel_msg" ]] && printf '%s\n' "$tel_msg"
+-  [[ -n "$machine_line" ]] && printf -- '-- por máquina: %s\n' "$machine_line"
+-  jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" --argjson degrade "$degrade" '
+-    map(select(type == "object")) | map(select($cut == "" or .ts >= $cut)) as $w |
+-    ($w | map(select(.event == "decision"))) as $dec |
+-    ($w | map(select(.event == "override_manual"))) as $overs |
+-    ($overs | length) as $overs_n |
+-    ($overs | map(select(.cmd as $c | $c != null and ($rtable | index($c)) != null)) | length) as $mset_n |
+-    (if $degrade then $overs_n else $mset_n end) as $m |
+-    (if $degrade then 0 else ($overs_n - $mset_n) end) as $k |
+-    ($dec | length) as $ndec |
+-    (if $ndec > 0 then (100 * $m / $ndec | floor) else 0 end) as $rate |
+-    [
+-      "-- decisões: \($ndec) · override roteável: \($m) · não-roteável: \($k) · taxa de override: \($rate)%",
+-      "-- por modo: \($dec | group_by(.mode) | map("\(.[0].mode // "?"): \(length)") | join(" · "))",
+-      "-- por workflow: \($dec | group_by(.workflow) | map("\(.[0].workflow // "?"): \(length)") | join(" · "))",
+-      "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
+-      "-- habit_warn: \($w | map(select(.event == "habit_warn")) | group_by(.smell) | sort_by(-length) | map("\(.[0].smell // "?"): \(length)") | join(" · ") | if . == "" then "nenhum" else . end)",
+-      "-- desfechos: \($w | map(select(.event == "outcome")) | group_by(.outcome) | map("\(.[0].outcome // "?"): \(length)") | join(" · ") | if . == "" then "NENHUM registrado — sem desfecho não há aprendizado (maestro outcome)" else . end)",
+-      "-- sessões encerradas: \($w | map(select(.event == "session_end")) | length) · sem decisão: \($w | map(select(.event == "session_end" and .decided == "no")) | length) · decididas sem desfecho: \($w | map(select(.event == "session_end" and .decided == "yes" and .settled == "no")) | length)",
+-      "-- consentimentos: grant \($w | map(select(.event == "consent_grant")) | length) · revoke \($w | map(select(.event == "consent_revoke")) | length)"
+-    ] | .[]
+-  ' "${logs[@]}" 2>/dev/null || { echo "retro: log ilegível"; return 0; }
+-
+-  # workflows declarados e nunca usados na janela (tabela = fonte; awk como no hook)
+-  local declared used unused=""
+-  declared=$(awk '/^  [a-z]+:.*steps:/ { gsub(/^  |:.*/, ""); print }' \
+-    "$REPO_DIR/config/routing-table.yaml" 2>/dev/null | awk '!s[$0]++')
+-  used=$(jq -rs --arg cut "$cutoff" \
+-    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | map(.workflow) | unique | .[]' \
+-    "${logs[@]}" 2>/dev/null || true)
+-  local wf
+-  while IFS= read -r wf; do
+-    [[ -n "$wf" ]] || continue
+-    grep -qx "$wf" <<<"$used" || unused+="${unused:+ }$wf"
+-  done <<<"$declared"
+-  [[ -n "$unused" ]] && printf -- '-- workflows declarados sem uso na janela: %s\n' "${unused// /, }"
+-
+-  # S-1004 — critério de promoção warn→block, codificado (nunca automático)
+-  # S-1801: rate usa SÓ override roteável (mesma separação sensor/consumidor acima).
+-  local ndec m rate
+-  ndec=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+-  if [[ "$degrade" == true ]]; then
+-    m=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+-  else
+-    m=$(jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" \
+-      'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut) and (.cmd as $c | $c != null and ($rtable | index($c)) != null))) | length' \
+-      "${logs[@]}" 2>/dev/null || echo 0)
+-  fi
+-  rate=0; (( ndec > 0 )) && rate=$(( 100 * m / ndec ))
+-  # E14: orçamento — quantas decisões declararam caps e quantos estouros houve
+-  local n_bw
+-  n_bw=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "budget_warn" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+-  printf -- '-- orçamento: %s estouro(s) de cap na janela (budget_warn)\n' "$n_bw"
+-  # E13: cobertura do ledger de evidência (arquivos, não log — estado local)
+-  local n_ev=0 n_ev_ok=0 evf
+-  shopt -s nullglob
+-  for evf in "$MAESTRO_HOME/evidence"/*; do
+-    n_ev=$(( n_ev + 1 ))
+-    grep -q '^exit=0$' "$evf" 2>/dev/null && n_ev_ok=$(( n_ev_ok + 1 ))
+-  done
+-  shopt -u nullglob
+-  printf -- '-- evidência: %s recibo(s) no ledger, %s de exit 0\n' "$n_ev" "$n_ev_ok"
+-  printf -- '-- sinais:\n' 
+-  (( rate >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$rate"
+-  # E25 — o descarte é sinal de calibração como o override: janela madura sem
+-  # nenhum `killed` é interrogate aprovando tudo, ou kill que ninguém registrou.
+-  local n_kill
+-  n_kill=$(jq -rs --arg cut "$cutoff" 'map(select(type == "object" and .event == "outcome" and .outcome == "killed" and ($cut == "" or .ts >= $cut))) | length' "${logs[@]}" 2>/dev/null || echo 0)
+-  [[ "$n_kill" =~ ^[0-9]+$ ]] || n_kill=0
+-  if (( n_kill > 0 )); then
+-    printf '   %s descarte(s) na janela (killed): o porquê fica no record — leve-o para o "## Fora de escopo" do .maestro/INTENT.md, que é onde ele sobrevive\n' "$n_kill"
+-  elif (( days >= 14 && ndec >= 10 )); then
+-    printf '   nenhum descarte na janela (%sd, %s decisões): ou o interrogate está aprovando tudo, ou o kill não está sendo registrado (maestro outcome ... killed --reason)\n' "$days" "$ndec"
+-  fi
+-  # O critério de janela sozinho não sabe se a promoção JÁ aconteceu: com o gate
+-  # em block ele seguia imprimindo "proponha warn→block" em toda ronda. Ler o
+-  # modo corrente da MESMA tabela que o retro já resolveu em $rt fecha o laço —
+-  # sinal de calibração que não se cala vira ruído e perde credibilidade.
+-  local gmode
+-  gmode=$(awk '/^gate:/ { g = 1; next }
+-               g && /^[a-zA-Z]/ { g = 0 }
+-               g && /^  mode:/ { sub(/^  mode:[ \t]*/, ""); sub(/[ \t]*#.*/, ""); print; exit }' \
+-               "$rt" 2>/dev/null) || :   # awk sem casar (tabela sem gate:) não derruba o retro sob set -e
+-  if [[ "$gmode" == "block" ]]; then
+-    printf '   promoção warn→block: já aplicada (gate.mode: block)\n'
+-  elif (( days >= 14 && ndec >= 10 && rate < 20 )); then
+-    printf '   PROMOÇÃO ELEGÍVEL: %sd de janela, %s decisões, override %s%% (<20%%) — proponha gate.mode warn→block (diff na routing-table; exige consentimento ou mão humana)\n' \
+-      "$days" "$ndec" "$rate"
+-  else
+-    printf '   promoção warn→block: ainda não (exige ≥14d, ≥10 decisões, override <20%%)\n'
++_retro_lib_load() { # carrega lib/cmd-retro.sh (+ core-evidence.sh, do qual depende) — uma vez, degradando por comando (I-2)
++  declare -f cmd_retro >/dev/null 2>&1 && return 0
++  _ev_lib_load
++  if [[ -f "$REPO_DIR/lib/cmd-retro.sh" ]]; then
++    # shellcheck source=lib/cmd-retro.sh
++    source "$REPO_DIR/lib/cmd-retro.sh" && return 0
+   fi
+-  return 0
++  die env "lib/cmd-retro.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # ---------------------------------------------------------------- habits (E9)
++#
++# `maestro habits`: E24 (ordem 009) moveu as ações para lib/cmd-habits.sh
++# (docs/designs/e24-nucleo-e-adaptadores.md). Aqui fica só o carregador, no
++# molde de maestro_verif_load, com die env no lugar dos stubs: módulo
++# ausente derruba SÓ este comando (I-2), nunca o CLI.
+ 
+-cmd_habits() { # S-903: os MESMOS sensores do hook, no momento do review/CI
+-  # O hook cutuca na edição; este comando varre o diff (ou caminhos dados) para
+-  # o step de review e para CI opcional. Sensor único (hooks/lib/
+-  # habit-sensors.awk), dois momentos — divergência entre eles seria dois
+-  # vocabulários de smell. Exit: 0 limpo · 1 achados · 2 ambiente.
+-  #
+-  # E23d — `habits_ignore:` no .maestro.yaml (DATA_MODEL §perfil): lista de
+-  # PREFIXOS de caminho, relativos à raiz do projeto, em flow (`[a/, b/]`) ou
+-  # separados por espaço; default VAZIO (nada é ignorado). Vale só no escopo
+-  # `--all` (e portanto no `--baseline`, que é o mesmo escopo): a régua e a
+-  # leitura da régua têm de ver o mesmo conjunto de arquivos, senão a catraca
+-  # mede uma coisa e cobra outra. Caminho explícito continua sendo sensoriado
+-  # mesmo se casar o prefixo — pedir por nome é decisão de quem pede.
+-  # Serve para árvore de fixture/golden que existe para ser feia (payload
+-  # gerado, snapshot de terceiros); NÃO serve para calar smell de código vivo.
+-  local scope="diff" paths=() proj="${CLAUDE_PROJECT_DIR:-$PWD}" write_baseline=0
+-  while (( $# )); do
+-    case "$1" in
+-      --all) scope="all" ;;
+-      --baseline) write_baseline=1; scope="all" ;;   # S-905: catraca grava do repo inteiro
+-      --project) proj="${2:-}"; shift ;;
+-      -*) die validation "flag desconhecida '$1'" "maestro habits [--all|--baseline] [caminhos...]" 1 ;;
+-      *) scope="paths"; paths+=("$1") ;;
+-    esac
+-    shift
+-  done
+-  local engine="$REPO_DIR/hooks/lib/habit-sensors.awk"
+-  local guides="${MAESTRO_HABIT_GUIDES:-$REPO_DIR/config/habit-guides}"
+-  [[ -f "$engine" ]] || die env "hooks/lib/habit-sensors.awk ausente" "reinstale o plugin (maestro doctor)" 2
+-  # E24 Lote 0/0.2: maestro_lang_ext (detecção por shebang) — sensor único com
+-  # o hook (I-4). Degrada com die env, igual ao engine acima.
+-  # shellcheck source=hooks/lib/common.sh
+-  if [[ -f "$REPO_DIR/hooks/lib/common.sh" ]]; then
+-    source "$REPO_DIR/hooks/lib/common.sh"
+-  else
+-    die env "hooks/lib/common.sh não encontrado" "reinstale o plugin (maestro doctor)" 2
+-  fi
+-
+-  # sensores ativos: mesma resolução do hook (MAESTRO_HABITS > .maestro.yaml > all)
+-  local enabled="all" hline=""
+-  if [[ -n "${MAESTRO_HABITS+x}" ]]; then
+-    enabled="$MAESTRO_HABITS"
+-  elif [[ -f "$proj/.maestro.yaml" ]]; then
+-    hline=$(awk '/^habits:/ { sub(/^habits:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
+-      "$proj/.maestro.yaml" 2>/dev/null) || hline=""
+-    if [[ "$hline" =~ ^\[[[:space:]]*\]$ ]]; then enabled=""
+-    elif [[ "$hline" =~ ^\[.*\]$ ]]; then
+-      enabled=$(printf '%s' "$hline" | tr -d '[]" ' | tr ',' '\n' \
+-        | grep -E '^[a-z-]{1,24}$' | paste -sd, -) || enabled=""
+-    fi
+-  fi
+-  [[ -n "$enabled" ]] || { echo "habits: desligado neste projeto (habits: [])"; return 0; }
+-
+-  # E23d — `habits_ignore:`: prefixos fora do --all. Flow (`[a/, b/]`) ou
+-  # espaço; entrada que não pareça caminho é descartada em silêncio (perfil de
+-  # projeto é dado do usuário, não contrato).
+-  local ignore_pfx=() iline="" ip
+-  if [[ -f "$proj/.maestro.yaml" && -r "$proj/.maestro.yaml" ]]; then
+-    iline=$(awk '/^habits_ignore:/ { sub(/^habits_ignore:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
+-      "$proj/.maestro.yaml" 2>/dev/null) || iline=""
+-    if [[ -n "$iline" ]]; then
+-      # shellcheck disable=SC2086  # split deliberado: a lista é de prefixos
+-      for ip in $(printf '%s' "$iline" | tr -d "[]\",'" ); do
+-        [[ "$ip" =~ ^[A-Za-z0-9._/-]{1,120}$ ]] && ignore_pfx+=("$ip")
+-      done
+-    fi
+-  fi
+-
+-  local files=()
+-  if [[ "$scope" == "paths" ]]; then
+-    files=("${paths[@]}")
+-  elif [[ "$scope" == "all" ]]; then
+-    # rastreados + novos não-ignorados: slop novo chega em arquivo novo, e um
+-    # --all que não o vê é uma catraca com o dente quebrado.
+-    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$proj/$f"); done < <(
+-      { git -C "$proj" ls-files 2>/dev/null
+-        git -C "$proj" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+-    [[ ${#files[@]} -gt 0 ]] || die env "--all exige git" "passe caminhos explícitos" 2
+-  else
+-    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$proj/$f"); done < <(
+-      { git -C "$proj" diff --name-only HEAD 2>/dev/null
+-        git -C "$proj" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+-    if [[ ${#files[@]} -eq 0 ]]; then
+-      echo "habits: diff limpo (nada alterado desde HEAD; use --all ou caminhos)"
+-      return 0
+-    fi
+-  fi
+-
+-  local total=0 shown ext base is_test out smells='' rel skipf ignored=0
+-  declare -A count=()
+-  for f in "${files[@]}"; do
+-    [[ -f "$f" && -r "$f" ]] || continue
+-    case "$f" in */vendor/*|*/node_modules/*|*/.git/*) continue ;; esac
+-    if [[ "$scope" == "all" ]] && (( ${#ignore_pfx[@]} > 0 )); then
+-      rel="${f#"$proj"/}"; skipf=0
+-      for ip in "${ignore_pfx[@]}"; do
+-        [[ "$rel" == "$ip"* ]] && { skipf=1; break; }
+-      done
+-      (( skipf == 1 )) && { ignored=$(( ignored + 1 )); continue; }
+-    fi
+-    base="${f##*/}"
+-    ext=$(maestro_lang_ext "$f")
+-    [[ -n "$ext" ]] || continue
+-    is_test=0
+-    case "$base" in test*|*_test.*|*.test.*|*.spec.*|conftest.py) is_test=1 ;; esac
+-    case "$f" in */tests/*|*/test/*|*/__tests__/*) is_test=1 ;; esac
+-    # S-1808: código GERADO. Migration do Django é escrita pelo `makemigrations`,
+-    # nunca refatorada e append-only — `CreateModel(fields=[("id", models.
+-    # BigAutoField(...))])` aninha fundo por construção. Medido no NetForge: 66
+-    # de 135 migrations disparavam `deep-nesting`, ou seja, TODA migration nova
+-    # estouraria a catraca para sempre, e o único "conserto" seria editar código
+-    # gerado à mão. Catraca que obriga isso vira obstáculo ao trabalho normal.
+-    is_gen=0
+-    case "$f" in */migrations/*.py|*_pb2.py|*_pb2_grpc.py|*.generated.*|*/gen/*) is_gen=1 ;; esac
+-    out=$(awk -v EXT="$ext" -v ENABLED="$enabled" -v ISTEST="$is_test" -v ISGEN="$is_gen" \
+-      -f "$engine" "$f" 2>/dev/null | head -50) || out=""
+-    [[ -n "$out" ]] || continue
+-    shown="${f#"$proj"/}"
+-    while IFS=$'\t' read -r smell lineno detail; do
+-      [[ -n "$smell" ]] || continue
+-      total=$(( total + 1 ))
+-      count["$smell"]=$(( ${count["$smell"]:-0} + 1 ))
+-      printf '%s:%s: %s — %s\n' "$shown" "$lineno" "$smell" "$detail"
+-      case " $smells " in *" $smell "*) ;; *) smells+="${smells:+ }$smell" ;; esac
+-    done <<<"$out"
+-  done
+-
+-  # Filtro que esconde em silêncio é armadilha: o que saiu do escopo é dito.
+-  (( ignored > 0 )) && printf 'habits_ignore: %s arquivo(s) fora do escopo (.maestro.yaml)\n' "$ignored"
+-
+-  # ---- S-905: a catraca ----------------------------------------------------
+-  # Baseline = contagem POR SMELL, versionada no projeto (.maestro-habits.tsv).
+-  # Só desce por regravação deliberada (--baseline); subir exige editar o
+-  # arquivo — visível em review. Comparação SÓ no escopo --all (o baseline é do
+-  # repo inteiro; compará-lo com um diff seria mentir a régua). Padrão da casa:
+-  # mesmo desenho do ratchet da injeção (S-703) e do eval-on-diff (S-702).
+-  local bfile="$proj/.maestro-habits.tsv"
+-  if (( write_baseline == 1 )); then
+-    local btmp="$bfile.tmp.$$" sm
+-    {
+-      printf '# maestro habits baseline (S-905) — catraca anti-slop: só desce.\n'
+-      printf '# Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline\n'
+-      for sm in $smells; do printf '%s\t%s\n' "$sm" "${count[$sm]}"; done | sort
+-    } > "$btmp" 2>/dev/null && mv -f "$btmp" "$bfile" 2>/dev/null \
+-      || { rm -f "$btmp" 2>/dev/null; die env "não consegui gravar $bfile" "cheque permissões" 2; }
+-    printf -- '---\nbaseline gravado: %s (%s achado(s) em %s smell(s))\n' \
+-      "${bfile##*/}" "$total" "$(printf '%s\n' $smells | grep -c . || true)"
+-    return 0
+-  fi
+-
+-  if [[ "$scope" == "all" && -f "$bfile" && -r "$bfile" ]]; then
+-    local over=() due=() sm bl cur improved=0 vence alvo now_epoch=""
+-    declare -A base=() base_vence=() base_alvo=()
+-    # E24 Lote 0/0.3 — dívida DECLARADA com prazo (I-6: epoch é inteiro, sem
+-    # float). Colunas 3/4 são OPCIONAIS: linha de 2 colunas lê exatamente
+-    # como antes (retrocompatível — outros projetos usam esta catraca sem
+-    # elas). `read` com 4 variáveis já cobre os dois formatos: linha de 2
+-    # colunas deixa vence/alvo vazios sozinha, sem `read` derramar sobras de
+-    # coluna dentro de `bl` (o que aconteceria com só 2 variáveis nomeadas).
+-    # Valor tosco (epoch com ponto, não-dígito) é RECUSADO em silêncio — vira
+-    # baseline sem prazo, nunca aborta a leitura.
+-    while IFS=$'\t' read -r sm bl vence alvo; do
+-      [[ "$sm" =~ ^[a-z][a-z-]{2,23}$ && "$bl" =~ ^[0-9]+$ ]] || continue
+-      base["$sm"]=$bl
+-      [[ "$vence" =~ ^[0-9]+$ && "$alvo" =~ ^[0-9]+$ ]] || continue
+-      base_vence["$sm"]=$vence; base_alvo["$sm"]=$alvo
+-    done < "$bfile"
+-    for sm in "${!count[@]}"; do
+-      cur=${count[$sm]}; bl=${base[$sm]:-0}
+-      if (( cur > bl )); then over+=("$sm: $cur > baseline $bl")
+-      elif (( cur < bl )); then improved=1; fi
+-    done
+-    for sm in "${!base[@]}"; do
+-      [[ -n "${count[$sm]:-}" ]] || { (( base[$sm] > 0 )) && improved=1; }
+-    done
+-    if (( ${#base_vence[@]} > 0 )); then
+-      now_epoch=$(maestro_now_epoch)
+-      for sm in "${!base_vence[@]}"; do
+-        vence=${base_vence[$sm]}; alvo=${base_alvo[$sm]}; cur=${count[$sm]:-0}
+-        (( now_epoch > vence && cur > alvo )) \
+-          && due+=("$sm: vencida há $(( (now_epoch - vence) / 86400 ))d, $cur > alvo $alvo")
+-      done
+-    fi
+-    if (( ${#over[@]} > 0 || ${#due[@]} > 0 )); then
+-      (( ${#over[@]} > 0 )) && {
+-        printf -- '---\nCATRACA: slop novo acima do baseline — %s\n' "$(join_semi "${over[@]}")"
+-        printf 'Conserte o que entrou; a régua não sobe para acomodar o novo.\n'
+-      }
+-      (( ${#due[@]} > 0 )) && {
+-        printf -- '---\nCATRACA: dívida declarada VENCEU sem chegar ao alvo — %s\n' "$(join_semi "${due[@]}")"
+-        printf 'O prazo (vence_epoch) passou e a contagem segue acima do alvo declarado.\n'
+-      }
+-      return 1
+-    fi
+-    printf -- '---\ndentro da catraca: %s achado(s), nenhum smell acima do baseline\n' "$total"
+-    (( improved == 1 )) && printf 'a régua pode descer: rode `maestro habits --baseline` no mesmo commit do fix\n'
+-    return 0
+-  fi
+-
+-  if (( total == 0 )); then
+-    echo "habits: limpo (${#files[@]} arquivo(s) sensoriado(s))"
+-    return 0
++_habits_lib_load() { # carrega lib/cmd-habits.sh — uma vez, degradando por comando (I-2)
++  declare -f cmd_habits >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-habits.sh" ]]; then
++    # shellcheck source=lib/cmd-habits.sh
++    source "$REPO_DIR/lib/cmd-habits.sh" && return 0
+   fi
+-  printf -- '---\n%s achado(s). Guias (sensor + guia, sempre juntos):\n' "$total"
+-  local g=0 gf
+-  for smell in $smells; do
+-    gf="$guides/$smell.md"
+-    [[ -f "$gf" ]] || continue
+-    g=$(( g + 1 )); (( g > 5 )) && { printf '… (guias restantes em %s/)\n' "$guides"; break; }
+-    printf '\n'; head -c 700 -- "$gf" 2>/dev/null || :; printf '\n'
+-  done
+-  return 1
++  die env "lib/cmd-habits.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # ----------------------------------------------------------------- brief (E8)
+@@ -3725,13 +3127,13 @@ case "$cmd" in
+   doctor) shift; doctor "$@" ;;
+   decide|status|log) shift; delegate "$cmd" "$@" ;;
+   brief) shift; cmd_brief "$@" ;;
+-  habits) shift; cmd_habits "$@" ;;
++  habits) shift; _habits_lib_load; cmd_habits "$@" ;;
+   consent) shift; cmd_consent "$@" ;;
+   outcome) shift; cmd_outcome "$@" ;;
+   conduct) shift; cmd_conduct "$@" ;;
+-  retro) shift; cmd_retro "$@" ;;
++  retro) shift; _retro_lib_load; cmd_retro "$@" ;;
+   graph) shift; cmd_graph "$@" ;;
+-  evidence) shift; cmd_evidence "$@" ;;
++  evidence) shift; _ev_lib_load; cmd_evidence "$@" ;;
+   order) shift; _order_lib_load; cmd_order "$@" ;;
+   docs) shift; cmd_docs "$@" ;;
+   upgrade) shift; cmd_upgrade "$@" ;;
