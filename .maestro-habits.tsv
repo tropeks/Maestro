@@ -1,10 +1,23 @@
 # maestro habits baseline (S-905) — catraca anti-slop: só desce.
 # Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline
 # DÍVIDA DECLARADA (E24, ordem 006). Colunas 3 e 4: vence_epoch e alvo.
-# Prazo 1790564399 = 2026-09-27T23:59:59-03:00, da cadência OBSERVADA (7 ordens
-# em 4d7h). PROVISÓRIO: a amostra é enviesada para o fácil — o Lote 1 provou o
-# mecanismo, não a decomposição. RECALCULADO no dia em que o lote do `order`
-# (587 linhas) fechar, e o número novo é dito em voz alta ainda que seja igual.
+# Prazo 1790737199 = 2026-09-29T23:59:59-03:00. RECALCULADO em 2026-09-15,
+# quando o lote do `order` fechou — a condição que o prazo anterior carregava.
+#
+# Era 2026-09-27, de uma amostra ENVIESADA PARA O FÁCIL (7 ordens, e o Lote 1
+# provava o mecanismo, não a decomposição). Mudou por duas razões, e só a
+# segunda é sobre custo:
+#   1. a contagem de lotes estava ERRADA: calculei sobre 14 restantes, são 15
+#      (17 seções de comando, saíram telemetry e order). Erro de aritmética.
+#   2. a cadência subiu de 14,0h para 14,8h de calendário por ordem, com uma
+#      amostra a mais e já incluindo o lote mais difícil da fila.
+#
+# O ACHADO da amostra difícil, que era o motivo de o prazo ser provisório:
+# decompor 13 funções aninhadas que fechavam sobre locais custou 1h43min —
+# UM MINUTO A MENOS que mover 148 linhas (1h44min no Lote 1). O gargalo é o
+# custo fixo do ciclo (despacho, review, patch, suíte, retorno humano), não a
+# dificuldade do trabalho. A amostra deixou de ser enviesada, e o medo que ela
+# devia testar não se confirmou.
 #
 # ---------------------------------------------------------------------------
 # oversized-file SAI DESTA FASE para bin/maestro — decisão do supervisor,
@@ -37,7 +50,12 @@
 # sem multiplicar os pontos onde "arquivo ausente" vira "diagnóstico ausente" —
 # oversized-file volta à fila com alvo 12.
 # ---------------------------------------------------------------------------
-deep-nesting	11	1790564399	10
+# DESCIDA DA RÉGUA por lote (a conta fica visível):
+#   Lote 0 (régua)      23  bin/maestro entra na conta pelo shebang
+#   Lote 1 (telemetry)  23  funções já eram pequenas — moveu, não decompôs
+#   Lote order          22  primeira descida: sumiu a leitura de 132 linhas que
+#                           o ponto cego do sensor produzia para cmd_order
+deep-nesting	11	1790737199	10
 oversized-file	13
-oversized-function	23	1790564399	6
+oversized-function	22	1790737199	6
 skipped-test	1
