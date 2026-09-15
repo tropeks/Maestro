@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# maestro lib/cmd-outcome.sh — E10/S-1001, extraído de bin/maestro na ordem
+# 010 (E24, ledger e record).
+#
+# decide registra a APOSTA (workflow/mode/agents); outcome registra se ela
+# pagou: accepted | rework | reverted (+ suite pass|fail) — e o quarto
+# veredito do E25/S-2501, `killed`, a decisão de NÃO construir. Sem desfecho
+# não há aprendizado — é ele que o retro cruza com mode/agents para dizer
+# qual tier funciona. Enums no log, jamais texto (DATA_MODEL §4, CONTRATO,
+# intocado nesta ordem).
+#
+# `cmd_outcome` chama `_delegation_lib_load` (lib/cmd-delegation.sh, extraída
+# na MESMA ordem) e `_ev_lib_load` (lib/core-evidence.sh + lib/cmd-evidence.sh,
+# ordem 009) — cada uma degradando por comando (I-2), mesma técnica de
+# `_order_lib_load`. Retorno multivalor usa `\x1f` como separador (tab é
+# engolido pelo `read` como IFS whitespace — bug pago na ordem 009).
+#
+# `maestro_verif_load`/`verif_base_ref`/`verif_required`/`verif_record_hint`
+# continuam RESIDENTES em bin/maestro (não extraídos nesta ordem): achado
+# durante o corte — lib/cmd-evidence.sh, lib/core-order-state.sh e
+# lib/cmd-order.sh (nenhum dos três alvo desta ordem) chamam essas funções
+# assumindo que já estão carregadas, sem passar por loader nenhum. Extraí-las
+# quebraria `evidence` e `order` sempre que chamados sem `verify` ter
+# carregado antes — acoplamento não mapeado, reportado em vez de resolvido
+# no meio do corte (trava herdada desta ordem).
+#
+# Sourced por bin/maestro (via _outcome_lib_load, I-2) DENTRO do mesmo
+# processo — REPO_DIR, die, has, join_semi, log_event, maestro_verif_load,
+# verif_base_ref, verif_required, verif_record_hint já no escopo. Convenção
+# (firmada no lote do `order`, E24): parâmetro posicional, nenhuma função
+# fecha sobre local de outra.
+
+_outcome_kill_reason() { # <texto cru> → sanitizado (controle fora, espaço colapsado), ≤120 em fronteira ASCII
+  # `--reason` passa pelo MESMO tratamento do `decide` (src/cli.ts). Acima do
+  # teto corta e avisa: falhar aqui perderia o registro do descarte por uma
+  # vírgula. `bin/maestro` não fixa LC_ALL; sob LANG=C o corte é em BYTE e
+  # parte sequência UTF-8 — recuar até o último espaço é a mesma regra do
+  # orçamento da injeção, e perder a palavra parcial é melhor que o
+  # caractere corrompido.
+  local kreason="$1"
+  [[ -n "$kreason" ]] || { printf ''; return 0; }
+  kreason=$(printf '%s' "$kreason" | tr '\000-\037\177' ' ' | tr -s ' ')
+  kreason="${kreason#"${kreason%%[![:space:]]*}"}"
+  kreason="${kreason%"${kreason##*[![:space:]]}"}"
+  if (( ${#kreason} > 120 )); then
+    printf 'maestro: --reason truncado em 120 (tinha %s)\n' "${#kreason}" >&2
+    kreason="${kreason:0:120}"
+    [[ "$kreason" == *" "* ]] && kreason="${kreason% *}"
+  fi
+  printf '%s' "$kreason"
+  return 0
+}
+
+_outcome_validate_kill() { # <verdict> <suite> <kreason> <sid> → valida killed/--reason cruzados, dies se violado
+  local verdict="$1" suite="$2" kreason="$3" sid="$4"
+  if [[ "$verdict" == "killed" ]]; then
+    # Kill sem porquê é ruído, não registro: quem lê o retro daqui a um mês
+    # precisa saber por que a ideia morreu, senão ela ressuscita igual.
+    [[ -n "$kreason" ]] || die validation "killed exige o porquê do descarte" \
+      "maestro outcome --session $sid killed --reason \"<por que não vamos construir>\"" 1
+    [[ -z "$suite" ]] || die validation "killed não aceita --suite" \
+      "nada foi construído — não há suíte a anexar a um descarte" 1
+  elif [[ -n "$kreason" ]]; then
+    die validation "--reason é o porquê do DESCARTE e só vale com killed" \
+      "a razão da aposta é do decide (maestro decide ... --reason); para descartar: maestro outcome --session $sid killed --reason \"...\"" 1
+  fi
+  return 0
+}
+
+# E23a/S-2301 — aceitar trabalho DELEGADO exige prova de que a delegação
+# aconteceu: `mode: subagent|multi` é intenção do decide; quem prova o
+# disparo é `delegation phase=started` (hook pre-agent.sh). `--unproven` é a
+# válvula honesta: passa, mas carimba `delegation_proof: none`. `killed` não
+# passa por aqui — não há entrega a afirmar.
+_outcome_delegation_proof() { # <rec> <verdict> <unproven> <sid> → "started"|"none"|"" no stdout; dies sem prova e sem --unproven
+  local rec="$1" verdict="$2" unproven="$3" sid="$4" rmode="" nstarted
+  [[ "$verdict" == "accepted" ]] || { printf ''; return 0; }
+  rmode=$(jq -r '.mode // ""' "$rec" 2>/dev/null) || rmode=""
+  [[ "$rmode" == "subagent" || "$rmode" == "multi" ]] || { printf ''; return 0; }
+  _delegation_lib_load
+  nstarted=$(_delegation_n "$sid" started)
+  if [[ "$nstarted" -gt 0 ]]; then
+    printf 'started'
+  elif (( unproven == 1 )); then
+    printf 'none'
+  else
+    die validation \
+      "sessão $sid decidiu mode=$rmode e não há prova de delegação no log (nenhum 'delegation phase=started')" \
+      "veja o funil com 'maestro delegation --session $sid'; delegue de fato, ou aceite assumindo o custo: maestro outcome --session $sid accepted --unproven" 1
+  fi
+  return 0
+}
+
+_outcome_suite_evidence() { # <proj> <suite> → "cited"|"none" no stdout (E13/S-1302: --suite consulta o ledger)
+  local proj="$1" suite="$2"
+  [[ -n "$suite" ]] || { printf 'none'; return 0; }
+  if cmd_evidence --check --label suite --project "$proj" >/dev/null 2>&1; then
+    printf 'cited'
+  else
+    printf 'none'
+  fi
+  return 0
+}
+
+# E23b/S-2302 — aceitar é afirmar que a entrega serve. Se o working tree toca
+# área com verificação obrigatória, o aceite exige o conjunto — ou
+# `--unproven` explícito, que passa mas CARIMBA a falta no record.
+_outcome_verif_gate() { # <proj> <verdict> <unproven> → "vf\x1fvmiss(separado por espaço)"; dies sem prova e sem --unproven
+  local proj="$1" verdict="$2" unproven="$3" base labels lb vmiss=()
+  [[ "$verdict" == "accepted" ]] || { printf '\x1f'; return 0; }
+  maestro_verif_load
+  base=$(verif_base_ref "$proj" "")
+  labels=$(verif_required "$proj" "$base" "") || labels=""
+  [[ -n "$labels" ]] || { printf '\x1f'; return 0; }
+  for lb in $labels; do
+    cmd_evidence --check --label "$lb" --project "$proj" >/dev/null 2>&1 || vmiss+=("$lb")
+  done
+  if [[ ${#vmiss[@]} -eq 0 ]]; then printf 'cited\x1f'; return 0; fi
+  if (( unproven == 0 )); then
+    printf 'maestro: sem verificação obrigatória: %s\n' "$(join_semi "${vmiss[@]}")" >&2
+    for lb in "${vmiss[@]}"; do
+      printf '  %s\n' "$(verif_record_hint "$proj" "$lb")" >&2
+    done
+    die validation "o changeset toca área com verificação obrigatória (.maestro.yaml) sem prova válida" \
+      "rode os comandos acima — ou registre a exceção com 'maestro outcome ... accepted --unproven'" 1
+  fi
+  printf 'missing\x1f%s' "${vmiss[*]}"
+  return 0
+}
+
+# Os dois `del` não são zelo: o desfecho é last-wins, e campo herdado MENTE
+# (sessão morta e reaberta como accepted não pode ficar com kill_reason
+# órfão; accepted seguido de killed não pode deixar suite/delegation_proof/
+# verifications afirmando uma entrega que foi descartada).
+_outcome_write_record() { # <rec> <tmp> <verdict> <suite> <ev> <vf> <proof> <kreason> <sid> → grava (tmp+mv); die env se falhar
+  local rec="$1" tmp="$2" verdict="$3" suite="$4" ev="$5" vf="$6" proof="$7" kreason="$8" sid="$9"
+  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg kr "$kreason" --arg ts "$(date -Iseconds)" \
+       '.outcome = $o | .outcome_ts = $ts
+        | (if $vf != "" then .verifications = $vf else . end)
+        | (if $dp != "" then .delegation_proof = $dp else . end)
+        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
+        | (if $o == "killed"
+             then .kill_reason = $kr
+                  | del(.suite) | del(.suite_evidence) | del(.delegation_proof) | del(.verifications)
+             else del(.kill_reason) end)' \
+       "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
+    log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null
+  die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
+}
+
+_outcome_print_result() { # <verdict> <suite> <ev> <vf> <proof> <sid> [vmiss...] → mensagens finais no stdout
+  local verdict="$1" suite="$2" ev="$3" vf="$4" proof="$5" sid="$6"; shift 6
+  local vmiss=("$@")
+  printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+  # O texto do porquê fica no record (confidential) e JAMAIS no log; o que
+  # sobrevive à sessão é o INTENT, versionado — quem edita é o humano.
+  [[ "$verdict" == "killed" ]] && \
+    echo "o descarte só sobrevive à sessão no '## Fora de escopo' do .maestro/INTENT.md — leve o motivo para lá e rode: maestro intent --bump"
+  case "$proof" in
+    started) echo "delegação PROVADA no log (delegation phase=started nesta sessão)" ;;
+    none)    echo "aviso: aceito SEM prova de delegação (--unproven) — record carimbado com delegation_proof: none" ;;
+  esac
+  if [[ "$vf" == "missing" ]]; then
+    printf 'aviso: aceito SEM a verificação obrigatória (%s) — o record carimba verifications=missing\n' \
+      "$(join_semi "${vmiss[@]}")"
+  elif [[ "$vf" == "cited" ]]; then
+    echo "verificações obrigatórias da área: todas VÁLIDAS no ledger (mecânico, não honra)"
+  fi
+  if [[ "$suite" == "pass" ]]; then
+    if [[ "$ev" == "cited" ]]; then
+      echo "suíte pass CITANDO evidência válida do ledger (mecânico, não honra)"
+    else
+      echo "aviso: suíte pass SEM evidência no ledger — palavra de honra; registre com: maestro evidence --record -- <suíte>"
+    fi
+  fi
+  return 0
+}
+
+_outcome_apply() { # <sid> <rec> <verdict> <suite> <unproven> <kreason> → orquestra gates, escrita e mensagens
+  local sid="$1" rec="$2" verdict="$3" suite="$4" unproven="$5" kreason="$6"
+  local proj="${CLAUDE_PROJECT_DIR:-$PWD}" tmp="$rec.tmp.$$"
+  local proof="" ev="none" vf="" vf_raw="" vmiss_str="" vmiss=()
+  proof=$(_outcome_delegation_proof "$rec" "$verdict" "$unproven" "$sid")
+  _ev_lib_load   # cmd_evidence é chamado daqui, fora do dispatch (E24/ordem 009)
+  ev=$(_outcome_suite_evidence "$proj" "$suite")
+  vf_raw=$(_outcome_verif_gate "$proj" "$verdict" "$unproven")
+  IFS=$'\x1f' read -r vf vmiss_str <<<"$vf_raw"
+  [[ -n "$vmiss_str" ]] && read -ra vmiss <<<"$vmiss_str"
+  _outcome_write_record "$rec" "$tmp" "$verdict" "$suite" "$ev" "$vf" "$proof" "$kreason" "$sid"
+  _outcome_print_result "$verdict" "$suite" "$ev" "$vf" "$proof" "$sid" "${vmiss[@]}"
+  return 0
+}
+
+cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao log
+  local sid="" verdict="" suite="" unproven=0 kreason=""
+  while (( $# )); do
+    case "$1" in
+      --session) sid="${2:-}"; shift ;;
+      --suite)   suite="${2:-}"; shift ;;
+      --reason)  kreason="${2:-}"; shift ;;   # E25: o porquê do DESCARTE (só com killed)
+      --unproven) unproven=1 ;;   # E23b: fecha SEM a prova exigida, e o record diz isso
+      accepted|rework|reverted|killed) verdict="$1" ;;
+      *) die validation "argumento desconhecido '$1'" \
+           "maestro outcome --session <id> <accepted|rework|reverted|killed> [--suite pass|fail] [--unproven] [--reason <texto>]" 1 ;;
+    esac
+    # `|| :` porque flag como ÚLTIMO argumento já consumiu o que havia: sem
+    # isto o shift falha sob set -e e o comando morre em silêncio.
+    shift || :
+  done
+  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+    "maestro outcome --session <id> <accepted|rework|reverted|killed>" 1
+  [[ -n "$verdict" ]] || die validation "desfecho obrigatório" "accepted | rework | reverted | killed" 1
+  [[ -z "$suite" || "$suite" =~ ^(pass|fail)$ ]] || die validation "--suite aceita pass|fail" "" 1
+  kreason=$(_outcome_kill_reason "$kreason")
+  _outcome_validate_kill "$verdict" "$suite" "$kreason" "$sid"
+  has jq || die env "outcome exige jq" "instale jq (dependência declarada)" 2
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local rec="$MAESTRO_SESSIONS_DIR/$sid.json"
+  [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
+    "o desfecho fecha uma decisão existente (maestro decide primeiro)" 1
+  _outcome_apply "$sid" "$rec" "$verdict" "$suite" "$unproven" "$kreason"
+}
