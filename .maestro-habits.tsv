@@ -1,17 +1,43 @@
 # maestro habits baseline (S-905) — catraca anti-slop: só desce.
 # Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline
 # DÍVIDA DECLARADA (E24, ordem 006). Colunas 3 e 4: vence_epoch e alvo.
-# O alvo é o baseline de ANTES do shebang — quitar significa que bin/maestro
-# deixou de contribuir. Prazo 1790564399 = 2026-09-27T23:59:59-03:00.
+# Prazo 1790564399 = 2026-09-27T23:59:59-03:00, da cadência OBSERVADA (7 ordens
+# em 4d7h). PROVISÓRIO: a amostra é enviesada para o fácil — o Lote 1 provou o
+# mecanismo, não a decomposição. RECALCULADO no dia em que o lote do `order`
+# (587 linhas) fechar, e o número novo é dito em voz alta ainda que seja igual.
 #
-# PROVISÓRIO, por decisão do supervisor em 2026-09-14, e a condição é parte do
-# prazo: a cadência que o produziu (7 ordens em 4d7h) vem de amostra ENVIESADA
-# PARA O FÁCIL — o Lote 1 provou o mecanismo, não a decomposição. O prazo é
-# RECALCULADO no dia em que o lote do `order` (587 linhas) fechar, e o número
-# novo é dito em voz alta ainda que seja o mesmo. Prazo derivado de amostra
-# fácil aplicado a trabalho difícil é palpite com cara de conta; a única forma
-# honesta de usá-lo é declarar quando será revisto.
+# ---------------------------------------------------------------------------
+# oversized-file SAI DESTA FASE para bin/maestro — decisão do supervisor,
+# 2026-09-14, com a razão gravada porque exceção que ninguém releu vira
+# esquecimento:
+#
+#   O doctor é 34% do arquivo. É quem diagnostica ambiente quebrado, e o único
+#   que roda SEM Bun. Fatiá-lo trocaria um diagnóstico que funciona quando tudo
+#   o mais falhou por um número. A métrica serve ao objetivo; quando ela briga
+#   com o objetivo, ela cede — mas cede explicitamente.
+#
+# ARITMÉTICA que forçou a decisão (medida nas 27 seções reais, não estimada):
+#   arquivo 4311 · teto 400 · 27 seções somando 4292
+#   ordenado por tamanho, 19 lotes levariam a 382 — mas incluindo o doctor
+#   sem o doctor: máximo removível 2747, restam 1564 — 3,9x o teto
+#
+# ESTADO FINAL PRETENDIDO, com número, porque alvo sem número volta a ser
+# sintoma: bin/maestro reduzido a DESPACHANTE + DOCTOR = ~1564 linhas
+#   1545 de seção (drift+envelope 594, roster 209, bindings 175, hooks.json 132,
+#        doctor 127, resolução de caminho 108, routing-table 105, dispatch 46,
+#        relatório 30, parsers 19) + 19 de cabeçalho
+#   saem 2747 linhas em 16 lotes (17 seções de comando, telemetry já saiu)
+#
+# A DÍVIDA DO E24 PASSA A SER oversized-function: 18 dos 22 achados do arquivo,
+# e é o que o lote do `order` vai testar de verdade. Split move arquivo;
+# decomposição é o que realmente mede contexto contido (INTENT v2, Prioridade 5).
+# oversized-file sempre foi o sintoma mais visível e o menos informativo.
+#
+# CONDIÇÃO DE RETORNO: se um dia houver caminho seguro para extrair o doctor —
+# sem multiplicar os pontos onde "arquivo ausente" vira "diagnóstico ausente" —
+# oversized-file volta à fila com alvo 12.
+# ---------------------------------------------------------------------------
 deep-nesting	11	1790564399	10
-oversized-file	13	1790564399	12
+oversized-file	13
 oversized-function	23	1790564399	6
 skipped-test	1
