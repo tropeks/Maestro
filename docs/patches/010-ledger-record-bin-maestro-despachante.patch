@@ -1,0 +1,470 @@
+diff --git a/bin/maestro b/bin/maestro
+index cd00381..be6e720 100755
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -1392,110 +1392,18 @@ check_habits_debt() { # E24 Lote 0/0.3: dívida declarada com prazo — avisa a
+ 
+ now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
+ 
+-record_mtime() {
+-  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || printf '0\n'
+-}
+-
+-record_expired() { # 0 = expirado; fonte de verdade expires_at, fallback mtime (review P2-3)
+-  local f="$1" exp='' epoch now
+-  now=$(now_epoch)
+-  if has jq; then exp=$(jq -r '.expires_at // empty' "$f" 2>/dev/null || true); fi
+-  if [[ -n "$exp" ]] && epoch=$(date -d "$exp" +%s 2>/dev/null); then
+-    [[ $now -ge $epoch ]]
+-  else
+-    [[ $((now - $(record_mtime "$f"))) -ge $MAESTRO_TTL_SECONDS ]]
++# E24/ordem 010: record_mtime/record_expired/record_schema_ok/check_records
++# saíram para lib/core-record.sh — dono da leitura/validação do decision
++# record. RECORD_FIELDS continua aqui (CONTRATO consumido por cinco
++# repositórios, fora do escopo desta ordem); now_epoch também, porque
++# check_habits_debt (acima, roda antes deste módulo carregar) depende dela.
++_record_lib_load() { # carrega lib/core-record.sh — uma vez, degradando por comando (I-2)
++  declare -f check_records >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/core-record.sh" ]]; then
++    # shellcheck source=lib/core-record.sh
++    source "$REPO_DIR/lib/core-record.sh" && return 0
+   fi
+-}
+-
+-record_schema_ok() { # DATA_MODEL §3, sem campos extras
+-  local f="$1"
+-  jq -e --arg fields "$RECORD_FIELDS" '
+-    (type == "object")
+-    and (.session_id  | type == "string") and (.session_id | length > 0)
+-    and (.ts          | type == "string")
+-    and (.expires_at  | type == "string")
+-    and (.workflow    | type == "string")
+-    and (.mode as $m | ["direct","subagent","multi"] | index($m) != null)
+-    and ((keys - ($fields | split(" "))) | length == 0)
+-    and (((.reason // "") | length) <= 120)
+-    and (if has("agents") then (.agents | type == "array") else true end)
+-    and (if has("wtree") then (.wtree | type == "string" and test("^[0-9a-f]{40}$")) else true end)
+-    and (if has("outcome") then (.outcome as $o | ["accepted","rework","reverted","killed"] | index($o) != null) else true end)
+-    and (if has("outcome_ts") then (.outcome_ts | type == "string") else true end)
+-    and (if has("suite") then (.suite as $s | ["pass","fail"] | index($s) != null) else true end)
+-    and (if (has("outcome_ts") or has("suite")) then has("outcome") else true end)
+-    and (if has("kill_reason") then ((.outcome // "") == "killed"
+-      and (.kill_reason | type == "string" and length > 0 and length <= 120)) else true end)
+-    and (if (.outcome // "") == "killed" then has("kill_reason") else true end)
+-    and (if has("budget") then (.budget | type == "object"
+-      and ((keys - ["steps","minutes","cents"]) | length == 0)
+-      and (all(.[]; type == "number" and . == floor and . >= 1))) else true end)
+-    and (if has("suite_evidence") then (.suite_evidence as $e | ["cited","none"] | index($e) != null) else true end)
+-    and (if has("delegation_proof") then (has("outcome") and (.delegation_proof as $d | ["started","none"] | index($d) != null)) else true end)
+-    and (if has("verifications") then (has("outcome") and (.verifications as $v | ["cited","missing"] | index($v) != null)) else true end)
+-    and (if has("depth") then (.depth as $d | ["standard","deep","day-zero"] | index($d) != null) else true end)
+-    and (if has("profile") then (.profile as $p | ["prototipo","piloto","produto"] | index($p) != null) else true end)
+-    and (has("profile") == ((.depth // "") == "day-zero"))
+-    and (if has("brief") then (.brief | type == "string" and length <= 700
+-      and test("essencia:") and test("impacto:") and test("approach:")) else true end)
+-    and (if has("flags") then (.flags | type == "array"
+-      and all(.[]; type == "object"
+-        and ((keys - ["sev","decisao","tradeoff","mitigacao"]) | length == 0)
+-        and (all(.[]; type == "string" and length <= 120))
+-        and (if has("sev") then (.sev as $s | ["critical","high","medium","low"] | index($s) != null) else true end)))
+-      else true end)
+-  ' "$f" >/dev/null 2>&1
+-}
+-
+-check_records() { # API_SPEC §1/§2 + DATA_MODEL §3: doctor valida schema e limpa TTL
+-  local dir="$MAESTRO_HOME/sessions"
+-  if [[ ! -d "$dir" ]]; then
+-    report ok "decision records: nenhum diretório de sessões ainda"
+-    return
+-  fi
+-  shopt -s nullglob
+-  local files=("$dir"/*.json)
+-  shopt -u nullglob
+-  if [[ ${#files[@]} -eq 0 ]]; then
+-    report ok "decision records: nenhum registrado"
+-    return
+-  fi
+-  if ! has jq; then
+-    report skip "decision records: schema DATA_MODEL §3" "requer jq (${#files[@]} record(s) não verificados)"
+-    return
+-  fi
+-  local kept=0 removed=0 bad=() pending=() f sid
+-  for f in "${files[@]}"; do
+-    if record_expired "$f"; then
+-      rm -f "$f" && removed=$((removed + 1))
+-      continue
+-    fi
+-    if record_schema_ok "$f"; then
+-      kept=$((kept + 1))
+-      # E17/S-1702: outcome fechado com o approach do brief ainda pendente é
+-      # sinal de regência incompleta — nunca falha o doctor, só avisa.
+-      # E25/S-2501: `killed` fica de fora — cobrar o approach de quem descartou é
+-      # pedir o plano de execução do que se decidiu não executar, e o kill de
+-      # feature quase sempre tem o approach pendente (é por isso que se mata).
+-      if jq -e '(has("outcome")) and (.outcome != "killed")
+-                and ((.brief // "") | contains("approach: pendente"))' \
+-           "$f" >/dev/null 2>&1; then
+-        pending+=("$(basename -- "$f")")
+-      fi
+-    else
+-      bad+=("$(basename -- "$f")")
+-    fi
+-  done
+-  if [[ ${#bad[@]} -gt 0 ]]; then
+-    report fail_val "decision records: schema DATA_MODEL §3" \
+-      "inválido(s): ${bad[*]} (fix: remova o(s) arquivo(s) em \$MAESTRO_HOME/sessions)"
+-  else
+-    report ok "decision records: $kept válido(s), $removed expirado(s) removido(s)"
+-  fi
+-  for f in "${pending[@]}"; do
+-    sid="${f%.json}"
+-    report warn "record $sid: outcome registrado com approach pendente (rode maestro conduct --approach)"
+-  done
++  die env "lib/core-record.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # ----------------------------------------------------------------------- doctor
+@@ -1591,7 +1499,7 @@ doctor() {
+       "não consigo escrever em $MAESTRO_HOME (fix: cheque permissões ou exporte MAESTRO_HOME)"
+   fi
+ 
+-  check_records
++  _record_lib_load; check_records
+   check_briefs
+   check_habit_guides
+   check_commands
+@@ -2283,294 +2191,35 @@ cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegi
+ }
+ 
+ # --------------------------------------------------------------- outcome (E10)
++#
++# E24/ordem 010: cmd_outcome saiu para lib/cmd-outcome.sh (docs/designs/
++# e24-nucleo-e-adaptadores.md). Aqui fica só o carregador, no molde de
++# _order_lib_load, com die env no lugar de stub: módulo ausente derruba SÓ
++# este comando (I-2), nunca o CLI.
+ 
+-cmd_outcome() { # S-1001: o desfecho — a variável dependente que faltava ao log
+-  # decide registra a APOSTA (workflow/mode/agents); outcome registra se ela
+-  # pagou: accepted | rework | reverted (+ suite pass|fail). Sem desfecho não
+-  # há aprendizado — é ele que o retro cruza com mode/agents para dizer qual
+-  # tier funciona. Enums no log, jamais texto.
+-  # E25/S-2501: os três vereditos acima pressupõem que houve código; faltava o
+-  # quarto — `killed`, a decisão de NÃO construir. Sem ele o descarte evapora
+-  # com a sessão e a mesma ideia volta na semana seguinte.
+-  local sid="" verdict="" suite="" unproven=0 kreason=""
+-  while (( $# )); do
+-    case "$1" in
+-      --session) sid="${2:-}"; shift ;;
+-      --suite)   suite="${2:-}"; shift ;;
+-      --reason)  kreason="${2:-}"; shift ;;   # E25: o porquê do DESCARTE (só com killed)
+-      --unproven) unproven=1 ;;   # E23b: fecha SEM a prova exigida, e o record diz isso
+-      accepted|rework|reverted|killed) verdict="$1" ;;
+-      *) die validation "argumento desconhecido '$1'" \
+-           "maestro outcome --session <id> <accepted|rework|reverted|killed> [--suite pass|fail] [--unproven] [--reason <texto>]" 1 ;;
+-    esac
+-    # `|| :` porque flag como ÚLTIMO argumento (`--reason` sem valor) já consumiu o
+-    # que havia: sem isto o shift falha sob set -e e o comando morre em silêncio,
+-    # em vez de cair na validação que ensina a forma certa.
+-    shift || :
+-  done
+-  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+-    "maestro outcome --session <id> <accepted|rework|reverted|killed>" 1
+-  [[ -n "$verdict" ]] || die validation "desfecho obrigatório" "accepted | rework | reverted | killed" 1
+-  [[ -z "$suite" || "$suite" =~ ^(pass|fail)$ ]] || die validation "--suite aceita pass|fail" "" 1
+-
+-  # E25 — o porquê passa pelo MESMO tratamento do --reason do decide (src/cli.ts):
+-  # controle fora, espaço colapsado, teto de 120 (DATA_MODEL §3). Acima do teto
+-  # corta e avisa: falhar aqui perderia o registro do descarte por uma vírgula.
+-  if [[ -n "$kreason" ]]; then
+-    kreason=$(printf '%s' "$kreason" | tr '\000-\037\177' ' ' | tr -s ' ')
+-    kreason="${kreason#"${kreason%%[![:space:]]*}"}"
+-    kreason="${kreason%"${kreason##*[![:space:]]}"}"
+-    if (( ${#kreason} > 120 )); then
+-      printf 'maestro: --reason truncado em 120 (tinha %s)\n' "${#kreason}" >&2
+-      kreason="${kreason:0:120}"
+-      # Recua até o último espaço: `bin/maestro` não fixa LC_ALL, então sob LANG=C
+-      # o corte acima é em BYTE e parte sequência UTF-8 no meio. Cortar em
+-      # fronteira ASCII é a mesma regra que o orçamento da injeção usa, e perder
+-      # a palavra parcial é melhor saída que o caractere corrompido. Porquê de 120
+-      # caracteres sem um espaço sequer é patológico e segue cortado no byte.
+-      [[ "$kreason" == *" "* ]] && kreason="${kreason% *}"
+-    fi
+-  fi
+-  if [[ "$verdict" == "killed" ]]; then
+-    # Kill sem porquê é ruído, não registro: quem lê o retro daqui a um mês
+-    # precisa saber por que a ideia morreu, senão ela ressuscita igual.
+-    [[ -n "$kreason" ]] || die validation "killed exige o porquê do descarte" \
+-      "maestro outcome --session $sid killed --reason \"<por que não vamos construir>\"" 1
+-    [[ -z "$suite" ]] || die validation "killed não aceita --suite" \
+-      "nada foi construído — não há suíte a anexar a um descarte" 1
+-  elif [[ -n "$kreason" ]]; then
+-    die validation "--reason é o porquê do DESCARTE e só vale com killed" \
+-      "a razão da aposta é do decide (maestro decide ... --reason); para descartar: maestro outcome --session $sid killed --reason \"...\"" 1
+-  fi
+-  has jq || die env "outcome exige jq" "instale jq (dependência declarada)" 2
+-
+-  # shellcheck source=hooks/lib/common.sh
+-  source "$REPO_DIR/hooks/lib/common.sh"
+-  local rec="$MAESTRO_SESSIONS_DIR/$sid.json"
+-  [[ -f "$rec" ]] || die validation "não há decision record para a sessão $sid" \
+-    "o desfecho fecha uma decisão existente (maestro decide primeiro)" 1
+-  local tmp="$rec.tmp.$$"
+-
+-  # E23a/S-2301 — aceitar trabalho DELEGADO exige prova de que a delegação
+-  # aconteceu. `mode: subagent|multi` é declaração de intenção do decide; o que
+-  # prova o disparo é o `delegation phase=started` que o hook pre-agent.sh emite
+-  # ao ver o Task/Agent de verdade. Sem essa linha, "delegou" é palavra — e o
+-  # retro passaria a creditar ao tier de agente um resultado que o próprio
+-  # diretor executou. `--unproven` é a válvula honesta: passa, mas carimba
+-  # `delegation_proof: none` no record para o retro saber o que não foi provado.
+-  # E25: `killed` não entra aqui nem no gate de verificações abaixo, e não
+-  # ganha delegation_proof/verifications no record. Os dois gates existem porque
+-  # o ACEITE afirma que a entrega serve; no kill não há entrega a afirmar.
+-  local proof=""
+-  if [[ "$verdict" == "accepted" ]]; then
+-    local rmode=""
+-    rmode=$(jq -r '.mode // ""' "$rec" 2>/dev/null) || rmode=""
+-    if [[ "$rmode" == "subagent" || "$rmode" == "multi" ]]; then
+-      local nstarted; nstarted=$(_delegation_n "$sid" started)
+-      if [[ "$nstarted" -gt 0 ]]; then
+-        proof="started"
+-      elif (( unproven == 1 )); then
+-        proof="none"
+-      else
+-        die validation \
+-          "sessão $sid decidiu mode=$rmode e não há prova de delegação no log (nenhum 'delegation phase=started')" \
+-          "veja o funil com 'maestro delegation --session $sid'; delegue de fato, ou aceite assumindo o custo: maestro outcome --session $sid accepted --unproven" 1
+-      fi
+-    fi
+-  fi
+-
+-  local proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+-  # E13/S-1302: --suite deixa de ser palavra de honra — consulta o ledger.
+-  local ev="none"
+-  _ev_lib_load   # cmd_evidence é chamado daqui, fora do dispatch (E24/ordem 009)
+-  if [[ -n "$suite" ]]; then
+-    if cmd_evidence --check --label suite --project "$proj" >/dev/null 2>&1; then
+-      ev="cited"
+-    fi
++_outcome_lib_load() { # carrega lib/cmd-outcome.sh — uma vez, degradando por comando (I-2)
++  declare -f cmd_outcome >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-outcome.sh" ]]; then
++    # shellcheck source=lib/cmd-outcome.sh
++    source "$REPO_DIR/lib/cmd-outcome.sh" && return 0
+   fi
+-  # E23b/S-2302: aceitar é afirmar que a entrega serve. Se o que está no working
+-  # tree toca área com verificação obrigatória, o aceite exige o conjunto — ou
+-  # o `--unproven` explícito, que passa mas CARIMBA a falta no record (o retro
+-  # precisa distinguir "provado" de "aceito no grito").
+-  local vf="" lb base labels
+-  local vmiss=()
+-  if [[ "$verdict" == "accepted" ]]; then
+-    maestro_verif_load
+-    base=$(verif_base_ref "$proj" "")
+-    labels=$(verif_required "$proj" "$base" "") || labels=""
+-    if [[ -n "$labels" ]]; then
+-      for lb in $labels; do
+-        cmd_evidence --check --label "$lb" --project "$proj" >/dev/null 2>&1 || vmiss+=("$lb")
+-      done
+-      if [[ ${#vmiss[@]} -gt 0 ]]; then
+-        if (( unproven == 0 )); then
+-          printf 'maestro: sem verificação obrigatória: %s\n' "$(join_semi "${vmiss[@]}")" >&2
+-          for lb in "${vmiss[@]}"; do
+-            printf '  %s\n' "$(verif_record_hint "$proj" "$lb")" >&2
+-          done
+-          die validation "o changeset toca área com verificação obrigatória (.maestro.yaml) sem prova válida" \
+-            "rode os comandos acima — ou registre a exceção com 'maestro outcome ... accepted --unproven'" 1
+-        fi
+-        vf="missing"
+-      else
+-        vf="cited"
+-      fi
+-    fi
+-  fi
+-  # Os dois `del` não são zelo: o desfecho é last-wins, e campo herdado MENTE.
+-  # Sem o primeiro, sessão morta e depois reaberta como accepted ficaria com
+-  # kill_reason órfão (record inválido no doctor para quem fez tudo certo). Sem o
+-  # segundo, `accepted --suite pass` seguido de `killed` deixaria no record
+-  # `suite: pass`, `delegation_proof: started` e `verifications: cited` — o record
+-  # afirmando que a entrega DESCARTADA tinha suíte verde e delegação provada,
+-  # contra a recusa explícita de `--suite` com killed e contra o DATA_MODEL §3 v1.9.
+-  if jq --arg o "$verdict" --arg su "$suite" --arg evd "$ev" --arg vf "$vf" --arg dp "$proof" --arg kr "$kreason" --arg ts "$(date -Iseconds)" \
+-       '.outcome = $o | .outcome_ts = $ts
+-        | (if $vf != "" then .verifications = $vf else . end)
+-        | (if $dp != "" then .delegation_proof = $dp else . end)
+-        | (if $su != "" then .suite = $su | .suite_evidence = $evd else . end)
+-        | (if $o == "killed"
+-             then .kill_reason = $kr
+-                  | del(.suite) | del(.suite_evidence) | del(.delegation_proof) | del(.verifications)
+-             else del(.kill_reason) end)' \
+-       "$rec" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$rec" 2>/dev/null; then
+-    log_event outcome session_id="$sid" outcome="$verdict" ${suite:+suite="$suite"}
+-    printf 'desfecho registrado: %s%s (sessão %s)\n' "$verdict" "${suite:+ · suíte $suite}" "$sid"
+-    # O texto do porquê fica no record (confidential) e JAMAIS no log; o que
+-    # sobrevive à sessão é o INTENT, e ele é versionado — quem edita é o humano.
+-    [[ "$verdict" == "killed" ]] && \
+-      echo "o descarte só sobrevive à sessão no '## Fora de escopo' do .maestro/INTENT.md — leve o motivo para lá e rode: maestro intent --bump"
+-    case "$proof" in
+-      started) echo "delegação PROVADA no log (delegation phase=started nesta sessão)" ;;
+-      none)    echo "aviso: aceito SEM prova de delegação (--unproven) — record carimbado com delegation_proof: none" ;;
+-    esac
+-    if [[ "$vf" == "missing" ]]; then
+-      printf 'aviso: aceito SEM a verificação obrigatória (%s) — o record carimba verifications=missing\n' \
+-        "$(join_semi "${vmiss[@]}")"
+-    elif [[ "$vf" == "cited" ]]; then
+-      echo "verificações obrigatórias da área: todas VÁLIDAS no ledger (mecânico, não honra)"
+-    fi
+-    if [[ "$suite" == "pass" ]]; then
+-      if [[ "$ev" == "cited" ]]; then
+-        echo "suíte pass CITANDO evidência válida do ledger (mecânico, não honra)"
+-      else
+-        echo "aviso: suíte pass SEM evidência no ledger — palavra de honra; registre com: maestro evidence --record -- <suíte>"
+-      fi
+-    fi
+-  else
+-    rm -f "$tmp" 2>/dev/null
+-    die env "falha ao atualizar o record" "cheque permissões em $MAESTRO_SESSIONS_DIR" 2
+-  fi
+-  return 0
++  die env "lib/cmd-outcome.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # ------------------------------------------------------------ delegation (E23a)
++#
++# E24/ordem 010: DELEG_FILES/_delegation_files/_delegation_n/cmd_delegation
++# saíram para lib/cmd-delegation.sh. `_delegation_n` também é chamado por
++# `cmd_outcome` (lib/cmd-outcome.sh, mesma ordem) — cada sítio chama
++# _delegation_lib_load antes, mesma técnica de _order_lib_load.
+ 
+-# Os logs que valem para o funil: o corrente e os rotacionados do mês
+-# (DATA_MODEL §4). Publica em DELEG_FILES para não pagar um subshell por consulta.
+-DELEG_FILES=()
+-_delegation_files() {
+-  DELEG_FILES=()
+-  local f
+-  shopt -s nullglob
+-  for f in "$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl; do
+-    [[ -f "$f" ]] && DELEG_FILES+=("$f")
+-  done
+-  shopt -u nullglob
+-  return 0
+-}
+-
+-_delegation_n() { # _delegation_n <session_id> <fase> → contagem no log
+-  local sid="$1" ph="$2" n=""
+-  _delegation_files
+-  if [[ ${#DELEG_FILES[@]} -gt 0 ]]; then
+-    # `index` em vez de regex: os dois emissores (log_event do common.sh e o
+-    # JSON.stringify do cli.ts) escrevem JSON compacto, e o sid já vem tipado
+-    # pelo chamador — casamento literal é exato e não interpreta o valor.
+-    n=$(awk -v sid="$sid" -v ph="$ph" '
+-      index($0, "\"event\":\"delegation\"") == 0 { next }
+-      index($0, "\"session_id\":\"" sid "\"") == 0 { next }
+-      index($0, "\"phase\":\"" ph "\"") > 0 { n++ }
+-      END { print n + 0 }
+-    ' "${DELEG_FILES[@]}" 2>/dev/null) || n=""
+-  fi
+-  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+-  printf '%s\n' "$n"
+-  return 0
+-}
+-
+-cmd_delegation() { # E23a/S-2301: o funil da delegação, contado no log
+-  # decide --agents diz que VAI delegar (planned); o hook pre-agent.sh diz que
+-  # delegou (started); o subagent-stop.sh diz que colheu (received); o
+-  # order --accept diz que o diretor aceitou (accepted). O buraco entre uma fase
+-  # e a seguinte é o diagnóstico: planned sem started é aposta que não saiu do
+-  # papel; started sem received é subagente que morreu no meio.
+-  local sid="" all=0
+-  while (( $# )); do
+-    case "$1" in
+-      --session) sid="${2:-}"; shift ;;
+-      --all)     all=1 ;;
+-      *) die validation "flag desconhecida '$1'" \
+-           "maestro delegation --session <id> | --all" 1 ;;
+-    esac
+-    shift
+-  done
+-  # shellcheck source=hooks/lib/common.sh
+-  source "$REPO_DIR/hooks/lib/common.sh"
+-
+-  if (( all == 1 )); then
+-    _delegation_files
+-    if [[ ${#DELEG_FILES[@]} -eq 0 ]]; then
+-      echo "delegação: nenhum log em $MAESTRO_LOG_DIR"
+-      return 0
+-    fi
+-    printf 'delegação — últimas sessões (planned → started → received → accepted)\n'
+-    printf '  %-28s %7s %7s %8s %8s\n' "sessão" "planned" "started" "received" "accepted"
+-    awk '
+-      index($0, "\"event\":\"delegation\"") == 0 { next }
+-      {
+-        sid = ""; ph = ""
+-        if (match($0, /"session_id":"[A-Za-z0-9_-]+"/)) sid = substr($0, RSTART + 14, RLENGTH - 15)
+-        if (match($0, /"phase":"[a-z]+"/))              ph  = substr($0, RSTART + 9,  RLENGTH - 10)
+-        if (sid == "" || ph == "") next
+-        if (!(sid in seen)) { seen[sid] = ++n; order[n] = sid }
+-        c[sid, ph]++
+-      }
+-      END {
+-        if (n == 0) { print "  (nenhuma delegação registrada)"; exit }
+-        start = (n > 20) ? n - 19 : 1
+-        for (i = start; i <= n; i++) {
+-          s = order[i]
+-          printf "  %-28s %7d %7d %8d %8d\n", s, c[s,"planned"] + 0, c[s,"started"] + 0, \
+-                 c[s,"received"] + 0, c[s,"accepted"] + 0
+-        }
+-      }
+-    ' "${DELEG_FILES[@]}"
+-    return 0
+-  fi
+-
+-  [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
+-    "maestro delegation --session <id> | --all" 1
+-  local pl st rc ac
+-  pl=$(_delegation_n "$sid" planned)
+-  st=$(_delegation_n "$sid" started)
+-  rc=$(_delegation_n "$sid" received)
+-  ac=$(_delegation_n "$sid" accepted)
+-  printf 'delegação — sessão %s\n' "$sid"
+-  printf '  planned : %s   (maestro decide --agents)\n'   "$pl"
+-  printf '  started : %s   (hook pre-agent — Task/Agent)\n' "$st"
+-  printf '  received: %s   (hook subagent-stop)\n'        "$rc"
+-  printf '  accepted: %s   (maestro order --accept)\n'    "$ac"
+-  if (( pl == 0 && st == 0 && rc == 0 && ac == 0 )); then
+-    echo '  sem delegação registrada nesta sessão (mode direct não passa por aqui)'
+-  elif (( st == 0 )); then
+-    echo '  ATENÇÃO: planejada e NÃO disparada — nenhum subagente saiu do papel nesta sessão'
+-  elif (( rc == 0 )); then
+-    echo '  ATENÇÃO: disparada sem retorno registrado — subagente ainda em voo ou morto no meio'
+-  else
+-    echo '  delegação provada: disparo e retorno no log'
++_delegation_lib_load() { # carrega lib/cmd-delegation.sh — uma vez, degradando por comando (I-2)
++  declare -f cmd_delegation >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-delegation.sh" ]]; then
++    # shellcheck source=lib/cmd-delegation.sh
++    source "$REPO_DIR/lib/cmd-delegation.sh" && return 0
+   fi
+-  return 0
++  die env "lib/cmd-delegation.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
+ # --------------------------------------------------------------- conduct (E17)
+@@ -3129,7 +2778,7 @@ case "$cmd" in
+   brief) shift; cmd_brief "$@" ;;
+   habits) shift; _habits_lib_load; cmd_habits "$@" ;;
+   consent) shift; cmd_consent "$@" ;;
+-  outcome) shift; cmd_outcome "$@" ;;
++  outcome) shift; _outcome_lib_load; cmd_outcome "$@" ;;
+   conduct) shift; cmd_conduct "$@" ;;
+   retro) shift; _retro_lib_load; cmd_retro "$@" ;;
+   graph) shift; cmd_graph "$@" ;;
+@@ -3140,7 +2789,7 @@ case "$cmd" in
+   telemetry) shift; _telemetry_lib_load; cmd_telemetry "$@" ;;
+   intent) shift; cmd_intent "$@" ;;        # E22
+   verify) shift; cmd_verify "$@" ;;        # E23b
+-  delegation) shift; cmd_delegation "$@" ;; # E23a
++  delegation) shift; _delegation_lib_load; cmd_delegation "$@" ;; # E23a
+   ""|-h|--help) usage ;;
+   *) die validation "comando desconhecido '$cmd'" "maestro --help" 1 ;;
+ esac
