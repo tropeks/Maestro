@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# maestro lib/cmd-retro.sh — E10/S-1002/S-1004, extraído de bin/maestro na
+# ordem 009 (E24, docs/designs/e24-nucleo-e-adaptadores.md).
+#
+# `maestro retro`: agregação DETERMINÍSTICA da janela (default 14 dias) — o
+# que aconteceu, em números. A INTERPRETAÇÃO é da IA nas bordas
+# (/maestro:retro), que propõe diffs; o exame é o eval-on-diff; o commit é o
+# aprendizado versionado.
+#
+# Ordem 009 — o achado que abriu esta ordem: este arquivo reimplementava a
+# leitura do recibo de evidência (E13) por conta própria (`grep -q
+# '^exit=0$'`) em vez de perguntar a lib/core-evidence.sh, que é quem sabe o
+# formato. A cobertura do ledger (_retro_evidence_signal) agora chama
+# _ev_ledger_summary — nenhuma linha aqui sabe que um recibo tem `exit=`.
+#
+# Sourced por bin/maestro (via _retro_lib_load, I-2) DENTRO do mesmo processo
+# — REPO_DIR, MAESTRO_HOME, MAESTRO_LOG_DIR, die(), has(), join_semi() e as
+# funções de lib/core-evidence.sh (_ev_lib_load é chamado ANTES, ver
+# carregador em bin/maestro) já no escopo.
+#
+# Convenção (lote do `order`, E24): parâmetro posicional, nenhuma função
+# fecha sobre local de outra. Exceção documentada (molde TEL_STATE/EV_RUN_*):
+# RETRO_LOGS/RETRO_TEL_MSG/RETRO_MACHINE_LINE/RETRO_ROUTABLE_WARN — arrays e
+# strings que _retro_collect_logs/_retro_routable produzem e cmd_retro lê.
+
+_retro_count_decisions() { # <cutoff> <arquivos...> → nº de `decision` na janela
+  local cut="$1"; shift
+  (( $# == 0 )) && { echo 0; return 0; }
+  jq -rs --arg cut "$cut" \
+    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' \
+    "$@" 2>/dev/null || echo 0
+}
+
+_retro_parse_args() { # <args...> → "days<US>all" (US=\x1f); die em flag desconhecida/--days inválido
+  local days=14 all=0
+  while (( $# )); do
+    case "$1" in
+      --days) days="${2:-}"; shift ;;
+      --all)  all=1 ;;
+      *) die validation "flag desconhecida '$1'" "maestro retro [--days N] [--all]" 1 ;;
+    esac
+    shift
+  done
+  [[ "$days" =~ ^[0-9]{1,3}$ ]] && (( days >= 1 )) || die validation "--days exige 1–999" "" 1
+  printf '%s\x1f%s\n' "$days" "$all"
+  return 0
+}
+
+# ------------------------------------------------------- coleta do ledger de log
+RETRO_LOGS=()
+RETRO_TEL_MSG=""
+RETRO_MACHINE_LINE=""
+
+_retro_collect_logs() { # <all> <cutoff> → grava RETRO_LOGS/RETRO_TEL_MSG/RETRO_MACHINE_LINE
+  # E20/S-2001 — --all une o barramento de telemetria ao log local: cada
+  # máquina publica SEUS routing*.jsonl em logs/<host>/ (telemetry-sync.sh). O
+  # host local já está em $MAESTRO_LOG_DIR — somar de novo pelo clone contaria
+  # o mesmo evento duas vezes.
+  local all="$1" cutoff="$2" local_logs=()
+  shopt -s nullglob
+  local_logs=("$MAESTRO_LOG_DIR"/routing.jsonl "$MAESTRO_LOG_DIR"/routing-*.jsonl)
+  shopt -u nullglob
+  RETRO_LOGS=("${local_logs[@]}"); RETRO_TEL_MSG=""; RETRO_MACHINE_LINE=""
+  (( all == 1 )) || return 0
+  # shellcheck source=hooks/lib/telemetry-sync.sh
+  source "$REPO_DIR/hooks/lib/telemetry-sync.sh"
+  if ! maestro_telemetry_enabled; then
+    RETRO_TEL_MSG="-- telemetria: desligada nesta máquina (retro só local)"
+    return 0
+  fi
+  if ! maestro_telemetry_pull; then
+    RETRO_TEL_MSG="-- telemetria: pull falhou ($TEL_REASON) — agregando o clone que já existe"
+  fi
+  local self_host hd hid hlogs host_label n
+  self_host=$(maestro_telemetry_host_id)
+  n=$(_retro_count_decisions "$cutoff" "${local_logs[@]}")
+  RETRO_MACHINE_LINE="$self_host (local): $n decisões"
+  shopt -s nullglob
+  for hd in "$TEL_DIR"/logs/*/; do
+    hid="${hd%/}"; hid="${hid##*/}"
+    [[ "$hid" == "$self_host" ]] && continue
+    hlogs=("$hd"routing*.jsonl)
+    (( ${#hlogs[@]} > 0 )) && RETRO_LOGS+=("${hlogs[@]}")
+    host_label="?"
+    [[ -f "${hd}HOST" ]] && host_label=$(head -c 200 -- "${hd}HOST" 2>/dev/null | tr -d '\n\r')
+    [[ -n "$host_label" ]] || host_label="?"
+    n=$(_retro_count_decisions "$cutoff" "${hlogs[@]}")
+    RETRO_MACHINE_LINE+=" · $hid ($host_label): $n decisões"
+  done
+  shopt -u nullglob
+  return 0
+}
+
+# --------------------------------------------------------- filtro roteável (S-1801)
+RETRO_ROUTABLE_LIST=""
+RETRO_ROUTABLE_WARN=""
+
+_retro_routable() { # <rt> → grava RETRO_ROUTABLE_LIST/RETRO_ROUTABLE_WARN — NUNCA via $(...) (globais somem em subshell)
+  # O SENSOR (user-prompt-submit.sh) loga override_manual para todo prompt com
+  # `/`; o CONSUMIDOR separa ROTEÁVEL (bate com skill: dos bindings ou nome de
+  # workflow) do resto (ciclo de vida do plugin). Tabela = fonte única.
+  local rt="$1" routable=""
+  RETRO_ROUTABLE_LIST=""; RETRO_ROUTABLE_WARN=""
+  if [[ -f "$rt" && -r "$rt" ]]; then
+    routable=$(awk '
+      /^bindings:/ { in_b = 1; next }
+      in_b && /^[a-zA-Z]/ { in_b = 0 }
+      in_b {
+        line = $0; sub(/#.*/, "", line)
+        if (line ~ /^  [a-z_]+:/) {
+          sub(/^  [a-z_]+:[ \t]*/, "", line)
+          gsub(/[][]/, "", line)
+          n = split(line, arr, /,[ \t]*/)
+          for (i = 1; i <= n; i++) {
+            tok = arr[i]; gsub(/^[ \t]+|[ \t]+$/, "", tok)
+            if (tok ~ /^skill:/) { sub(/^skill:/, "", tok); print tok }
+          }
+        }
+      }
+      /^  [a-z]+:.*steps:/ { w = $0; gsub(/^  |:.*/, "", w); print w }
+    ' "$rt" 2>/dev/null | awk '!s[$0]++') || routable=""
+    [[ -z "$routable" ]] && RETRO_ROUTABLE_WARN="routing-table sem bindings skill:/workflows reconhecíveis ($rt)"
+  else
+    RETRO_ROUTABLE_WARN="routing-table.yaml ausente/ilegível ($rt)"
+  fi
+  RETRO_ROUTABLE_LIST="$routable"
+  return 0
+}
+
+_retro_print_header() { # <days> <cutoff> <degrade> <routable_warn> <tel_msg> <machine_line>
+  local days="$1" cutoff="$2" degrade="$3" routable_warn="$4" tel_msg="$5" machine_line="$6"
+  printf '== maestro retro — janela de %s dia(s)%s\n' "$days" "${cutoff:+ (desde $cutoff)}"
+  if [[ "$degrade" == true ]]; then
+    printf -- '-- aviso: filtro roteável indisponível (%s) — override conta como no total (degradado, sem separar roteável/não-roteável)\n' \
+      "$routable_warn"
+  fi
+  [[ -n "$tel_msg" ]] && printf '%s\n' "$tel_msg"
+  [[ -n "$machine_line" ]] && printf -- '-- por máquina: %s\n' "$machine_line"
+  return 0
+}
+
+# ---------------------------------------------------------- corpo agregado (jq)
+_retro_jq_report() { # <cutoff> <routable_json> <degrade> <logs...> → as linhas agregadas (S-1801/gates/smells/desfechos/consent)
+  local cutoff="$1" routable_json="$2" degrade="$3"; shift 3
+  jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" --argjson degrade "$degrade" '
+    map(select(type == "object")) | map(select($cut == "" or .ts >= $cut)) as $w |
+    ($w | map(select(.event == "decision"))) as $dec |
+    ($w | map(select(.event == "override_manual"))) as $overs |
+    ($overs | length) as $overs_n |
+    ($overs | map(select(.cmd as $c | $c != null and ($rtable | index($c)) != null)) | length) as $mset_n |
+    (if $degrade then $overs_n else $mset_n end) as $m |
+    (if $degrade then 0 else ($overs_n - $mset_n) end) as $k |
+    ($dec | length) as $ndec |
+    (if $ndec > 0 then (100 * $m / $ndec | floor) else 0 end) as $rate |
+    [
+      "-- decisões: \($ndec) · override roteável: \($m) · não-roteável: \($k) · taxa de override: \($rate)%",
+      "-- por modo: \($dec | group_by(.mode) | map("\(.[0].mode // "?"): \(length)") | join(" · "))",
+      "-- por workflow: \($dec | group_by(.workflow) | map("\(.[0].workflow // "?"): \(length)") | join(" · "))",
+      "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
+      "-- habit_warn: \($w | map(select(.event == "habit_warn")) | group_by(.smell) | sort_by(-length) | map("\(.[0].smell // "?"): \(length)") | join(" · ") | if . == "" then "nenhum" else . end)",
+      "-- desfechos: \($w | map(select(.event == "outcome")) | group_by(.outcome) | map("\(.[0].outcome // "?"): \(length)") | join(" · ") | if . == "" then "NENHUM registrado — sem desfecho não há aprendizado (maestro outcome)" else . end)",
+      "-- sessões encerradas: \($w | map(select(.event == "session_end")) | length) · sem decisão: \($w | map(select(.event == "session_end" and .decided == "no")) | length) · decididas sem desfecho: \($w | map(select(.event == "session_end" and .decided == "yes" and .settled == "no")) | length)",
+      "-- consentimentos: grant \($w | map(select(.event == "consent_grant")) | length) · revoke \($w | map(select(.event == "consent_revoke")) | length)"
+    ] | .[]
+  ' "$@" 2>/dev/null || { echo "retro: log ilegível"; return 0; }
+  return 0
+}
+
+_retro_unused_workflows() { # <cutoff> <logs...> → imprime workflows declarados sem uso na janela (se houver)
+  local cutoff="$1"; shift
+  local declared used unused="" wf
+  declared=$(awk '/^  [a-z]+:.*steps:/ { gsub(/^  |:.*/, ""); print }' \
+    "$REPO_DIR/config/routing-table.yaml" 2>/dev/null | awk '!s[$0]++')
+  used=$(jq -rs --arg cut "$cutoff" \
+    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | map(.workflow) | unique | .[]' \
+    "$@" 2>/dev/null || true)
+  while IFS= read -r wf; do
+    [[ -n "$wf" ]] || continue
+    grep -qx "$wf" <<<"$used" || unused+="${unused:+ }$wf"
+  done <<<"$declared"
+  [[ -n "$unused" ]] && printf -- '-- workflows declarados sem uso na janela: %s\n' "${unused// /, }"
+  return 0
+}
+
+# ----------------------------------------------------- taxa de override (S-1004)
+_retro_rate() { # <cutoff> <degrade> <routable_json> <logs...> → "ndec<US>rate"
+  local cutoff="$1" degrade="$2" routable_json="$3"; shift 3
+  local ndec m rate
+  ndec=$(jq -rs --arg cut "$cutoff" \
+    'map(select(type == "object" and .event == "decision" and ($cut == "" or .ts >= $cut))) | length' \
+    "$@" 2>/dev/null || echo 0)
+  if [[ "$degrade" == true ]]; then
+    m=$(jq -rs --arg cut "$cutoff" \
+      'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut))) | length' \
+      "$@" 2>/dev/null || echo 0)
+  else
+    m=$(jq -rs --arg cut "$cutoff" --argjson rtable "$routable_json" \
+      'map(select(type == "object" and .event == "override_manual" and ($cut == "" or .ts >= $cut) and (.cmd as $c | $c != null and ($rtable | index($c)) != null))) | length' \
+      "$@" 2>/dev/null || echo 0)
+  fi
+  rate=0; (( ndec > 0 )) && rate=$(( 100 * m / ndec ))
+  printf '%s\x1f%s\n' "$ndec" "$rate"
+  return 0
+}
+
+# --------------------------------------------------------------------- sinais
+_retro_budget_signal() { # <cutoff> <logs...> → linha de orçamento (E14)
+  local cutoff="$1"; shift
+  local n_bw
+  n_bw=$(jq -rs --arg cut "$cutoff" \
+    'map(select(type == "object" and .event == "budget_warn" and ($cut == "" or .ts >= $cut))) | length' \
+    "$@" 2>/dev/null || echo 0)
+  printf -- '-- orçamento: %s estouro(s) de cap na janela (budget_warn)\n' "$n_bw"
+  return 0
+}
+
+_retro_evidence_signal() { # → linha de cobertura do ledger (E13→E10, ordem 009: via _ev_ledger_summary — nunca reimplementa o formato)
+  local total ok
+  IFS=$'\t' read -r total ok <<<"$(_ev_ledger_summary "$MAESTRO_HOME/evidence")"
+  printf -- '-- evidência: %s recibo(s) no ledger, %s de exit 0\n' "${total:-0}" "${ok:-0}"
+  return 0
+}
+
+_retro_override_signal() { # <rate> → linha de calibração se override alto (≥20%)
+  (( "$1" >= 20 )) && printf '   override em %s%% (≥20%%): a tabela está errando rota — calibrar ANTES de endurecer gate\n' "$1"
+  return 0
+}
+
+_retro_kill_signal() { # <cutoff> <days> <ndec> <logs...> → linha de descarte (E25)
+  local cutoff="$1" days="$2" ndec="$3"; shift 3
+  local n_kill
+  n_kill=$(jq -rs --arg cut "$cutoff" \
+    'map(select(type == "object" and .event == "outcome" and .outcome == "killed" and ($cut == "" or .ts >= $cut))) | length' \
+    "$@" 2>/dev/null || echo 0)
+  [[ "$n_kill" =~ ^[0-9]+$ ]] || n_kill=0
+  if (( n_kill > 0 )); then
+    printf '   %s descarte(s) na janela (killed): o porquê fica no record — leve-o para o "## Fora de escopo" do .maestro/INTENT.md, que é onde ele sobrevive\n' "$n_kill"
+  elif (( days >= 14 && ndec >= 10 )); then
+    printf '   nenhum descarte na janela (%sd, %s decisões): ou o interrogate está aprovando tudo, ou o kill não está sendo registrado (maestro outcome ... killed --reason)\n' \
+      "$days" "$ndec"
+  fi
+  return 0
+}
+
+_retro_promotion_signal() { # <rt> <days> <ndec> <rate> → linha de promoção warn→block (S-1004)
+  local rt="$1" days="$2" ndec="$3" rate="$4" gmode
+  gmode=$(awk '/^gate:/ { g = 1; next }
+               g && /^[a-zA-Z]/ { g = 0 }
+               g && /^  mode:/ { sub(/^  mode:[ \t]*/, ""); sub(/[ \t]*#.*/, ""); print; exit }' \
+               "$rt" 2>/dev/null) || :
+  if [[ "$gmode" == "block" ]]; then
+    printf '   promoção warn→block: já aplicada (gate.mode: block)\n'
+  elif (( days >= 14 && ndec >= 10 && rate < 20 )); then
+    printf '   PROMOÇÃO ELEGÍVEL: %sd de janela, %s decisões, override %s%% (<20%%) — proponha gate.mode warn→block (diff na routing-table; exige consentimento ou mão humana)\n' \
+      "$days" "$ndec" "$rate"
+  else
+    printf '   promoção warn→block: ainda não (exige ≥14d, ≥10 decisões, override <20%%)\n'
+  fi
+  return 0
+}
+
+_retro_signals() { # <cutoff> <rt> <days> <degrade> <routable_json> <logs...> → orquestra o bloco "-- sinais:"
+  local cutoff="$1" rt="$2" days="$3" degrade="$4" routable_json="$5"; shift 5
+  _retro_budget_signal "$cutoff" "$@"
+  _retro_evidence_signal
+  printf -- '-- sinais:\n'
+  local ndec rate
+  IFS=$'\x1f' read -r ndec rate <<<"$(_retro_rate "$cutoff" "$degrade" "$routable_json" "$@")"
+  _retro_override_signal "$rate"
+  _retro_kill_signal "$cutoff" "$days" "$ndec" "$@"
+  _retro_promotion_signal "$rt" "$days" "$ndec" "$rate"
+  return 0
+}
+
+# ------------------------------------------------------------------ o comando
+cmd_retro() { # S-1002 + S-1004: o relatório que fecha o loop de aprendizado
+  local days all
+  IFS=$'\x1f' read -r days all <<<"$(_retro_parse_args "$@")"
+  has jq || die env "retro exige jq" "instale jq (dependência declarada)" 2
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  local cutoff; cutoff=$(date -Iseconds -d "-$days days" 2>/dev/null) || cutoff=""
+  _retro_collect_logs "$all" "$cutoff"
+
+  local have=0 f; for f in "${RETRO_LOGS[@]}"; do [[ -f "$f" ]] && have=1; done
+  if (( have == 0 )); then
+    [[ -n "$RETRO_TEL_MSG" ]] && printf '%s\n' "$RETRO_TEL_MSG"
+    printf 'retro: log vazio — sem dados na janela de %sd, sem conclusão a tirar.\n' "$days"
+    return 0
+  fi
+
+  local rt="${MAESTRO_ROUTING_TABLE:-$REPO_DIR/config/routing-table.yaml}"
+  local degrade=false routable_json
+  _retro_routable "$rt"   # NUNCA via $(...): grava RETRO_ROUTABLE_LIST/RETRO_ROUTABLE_WARN
+  [[ -n "$RETRO_ROUTABLE_WARN" ]] && degrade=true
+  routable_json=$(printf '%s\n' "$RETRO_ROUTABLE_LIST" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null) || routable_json='[]'
+  [[ -z "$routable_json" ]] && routable_json='[]'
+
+  _retro_print_header "$days" "$cutoff" "$degrade" "$RETRO_ROUTABLE_WARN" "$RETRO_TEL_MSG" "$RETRO_MACHINE_LINE"
+  _retro_jq_report "$cutoff" "$routable_json" "$degrade" "${RETRO_LOGS[@]}"
+  _retro_unused_workflows "$cutoff" "${RETRO_LOGS[@]}"
+  _retro_signals "$cutoff" "$rt" "$days" "$degrade" "$routable_json" "${RETRO_LOGS[@]}"
+  return 0
+}
