@@ -1,6 +1,17 @@
 # maestro habits baseline (S-905) — catraca anti-slop: só desce.
 # Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline
-deep-nesting	11
-oversized-file	13
-oversized-function	23
+# DÍVIDA DECLARADA (E24, ordem 006). Colunas 3 e 4: vence_epoch e alvo.
+# O alvo é o baseline de ANTES do shebang — quitar significa que bin/maestro
+# deixou de contribuir. Prazo 1790564399 = 2026-09-27T23:59:59-03:00.
+#
+# PROVISÓRIO, por decisão do supervisor em 2026-09-14, e a condição é parte do
+# prazo: a cadência que o produziu (7 ordens em 4d7h) vem de amostra ENVIESADA
+# PARA O FÁCIL — o Lote 1 provou o mecanismo, não a decomposição. O prazo é
+# RECALCULADO no dia em que o lote do `order` (587 linhas) fechar, e o número
+# novo é dito em voz alta ainda que seja o mesmo. Prazo derivado de amostra
+# fácil aplicado a trabalho difícil é palpite com cara de conta; a única forma
+# honesta de usá-lo é declarar quando será revisto.
+deep-nesting	11	1790564399	10
+oversized-file	13	1790564399	12
+oversized-function	23	1790564399	6
 skipped-test	1
