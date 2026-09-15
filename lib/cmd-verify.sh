@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# maestro lib/cmd-verify.sh — E23b/S-2302, extraído de bin/maestro na ordem
+# 011 (E24 ordem B, desenho decidido pelo humano após a ordem A parar).
+#
+# `maestro verify`: que prova ESTE changeset deve ter, e quanto dela existe.
+# `evidence` responde "este rótulo está provado?"; `verify` responde a
+# pergunta que vem antes: "quais rótulos ESTE trabalho exige?" — a resposta
+# sai do diff contra a base (áreas do .maestro.yaml casadas por prefixo),
+# nunca da memória de quem entrega. Sem declaração no projeto, nada é
+# exigido — o Maestro não inventa dever para quem não o declarou. Nenhuma
+# regra de aprovação, rótulo, forma do bloco `verifications:` ou texto de
+# recusa mudou nesta ordem (TRAVA DE CONTRATO): só o código mudou de casa.
+#
+# Sourced por bin/maestro (via _verif_lib_load, I-2) DENTRO do mesmo
+# processo — REPO_DIR, die(), has(), log_event() já no escopo.
+#
+# ACOPLAMENTO (mapeado pela ordem A, resolvido nesta): maestro_verif_load,
+# verif_base_ref, verif_required e verif_record_hint são chamadas por
+# lib/cmd-evidence.sh, lib/core-order-state.sh, lib/cmd-order.sh e
+# lib/cmd-outcome.sh (achado durante o corte desta ordem: mesma classe de uso
+# das outras três, não listada no texto original) ASSUMINDO que já estão
+# carregadas. Cada um desses quatro consumidores chama `_verif_lib_load`
+# antes de usar qualquer uma — mesma técnica de `_order_lib_load`/
+# `_ev_lib_load`/`_habits_lib_load` — para que a falta do módulo derrube o
+# comando com `command not found`, nunca em silêncio: a suíte tem guarda de
+# execução isolada para esta classe inteira (tests/cli/test-loaders.sh).
+#
+# `cmd_verify` chama `_ev_lib_load` (lib/cmd-evidence.sh) e `maestro_verif_load`
+# (abaixo) — a mesma técnica de _order_lib_load, e por isso NÃO dentro de
+# `$(...)`: a lib morreria no subshell.
+#
+# Convenção (lote do `order`, E24): parâmetro posicional, nenhuma função
+# fecha sobre local de outra.
+
+# ------------------------------------------------- verificações por área (E23b)
+
+maestro_verif_load() { # carrega hooks/lib/verifications.sh — uma vez, degradando
+  # Fronteira do plugin: falta da lib NUNCA vira erro de fluxo. Sem ela nada é
+  # exigido e nada casa (stubs), que é exatamente o comportamento do Maestro
+  # antes do E23b — o gate degrada para o sistema de honra, não para um crash.
+  declare -f maestro_verif_areas >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/hooks/lib/verifications.sh" ]]; then
+    # shellcheck source=hooks/lib/verifications.sh
+    source "$REPO_DIR/hooks/lib/verifications.sh" && return 0
+  fi
+  maestro_verif_areas()   { return 0; }
+  maestro_verif_touched() { return 0; }
+  maestro_verif_labels()  { return 0; }
+  maestro_verif_cmd()     { return 0; }
+  maestro_verif_hash()    { printf 'none'; }
+  return 0
+}
+
+verif_base_ref() { # <projeto> [ref-explícita] → base do changeset (vazio = sem base)
+  # A base default é o ponto onde o trabalho saiu da linha principal:
+  # merge-base com main, e com master quando o repo é da era anterior. Sem git,
+  # sem main/master ou sem ancestral comum → vazio, e quem chama trata como
+  # "nada tocado" (nunca como erro).
+  local proj="${1:-$PWD}" want="${2:-}" tip="${3:-HEAD}" b="" m
+  git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [[ -n "$want" ]]; then
+    b=$(git -C "$proj" rev-parse --verify --quiet "$want" 2>/dev/null) || b=""
+    printf '%s' "$b"; return 0
+  fi
+  for m in main master; do
+    b=$(git -C "$proj" merge-base "$m" "$tip" 2>/dev/null) || b=""
+    [[ -n "$b" ]] && { printf '%s' "$b"; return 0; }
+  done
+  return 0
+}
+
+verif_required() { # <projeto> <base> [tip] → rótulos exigidos, um por linha
+  local proj="$1" base="${2:-}" tip="${3:-}" areas
+  maestro_verif_load
+  areas=$(maestro_verif_touched "$proj" "$base" "$tip") || areas=""
+  [[ -n "$areas" ]] || return 0
+  # shellcheck disable=SC2086
+  maestro_verif_labels "$proj" $areas
+  return 0
+}
+
+verif_record_hint() { # <projeto> <rótulo> → comando sugerido para registrar o recibo
+  local proj="$1" label="$2" decl
+  maestro_verif_load
+  decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+  printf 'maestro evidence --record --label %s -- %s' "$label" "${decl:-<comando>}"
+  return 0
+}
+
+# ---------------------------------------------------------------- verify (E23b)
+#
+# cmd_verify decomposto em 3 (habits/oversized-function, ordem 011): parse de
+# flags, checagem por rótulo e o corpo que orquestra os dois. Retorno
+# multivalor via globals do MÓDULO (molde EV_RUN_*/RETRO_*, cmd-evidence.sh e
+# cmd-retro.sh) — chamada DIRETA, nunca dentro de `$(...)`, porque o relatório
+# (printf por rótulo) precisa ir reto pro terminal, não virar valor capturado.
+
+VERIFY_ARG_PROJ=""      # setados por _verif_parse_args
+VERIFY_ARG_BASE_REF=""
+VERIFY_ARG_CHECK=0
+
+_verif_parse_args() { # <argv do comando> — grava VERIFY_ARG_*; dies em flag desconhecida
+  VERIFY_ARG_PROJ="${CLAUDE_PROJECT_DIR:-$PWD}"; VERIFY_ARG_BASE_REF=""; VERIFY_ARG_CHECK=0
+  while (( $# )); do
+    case "$1" in
+      --base)    VERIFY_ARG_BASE_REF="${2:-}"; shift ;;
+      --project) VERIFY_ARG_PROJ="${2:-}"; shift ;;
+      --check)   VERIFY_ARG_CHECK=1 ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro verify [--base REF] [--project P] [--check]" 1 ;;
+    esac
+    shift
+  done
+  return 0
+}
+
+VERIFY_LABELS_FALTA=0   # nº de rótulos sem prova válida — grava _verif_report_labels
+
+_verif_report_labels() { # <proj> <labels> — imprime "  rótulo: linha" por rótulo; grava VERIFY_LABELS_FALTA
+  local proj="$1" labels="$2" lb line
+  VERIFY_LABELS_FALTA=0
+  _ev_lib_load   # cmd_evidence é chamado daqui, fora do dispatch (E24/ordem 009)
+  for lb in $labels; do
+    if line=$(cmd_evidence --check --label "$lb" --project "$proj" 2>/dev/null); then
+      printf '  %s\n' "$line"
+    else
+      # A própria linha do evidence já traz o comando para registrar (E23b: com
+      # commands.<rótulo> declarado, ela sai com o comando real, não com um
+      # placeholder) — repetir aqui seria ruído.
+      VERIFY_LABELS_FALTA=$((VERIFY_LABELS_FALTA + 1))
+      printf '  %s\n' "$line"
+    fi
+  done
+  return 0
+}
+
+cmd_verify() { # S-2302: que prova ESTE changeset deve ter, e quanto dela existe
+  # `evidence` responde "este rótulo está provado?"; `verify` responde a
+  # pergunta que vem antes: "quais rótulos ESTE trabalho exige?". A resposta sai
+  # do diff contra a base (áreas do .maestro.yaml casadas por prefixo), nunca da
+  # memória de quem entrega. Sem declaração no projeto, nada é exigido — o
+  # Maestro não inventa dever para quem não o declarou.
+  _verif_parse_args "$@"
+  local proj="$VERIFY_ARG_PROJ" base_ref="$VERIFY_ARG_BASE_REF" check="$VERIFY_ARG_CHECK"
+
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  maestro_verif_load
+
+  local areas="" base=""
+  if [[ -z "$(maestro_verif_areas "$proj")" ]]; then
+    echo "verificações: nenhuma declarada em .maestro.yaml (bloco verifications:) — nada é exigido"
+    return 0
+  fi
+  base=$(verif_base_ref "$proj" "$base_ref")
+  if [[ -n "$base_ref" && -z "$base" ]]; then
+    die validation "base '$base_ref' não existe neste repositório" "use um ref válido (git rev-parse)" 1
+  fi
+  areas=$(maestro_verif_touched "$proj" "$base" "") || areas=""
+  if [[ -z "$base" ]]; then
+    printf 'base: nenhuma (sem git ou sem main/master) — comparando só o working tree\n'
+  else
+    printf 'base: %s\n' "$(git -C "$proj" rev-parse --short=7 "$base" 2>/dev/null || printf '%s' "$base")"
+  fi
+  if [[ -z "$areas" ]]; then
+    echo "áreas tocadas: nenhuma — nenhuma verificação obrigatória"
+    log_event verify n=0
+    return 0
+  fi
+  printf 'áreas tocadas: %s\n' "$(printf '%s' "$areas" | tr '\n' ' ' | sed 's/ $//')"
+  local labels
+  # shellcheck disable=SC2086
+  labels=$(maestro_verif_labels "$proj" $areas)
+  if [[ -z "$labels" ]]; then
+    echo "  (áreas sem rótulo declarado — nada exigido)"
+    log_event verify n=0
+    return 0
+  fi
+  _verif_report_labels "$proj" "$labels"
+  local falta="$VERIFY_LABELS_FALTA"
+  log_event verify n="$falta"
+  if (( falta > 0 )); then
+    printf 'faltam %s verificação(ões) obrigatória(s).\n' "$falta"
+    (( check == 1 )) && return 1
+    return 0
+  fi
+  echo "todas as verificações obrigatórias estão VÁLIDAS."
+  return 0
+}

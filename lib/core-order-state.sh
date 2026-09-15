@@ -8,8 +8,11 @@
 # só predicados e leituras sobre o arquivo da ordem e o repo/ledger.
 #
 # Sourced por bin/maestro (_order_lib_load, I-2) ANTES de lib/cmd-order.sh, no
-# MESMO processo — REPO_DIR, die(), maestro_evidence_file, _intent_*,
-# maestro_verif_* já no escopo.
+# MESMO processo — REPO_DIR, die(), maestro_evidence_file, _intent_* já no
+# escopo. `maestro_verif_*`/`verif_base_ref`/`verif_record_hint` (lib/cmd-verify.sh,
+# ordem 011) NÃO são mais residentes: _order_verif_areas chama
+# `_verif_lib_load` antes de usá-las (mesma técnica de `_ev_lib_load`),
+# acoplamento mapeado pela ordem A e resolvido aqui.
 #
 # Convenção (firmada em _order_field antes de custar caro, E24): nenhuma
 # função fecha sobre local de outra — `proj`/`of`/`oid` chegam SEMPRE por
@@ -91,6 +94,7 @@ _order_verif_areas() { # <proj> <arquivo> → áreas tocadas pelo branch (uma po
   local proj="$1" f="$2" br base
   br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
   git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 || return 0
+  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
   maestro_verif_load
   base=$(verif_base_ref "$proj" "" "$br"); [[ -n "$base" ]] || return 0
   maestro_verif_touched "$proj" "$base" "$br"

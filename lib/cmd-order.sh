@@ -14,6 +14,10 @@
 # função pura não recebe `proj`. `_order_action_*` (as ações do CLI) é a
 # exceção declarada ao teto de 5 parâmetros: cada uma espelha 1:1 as flags
 # do comando — sacola genérica esconderia o contrato.
+#
+# `maestro_verif_load` (lib/cmd-verify.sh, ordem 011) NÃO é mais residente:
+# cmd_order chama `_verif_lib_load` antes, fora de `$(...)` — mesma nota já
+# registrada abaixo sobre subshell, mesma técnica de `_order_lib_load`.
 
 # ------------------------------------------------------------- ação: --create
 _order_slug() { # <título> → slug de arquivo/branch (minúsculo, [a-z0-9-], até 32)
@@ -299,6 +303,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
 
   # shellcheck source=hooks/lib/common.sh
   source "$REPO_DIR/hooks/lib/common.sh"
+  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
   maestro_verif_load   # E23b: AQUI — dentro de $(...) a lib morreria no subshell
 
   case "$action" in

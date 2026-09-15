@@ -16,17 +16,15 @@
 # engolido pelo `read` como IFS whitespace — bug pago na ordem 009).
 #
 # `maestro_verif_load`/`verif_base_ref`/`verif_required`/`verif_record_hint`
-# continuam RESIDENTES em bin/maestro (não extraídos nesta ordem): achado
-# durante o corte — lib/cmd-evidence.sh, lib/core-order-state.sh e
-# lib/cmd-order.sh (nenhum dos três alvo desta ordem) chamam essas funções
-# assumindo que já estão carregadas, sem passar por loader nenhum. Extraí-las
-# quebraria `evidence` e `order` sempre que chamados sem `verify` ter
-# carregado antes — acoplamento não mapeado, reportado em vez de resolvido
-# no meio do corte (trava herdada desta ordem).
+# saíram para lib/cmd-verify.sh na ordem 011 (E24 ordem B — a ordem A parou
+# aqui e mapeou o acoplamento em lib/cmd-evidence.sh, lib/core-order-state.sh
+# e lib/cmd-order.sh, mas ESTE arquivo também as chama do mesmo jeito,
+# assumindo carregadas — achado durante o corte da ordem 011, mesma classe,
+# não listado no texto original). `_outcome_verif_gate` chama
+# `_verif_lib_load` antes de usá-las, mesma técnica de `_ev_lib_load`.
 #
 # Sourced por bin/maestro (via _outcome_lib_load, I-2) DENTRO do mesmo
-# processo — REPO_DIR, die, has, join_semi, log_event, maestro_verif_load,
-# verif_base_ref, verif_required, verif_record_hint já no escopo. Convenção
+# processo — REPO_DIR, die, has, join_semi, log_event já no escopo. Convenção
 # (firmada no lote do `order`, E24): parâmetro posicional, nenhuma função
 # fecha sobre local de outra.
 
@@ -108,6 +106,7 @@ _outcome_suite_evidence() { # <proj> <suite> → "cited"|"none" no stdout (E13/S
 _outcome_verif_gate() { # <proj> <verdict> <unproven> → "vf\x1fvmiss(separado por espaço)"; dies sem prova e sem --unproven
   local proj="$1" verdict="$2" unproven="$3" base labels lb vmiss=()
   [[ "$verdict" == "accepted" ]] || { printf '\x1f'; return 0; }
+  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
   maestro_verif_load
   base=$(verif_base_ref "$proj" "")
   labels=$(verif_required "$proj" "$base" "") || labels=""
