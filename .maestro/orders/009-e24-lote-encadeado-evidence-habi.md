@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: 87eb6d43d17d64a4ca6e7c82fd60c91e9a82c187
+absorbed_at: 2026-09-15T17:08:37-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 009 — E24 lote encadeado: evidence, habits e retro — e o evidence vira dono do formato do recibo
 
