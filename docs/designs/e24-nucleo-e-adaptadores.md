@@ -163,3 +163,59 @@ Reverter o Lote 1 e manter o Lote 0, que tem valor sozinho.
 
 - `git rm` do arquivo espúrio rastreado com nome quebrado — limpeza, commit próprio.
 - NFR de latência para o CLI: régua criada depois de conhecer o resultado não é régua.
+
+## Emenda 2026-09-14 — o alvo de `oversized-file` sai desta fase
+
+Decisão do supervisor, depois que a aritmética das 27 seções reais mostrou que a
+meta era inalcançável como o plano estava desenhado.
+
+**A conta.** `bin/maestro` tem 4311 linhas e o teto é 400. As 27 seções somam
+4292. Ordenado por tamanho, 19 lotes levariam o arquivo a 382 — **mas só
+incluindo o doctor**. Sem ele, o máximo removível é 2747 e restam **1564
+linhas, 3,9x o teto**.
+
+**A decisão.** O `doctor` continua fora, e o alvo de `oversized-file` sai desta
+fase em vez de fingir que será cumprido. A razão, do supervisor: *"o doctor é
+34% do arquivo, é quem diagnostica ambiente quebrado e o único que roda sem Bun;
+fatiá-lo trocaria um diagnóstico que funciona quando tudo o mais falhou por um
+número. A métrica serve ao objetivo; quando ela briga com o objetivo, ela cede —
+mas cede explicitamente e com a razão no arquivo, nunca por exceção que ninguém
+releu."*
+
+**Estado final pretendido, com número.** `bin/maestro` reduzido a **despachante
++ doctor = ~1564 linhas**: 1545 de seção (drift+envelope 594, roster 209,
+bindings 175, hooks.json 132, doctor 127, resolução de caminho 108,
+routing-table 105, dispatch 46, relatório 30, parsers 19) mais 19 de cabeçalho.
+Saem **2747 linhas em 16 lotes**.
+
+**A dívida do E24 passa a ser `oversized-function`** — 18 dos 22 achados do
+arquivo. Split move arquivo; **decomposição** é o que mede contexto contido
+(INTENT v2, Prioridade 5), e é o que o lote do `order` vai testar de verdade.
+`oversized-file` sempre foi o sintoma mais visível e o menos informativo.
+
+**Condição de retorno:** se houver caminho seguro para extrair o doctor — sem
+multiplicar os pontos onde "arquivo ausente" vira "diagnóstico ausente" —
+`oversized-file` volta à fila com alvo 12.
+
+## Emenda 2026-09-14 — a fila reordenada por linhas que saem
+
+Ordenar por barato foi certo enquanto o mecanismo era a incógnita. O Lote 1
+provou o carregador; **agora a incógnita é a decomposição, e ela só aparece onde
+há o que decompor**. A fila passa a ser por linhas que saem:
+
+| # | seção | linhas |
+|---|---|---:|
+| 1 | **`order` (E15)** | 587 |
+| 2 | `upgrade` (E19) | 233 |
+| 3 | `evidence` (E13) | 227 |
+| 4 | `habits` (E9) | 216 |
+| 5 | `retro` (E10) | 214 |
+| 6 | `intent` (E22) | 208 |
+| 7 | `outcome` (E10) | 181 |
+| 8 | `brief` (E8) | 157 |
+| 9 | `docs` (E16) | 150 |
+| 10-16 | `decision records` 110, `delegation` 109, `consent` 87, `conduct` 82, `verify` 74, `verificações por área` 55, `graph` 40 | 557 |
+
+O `graph` (40 linhas), que era o Lote 2 pelo critério antigo, vai para o fim: a
+40 linhas por lote a conta não converge, e o mecanismo que ele confirmaria já
+está provado.
