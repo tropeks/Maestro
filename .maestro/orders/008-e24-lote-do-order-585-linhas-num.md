@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 2
 intent_hash: b1b21050
 author_session: c63227f9-8cee-4c01-965f-10182f66b500
+absorbed_by: main
+absorbed_tree: 33638b86912af8924bebf2b5259752c061ca6bd2
+absorbed_at: 2026-09-15T11:32:46-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 008 — E24 lote do order: 585 linhas numa funcao so — o lote que decide se o metodo escala
 
