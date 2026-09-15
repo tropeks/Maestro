@@ -1,0 +1,33 @@
+diff --git a/lib/cmd-evidence.sh b/lib/cmd-evidence.sh
+index 6e2edaf..14a1e94 100644
+--- a/lib/cmd-evidence.sh
++++ b/lib/cmd-evidence.sh
+@@ -14,6 +14,12 @@
+ # comando, impressão). Sourced por bin/maestro (via _ev_lib_load, I-2) DENTRO
+ # do mesmo processo — REPO_DIR, MAESTRO_HOME e die() já no escopo.
+ #
++# `maestro_verif_load`/`maestro_verif_cmd`/`verif_record_hint` (lib/cmd-verify.sh,
++# ordem 011) NÃO estão residentes: cada função que os usa chama
++# `_verif_lib_load` antes (mesma técnica de `_ev_lib_load`), degradando por
++# comando (I-2) em vez de assumir carregamento alheio — acoplamento mapeado
++# pela ordem A e resolvido aqui.
++#
+ # Convenção (lote do `order`, E24): parâmetro posicional, nenhuma função
+ # fecha sobre local de outra. Exceção documentada: EV_RUN_* abaixo, no molde
+ # de TEL_STATE/TEL_HOST (hooks/lib/telemetry-sync.sh) — a saída do comando
+@@ -35,6 +41,7 @@ _ev_cmd_measure_load() { # → "load1m_x100<US>ncpu" (US=\x1f; TAB é IFS-whites
+ 
+ _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
+   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
++  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
+   maestro_verif_load
+   decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+   if [[ -n "$decl" ]]; then
+@@ -147,6 +154,7 @@ _ev_cmd_qualifiers() { # <e_load> <load_limiar> <e_inc> → "load_qualif<US>inc_
+ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime veredito; rc conforme --check
+   local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef
+   ef=$(maestro_evidence_file "$proj" "$label")
++  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
+   maestro_verif_load
+   if [[ ! -f "$ef" || ! -r "$ef" ]]; then
+     echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
