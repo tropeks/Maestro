@@ -11,6 +11,17 @@
 # Mecanismo do conserto (docs/patches/012-autoprotecao-worktree-pre-tool-gate.patch):
 # `git rev-parse --path-format=absolute --git-common-dir` do projeto e do
 # plugin — iguais → mesma árvore Git, endereço novo, denylist se aplica.
+# Degradação NEUTRA (correção pós-suíte): só bloqueia com evidência POSITIVA
+# (os dois `git rev-parse` tiveram sucesso, valores não-vazios, e iguais).
+# git ausente, projeto que não é repositório, comando falhando ou
+# `--path-format` indisponível caem no comportamento PRÉ-EXISTENTE (não
+# bloqueiam por aqui) — worktree não existe sem git, então não há cenário de
+# risco a proteger quando a evidência falta. A versão anterior tratava "não
+# deu para saber" como "é a mesma árvore" (nega), o que virava bloqueio
+# universal de qualquer diretório NÃO-GIT cujo caminho batesse a denylist —
+# achado real da própria `tests/hooks/test-gate.sh` (projeto sintético via
+# `mktemp -d`, sem `git init`). A asserção 2b abaixo cobre exatamente esse
+# caso para a regressão não voltar.
 #
 # Lição das ordens 003/004/006: o teste NÃO exige o patch já aplicado.
 # hooks/ está na denylist de autoproteção do próprio gate, então quem aplica
@@ -38,7 +49,7 @@ pending()  { printf 'PENDENTE  %s\n' "$1"; }
 # ---------------------------------------------------------------------------
 # Mecanismo presente? (marcador único do patch em hooks/pre-tool-gate.sh)
 # ---------------------------------------------------------------------------
-MARKER='worktree do PRÓPRIO plugin (ordem 012)'
+MARKER='worktree do PRÓPRIO plugin (ordem 012'
 PATCHED=0
 grep -qF "$MARKER" "$GATE" 2>/dev/null && PATCHED=1
 if (( PATCHED == 0 )); then
@@ -94,6 +105,14 @@ fi
 OTHER="$T/otherrepo"; mkdir -p "$OTHER/bin"
 git init -q "$OTHER" >/dev/null 2>&1
 
+# Terceiro fixture — o que a versão anterior do patch quebrou de verdade
+# (achado do supervisor, não hipotético): um diretório que NÃO é repositório
+# git NENHUM, com caminho relativo batendo a denylist. `git -C` aqui falha e
+# devolve vazio — é exatamente o "não deu para saber" que a degradação NEUTRA
+# tem que devolver ao comportamento pré-existente (não bloquear), porque
+# worktree não existe sem git.
+NOGIT="$T/naogit"; mkdir -p "$NOGIT/bin" "$NOGIT/src"
+
 run_gate() { # $1=CLAUDE_PROJECT_DIR $2=file_path (absoluto) -> RC, OUT
   local proj="$1" fp="$2"
   RC=0
@@ -116,6 +135,13 @@ if [[ $RC -eq 0 ]]; then
   ok "asserção 2: bin/ de OUTRO repositório qualquer → continua LIVRE (rc=0)"
 else
   bad "asserção 2: outro repo não pode ser pego pela autoproteção (rc=$RC, saída: '$OUT') — bloqueio universal de bin/, modo de falha oposto"
+fi
+
+run_gate "$NOGIT" "$NOGIT/bin/x.go"
+if [[ $RC -eq 0 ]]; then
+  ok "asserção 2b: diretório NÃO-GIT com caminho batendo a denylist → continua LIVRE (rc=0)"
+else
+  bad "asserção 2b: diretório não-git não pode ser pego pela autoproteção (rc=$RC, saída: '$OUT') — a regressão real (git ausente vira 'nega') voltou"
 fi
 
 run_gate "$REPO" "$REPO/bin/maestro"
