@@ -1,149 +1,30 @@
 --- a/lib/cmd-order.sh
 +++ b/lib/cmd-order.sh
-@@ -212,6 +212,142 @@
-   _order_show_next "$proj" "$of" "$oid" "$st" "$br"
+@@ -293,10 +293,31 @@
+   printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
  }
  
-+# --------------------------------------------------------- ação: --status --json (ordem 014, issue #18)
++# ----------------------------------------- ação: --status --json (ordem 014, issue #18)
 +#
-+# O supervisor mora em repo próprio e RECALCULAVA a derivação de estado por
-+# conta — a que interrompia humano era a que errava, e cada estado novo
-+# (absorvida na ordem 004, adiada na 013) alargava o buraco porque o
-+# consumidor externo não os conhecia. Esta ação é a FONTE ÚNICA: lê os
-+# MESMOS predicados de core-order-state.sh que `_order_action_status` (acima)
-+# lê para o texto — nunca uma segunda derivação (precedente
-+# hooks/lib/habit-sensors.awk: "sensor único, dois momentos"; aqui são dois
-+# momentos de ESTADO). DATA_MODEL.md §9 emenda v1.15 é o contrato: nome de
-+# campo e forma do objeto não mudam sem emenda; campo novo é sempre
-+# ADITIVO — um leitor que só conhece os campos de hoje ignora os de amanhã.
-+_order_json_esc() { # <str> → escapado para caber dentro de aspas JSON (puro bash, zero lib externa)
-+  local s="$1"
-+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
-+  s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; s="${s//$'\r'/\\r}"
-+  printf '%s' "$s"
-+}
-+_order_json_field() { # <chave> <valor> → "chave":"valor" — valor vazio vira null, nunca ""
-+  if [[ -z "${2-}" ]]; then printf '"%s":null' "$1"; else printf '"%s":"%s"' "$1" "$(_order_json_esc "$2")"; fi
-+}
-+_order_json_bool() { # <chave> <0|1> → "chave":true|false
-+  [[ "$2" == "1" ]] && printf '"%s":true' "$1" || printf '"%s":false' "$1"
-+}
-+_order_action_status_json() { # <proj> <arquivo> <id> — o boletim de _order_action_status, em JSON, MESMA fonte
-+  local proj="$1" of="$2" oid="$3" st br _ptree=""
-+  st=$(_order_status "$proj" "$of"); br=$(_order_field "$of" branch)
-+  local br_existe=0 br_tip=""
-+  if git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
-+    br_existe=1; br_tip=$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)
++# A emissão JSON mora em MÓDULO PRÓPRIO (lib/cmd-order-json.sh, vocabulário
++# cmd- do E24: responsabilidade distinta o bastante pra ter nome — texto e
++# JSON são dois ADAPTADORES do mesmo núcleo, não a mesma peça): puxar
++# _order_action_status_json para cá engordaria este arquivo acima do teto de
++# `oversized-file` (400 linhas) sem nenhum motivo além de conveniência de
++# edição. Carregado SOB DEMANDA — só quando `--status` vem com `--json` — no
++# molde de `_order_lib_load`/`_verif_lib_load`: módulo ausente derruba SÓ
++# este comando (I-2, `die env`), nunca o CLI inteiro; `--status` SEM `--json`
++# nunca paga o custo de sourcing de um módulo que não usa.
++_order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
++  declare -f _order_action_status_json >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
++    # shellcheck source=lib/cmd-order-json.sh
++    source "$REPO_DIR/lib/cmd-order-json.sh" && return 0
 +  fi
-+
-+  # -------- prova: o MESMO condicional (e a MESMA chamada a `maestro
-+  # evidence` no fallback) de _order_action_status — texto/JSON leem o
-+  # idêntico veredito, nunca dois cálculos.
-+  local p_estado="" p_detalhe="" p_arvore=""
-+  [[ "$st" == "aceita" ]] && _ptree=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
-+  if [[ "$st" == "absorvida" ]]; then
-+    p_estado="absorvida"; p_arvore=$(_order_field "$of" absorbed_tree)
-+    p_detalhe=$(printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)' \
-+      "$(_order_field "$of" absorbed_by)" "${p_arvore:0:12}")
-+  elif [[ "$st" == "adiada" ]]; then
-+    p_estado="adiada"; p_arvore=$(_order_deferred_tree "$proj" "$of")
-+    if [[ -n "$p_arvore" ]]; then
-+      p_detalhe=$(printf 'ADIADA por %s — prova congelada em %s (idade e mudança de árvore não se aplicam: trabalho adiado não anda)' \
-+        "$(_order_field "$of" deferred_by)" "${p_arvore:0:12}")
-+    else
-+      p_detalhe=$(printf 'ADIADA por %s — sem recibo gravado ainda (nada a congelar)' "$(_order_field "$of" deferred_by)")
-+    fi
-+  elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
-+    p_estado="valida"; p_arvore="$_ptree"
-+    p_detalhe=$(printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0' "${_ptree:0:12}" "$((10#$oid))")
-+  else
-+    p_detalhe=$("$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$proj" "$of")" --project "$proj" 2>/dev/null | head -1)
-+    [[ -z "$p_detalhe" ]] && p_detalhe="?"
-+    case "$p_detalhe" in
-+      *VÁLIDA*)  p_estado="valida" ;;
-+      *VENCIDA*) p_estado="vencida" ;;
-+      *NENHUMA*) p_estado="nenhuma" ;;
-+      *)         p_estado="desconhecida" ;;
-+    esac
-+    [[ "$st" == "provada" ]] && p_arvore=$(_order_proof_tree "$proj" "$of")
-+  fi
-+
-+  # -------- direção (E22): o MESMO condicional de _order_show_context --------
-+  local d_json="null" _ov _ivn
-+  _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
-+  if [[ -n "$_ov" ]]; then
-+    local d_stale=0 d_bump=0
-+    _order_intent_stale "$of" "$_ivn" && d_stale=1
-+    if [[ "$d_stale" == "0" && "$_ov" == "$_ivn" ]]; then
-+      local _ihn _oh
-+      _ihn=$(_intent_body_hash "$(_intent_file "$proj")"); _oh=$(_order_field "$of" intent_hash)
-+      [[ -n "$_oh" && -n "$_ihn" && "$_oh" != "$_ihn" ]] && d_bump=1
-+    fi
-+    d_json=$(printf '{%s,%s,%s,%s}' \
-+      "$(_order_json_field ordem "$_ov")" "$(_order_json_field atual "$_ivn")" \
-+      "$(_order_json_bool desatualizada "$d_stale")" "$(_order_json_bool hash_bump_pendente "$d_bump")")
-+  fi
-+
-+  # -------- verificação por área (E23b): o MESMO condicional/relatório de
-+  # _order_show_context — pulado para 'adiada' pelo MESMO motivo (compararia
-+  # com o tip atual, que é o que trabalho suspenso não deve sofrer).
-+  local v_json="null"
-+  if [[ "$st" != "adiada" ]]; then
-+    local _vareas _vrep _vl _vitems="" _first=1 _rot _est
-+    _vareas=$(_order_verif_areas "$proj" "$of"); _vrep=$(_order_verif_report "$proj" "$of" "$_vareas")
-+    if [[ -n "$_vrep" ]]; then
-+      while IFS= read -r _vl; do
-+        [[ -n "$_vl" ]] || continue
-+        _rot="${_vl%%:*}"; _est="${_vl#*: }"
-+        [[ $_first -eq 1 ]] && _first=0 || _vitems+=","
-+        _vitems+=$(printf '{%s,%s}' "$(_order_json_field rotulo "$_rot")" "$(_order_json_field estado "$_est")")
-+      done <<<"$_vrep"
-+      v_json="[$_vitems]"
-+    fi
-+  fi
-+
-+  # -------- pede_aceite/motivo: os MESMOS casos de _order_show_next, lendo
-+  # os mesmos sinais (_order_moved_since_accept) — mapeamento estado→ação
-+  # do contrato, não uma segunda derivação de estado.
-+  local pede=0 motivo=""
-+  case "$st" in
-+    provada) pede=1; motivo="revisar e aceitar" ;;
-+    aceita)
-+      local _mv; _mv=$(_order_moved_since_accept "$proj" "$of")
-+      if [[ -n "$_mv" ]]; then pede=1; motivo="branch andou depois do aceite (reaceite se for o caso)"
-+      else motivo="encerrada"; fi ;;
-+    absorvida) motivo="encerrada por absorção" ;;
-+    adiada)    motivo="suspensa — não cobra aceite nem prova enquanto deferred_by existir" ;;
-+    *)         motivo="aguardando execução" ;;
-+  esac
-+  local terminal=0 suspensa=0
-+  [[ "$st" == "aceita" || "$st" == "absorvida" ]] && terminal=1
-+  [[ "$st" == "adiada" ]] && suspensa=1
-+
-+  local out='{'
-+  out+="$(_order_json_field id "$oid")"
-+  out+=",$(_order_json_field estado "$st")"
-+  out+=",$(_order_json_field branch "$br")"
-+  out+=",$(_order_json_bool branch_existe "$br_existe")"
-+  out+=",$(_order_json_field branch_tip "$br_tip")"
-+  out+=",$(_order_json_field arquivo "$of")"
-+  out+=",$(_order_json_bool terminal "$terminal")"
-+  out+=",$(_order_json_bool suspensa "$suspensa")"
-+  out+=",$(_order_json_bool pede_aceite "$pede")"
-+  out+=",$(_order_json_field motivo "$motivo")"
-+  out+=",\"direcao\":$d_json"
-+  out+=",\"verificacao\":$v_json"
-+  out+=",$(_order_json_field absorvido_por "$(_order_field "$of" absorbed_by)")"
-+  out+=",$(_order_json_field adiado_por "$(_order_field "$of" deferred_by)")"
-+  out+=",\"prova\":{$(_order_json_field estado "$p_estado"),$(_order_json_field detalhe "$p_detalhe"),$(_order_json_field arvore "$p_arvore")}"
-+  out+='}'
-+  printf '%s\n' "$out"
++  die env "lib/cmd-order-json.sh não encontrado em $REPO_DIR" \
++    "reinstale o plugin (maestro doctor)" 2
 +}
 +
- # ------------------------------------------------------------- ação: --accept
- _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — --accept --absorbed-by (issue #12)
-   local proj="$1" odir="$2" of="$3" oid="$4" sid="$5" absorbed_by="$6" st abs_tree="" stamp
-@@ -296,7 +432,7 @@
  # ------------------------------------------------------------------ despacho
  cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
    local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
@@ -152,7 +33,7 @@
    while (( $# )); do
      case "$1" in
        --create)  action="create" ;;
-@@ -312,10 +448,11 @@
+@@ -312,10 +333,11 @@
        --doc)     odoc="${2:-}"; shift ;;
        --intent-reviewed) intent_reviewed=1 ;;   # E22
        --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12, usa-se COM --accept
@@ -165,13 +46,13 @@
      esac
      shift
    done
-@@ -339,7 +476,9 @@
+@@ -339,7 +361,9 @@
    [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
  
    case "$action" in
 -    status) _order_action_status "$proj" "$of" "$oid" ;;
 +    status)
-+      if (( json_out == 1 )); then _order_action_status_json "$proj" "$of" "$oid"
++      if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$of" "$oid"
 +      else _order_action_status "$proj" "$of" "$oid"; fi ;;
      accept)
        if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"

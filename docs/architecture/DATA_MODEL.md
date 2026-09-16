@@ -883,6 +883,23 @@ escapando `\`/`"`/controle — necessário porque `deferred_by` é **escrito à
 mão** pelo humano, v1.14, e não passa pela mesma validação de regex que
 `branch`/ids).
 
+**Módulo próprio, carregado sob demanda.** A emissão JSON mora em
+`lib/cmd-order-json.sh`, não em `lib/cmd-order.sh` — vocabulário `cmd-` do
+E24 (texto e JSON são dois ADAPTADORES do mesmo núcleo, responsabilidade
+distinta o bastante pra ter nome próprio; núcleo `core-order-state.sh`
+continua sendo o único que sabe DERIVAR). Motivo medido, não estético: o
+patch original engordava `lib/cmd-order.sh` de 347 para 486 linhas e cruzava
+o teto de `oversized-file` (400, `hooks/lib/habit-sensors.awk`) — a catraca
+`maestro habits --all` reprova (exit 1) o que sobe acima do baseline, e a
+régua não sobe pra acomodar linha nova. `lib/cmd-order.sh` ganha só
+`_order_json_lib_load` (~15 linhas, molde de `_order_lib_load`/
+`_verif_lib_load`, I-2): módulo ausente derruba SÓ o comando `--json` com
+`die env`, nunca o CLI inteiro; `--status` SEM `--json` nunca soube que
+`cmd-order-json.sh` existe — o `source` só roda dentro do braço `--json` do
+despacho. `maestro habits lib/cmd-order.sh lib/cmd-order-json.sh` sai limpo
+(nenhuma função >60 linhas, nenhum arquivo >400) — medido um a um, não só
+"a soma cabe".
+
 **Mesma fonte, nunca duas derivações**: `_order_action_status_json` lê os
 MESMOS predicados de `core-order-state.sh` que `_order_action_status` (texto)
 lê — `_order_status`, `_order_evidence_match`/`_order_proof_tree`,

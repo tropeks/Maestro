@@ -31,6 +31,7 @@ set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN="$REPO/bin/maestro"
 CMD="$REPO/lib/cmd-order.sh"
+CMDJ="$REPO/lib/cmd-order-json.sh"   # emissão JSON em módulo próprio (catraca oversized-file)
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
@@ -52,13 +53,16 @@ git_init_main() { local d="$1"; git -C "$d" init -q; git -C "$d" symbolic-ref HE
 # disco ao voltar pra main — armadilha paga na ordem 013). Nominal sempre.
 commit_f() { local d="$1" m="$2"; git -C "$d" add f.txt; git -C "$d" -c user.email=t@t -c user.name=t commit -qm "$m"; }
 
-PATCHED=0; grep -qF '_order_action_status_json' "$CMD" 2>/dev/null && PATCHED=1
+# mecanismo em DOIS arquivos (lib/cmd-order.sh carrega sob demanda, lib/
+# cmd-order-json.sh define): os dois patches precisam estar aplicados.
+LOADER_PATCHED=0; grep -qF '_order_json_lib_load' "$CMD" 2>/dev/null && LOADER_PATCHED=1
+MODULE_PATCHED=0; [[ -f "$CMDJ" ]] && grep -qF '_order_action_status_json' "$CMDJ" 2>/dev/null && MODULE_PATCHED=1
 
-if (( PATCHED == 0 )); then
-  pending "ordem 014: '--status --json' ainda ausente em lib/cmd-order.sh; aplicar docs/patches/014-status-json-cmd-order.patch"
+if (( LOADER_PATCHED == 0 || MODULE_PATCHED == 0 )); then
+  pending "ordem 014: '--status --json' ainda ausente; aplicar docs/patches/014-status-json-cmd-order.patch e docs/patches/014-status-json-cmd-order-json-novo-modulo.patch"
   exit 0
 fi
-ok "mecanismo presente: lib/cmd-order.sh define _order_action_status_json"
+ok "mecanismo presente: lib/cmd-order.sh carrega lib/cmd-order-json.sh sob demanda (_order_json_lib_load)"
 
 # ---------------------------------------------------------------------------
 # fixture: um projeto com uma ordem em CADA um dos seis estados do contrato.
@@ -197,7 +201,10 @@ ln -s "$REPO/hooks" "$SABROOT/hooks"
 ln -s "$REPO/agents" "$SABROOT/agents" 2>/dev/null || :
 ln -s "$REPO/bin/maestro-wtree" "$SABROOT/bin/maestro-wtree"
 cp "$REPO"/lib/*.sh "$SABROOT/lib/"
-SABCMD="$SABROOT/lib/cmd-order.sh"
+# a emissão JSON mora em módulo PRÓPRIO (lib/cmd-order-json.sh, ordem 014
+# pós-catraca: lib/cmd-order.sh só carrega sob demanda) — é lá que o sed
+# sabota, não em lib/cmd-order.sh.
+SABCMD="$SABROOT/lib/cmd-order-json.sh"
 # no handler JSON, "aceita" passa a sair como "aceito" — uma segunda leitura
 # de estado que diverge do texto (_order_status continua dizendo "aceita").
 sed -i 's/out+=",\$(_order_json_field estado "\$st")"/out+=",\$(_order_json_field estado "\$([[ "\$st" == aceita ]] \&\& echo aceito || echo "\$st")")"/' "$SABCMD"
