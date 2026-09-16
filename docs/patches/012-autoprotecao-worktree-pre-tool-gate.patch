@@ -1,0 +1,50 @@
+--- a/hooks/pre-tool-gate.sh
++++ b/hooks/pre-tool-gate.sh
+@@ -318,6 +318,47 @@
+   fi
+ fi
+ 
++# ── 3a-bis. worktree do PRÓPRIO plugin (ordem 012, correção pós-suíte) ─────
++# PLUGIN_ROOT é gravado como REPO_DIR pelo session-start (hooks/session-start.sh)
++# na sessão que compilou a política — o caminho de UMA árvore de trabalho. Um
++# `git worktree` do mesmo repositório tem raiz de ARQUIVOS diferente (não bate
++# com o prefixo checado acima), mas é a MESMA árvore Git — mesmo endereço de
++# enforcement, checkout novo. Sem isto a autoproteção é vencida por mudança de
++# endereço (a mesma classe que a decisão A do Lote 0 recusou para lib/), nunca
++# removida: o bloco 3a-anchored acima simplesmente nunca casa.
++#
++# Barato-primeiro: só dispara `git` (fork) quando REL já pareceria autoproteção
++# SE este projeto fosse o plugin — casamento de string, sem custo, cobre a
++# imensa maioria das edições que não chegam nem perto de bin/hooks/src/agents.
++if [[ -z "$DENIED" && -n "$PLUGIN_ROOT" && -n "$PROJ" && -n "$REL" ]] \
++   && _gate_prefix_match "$REL" "$DENY_SELF $DENY_PATHS"; then
++  _gate_proj_common=""
++  _gate_plugin_common=""
++  if command -v git >/dev/null 2>&1; then
++    _gate_proj_common=$(git -C "$PROJ" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _gate_proj_common=""
++    _gate_plugin_common=$(git -C "$PLUGIN_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _gate_plugin_common=""
++  fi
++  # Degradação NEUTRA (a versão anterior deste patch tratava "não deu para
++  # saber" como "é a mesma árvore" e ISSO ESTAVA ERRADO — corrigido aqui).
++  # Worktree NÃO EXISTE sem git: sem evidência POSITIVA de que as duas árvores
++  # são a MESMA, não há cenário de worktree a proteger, então o bloco cai no
++  # comportamento PRÉ-EXISTENTE (nem mais restritivo, nem menos — a checagem
++  # ancorada de 3a acima, sozinha). Só bloqueia AQUI quando os DOIS
++  # `git rev-parse` tiveram sucesso, os dois valores são não-vazios E são
++  # iguais — git ausente, projeto que não é repositório, comando falhando ou
++  # `--path-format` indisponível caem todos no "não bloqueia aqui", sem
++  # marcar DENIED. O caso real que expôs o defeito da versão anterior:
++  # tests/hooks/test-gate.sh cria o projeto sintético com `mktemp -d`, sem
++  # `git init` — sem esta correção, QUALQUER diretório não-git cujo caminho
++  # relativo batesse a denylist (src/, bin/, hooks/…) virava bloqueio
++  # universal, o modo de falha oposto ao que esta ordem existe para consertar.
++  if [[ -n "$_gate_proj_common" && -n "$_gate_plugin_common" && \
++        "$_gate_proj_common" == "$_gate_plugin_common" ]]; then
++    DENIED="1"
++    DENIED_PLUGIN_REL="$REL"
++  fi
++fi
++
+ # ── 3b. consentimento (E10/S-1005, ADR-003 v1.2) ───────────────────────────
+ # Consentimento explícito do humano (maestro consent --grant) levanta a
+ # denylist SÓ para DADOS — routing table e roster — e SÓ no ramo ancorado no
