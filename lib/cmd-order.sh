@@ -18,6 +18,11 @@
 # `maestro_verif_load` (lib/cmd-verify.sh, ordem 011) NÃO é mais residente:
 # cmd_order chama `_verif_lib_load` antes, fora de `$(...)` — mesma nota já
 # registrada abaixo sobre subshell, mesma técnica de `_order_lib_load`.
+#
+# `_intent_valid`/`_intent_version`/`_intent_file`/`_intent_body_hash`
+# (lib/core-intent.sh, ordem 015) e `cmd_docs` (lib/cmd-docs.sh, ordem 015)
+# também NÃO são residentes: cada função que os usa chama `_intent_lib_load`/
+# `_docs_lib_load` antes, mesma técnica — acoplamento mapeado na ordem 015.
 
 # ------------------------------------------------------------- ação: --create
 _order_slug() { # <título> → slug de arquivo/branch (minúsculo, [a-z0-9-], até 32)
@@ -29,6 +34,7 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
   local of="$proj/.maestro/orders/$oid-$(_order_slug "$title").md" head_sha
   head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
   local i_ver="" i_hash=""   # E22: ordem nasce citando a direção vigente; sem carimbo, sai avisando
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
   if _intent_valid "$proj"; then
     i_ver=$(_intent_version "$(_intent_file "$proj")")
     i_hash=$(_intent_body_hash "$(_intent_file "$proj")")
@@ -93,6 +99,7 @@ _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "ste
 _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
   [[ -d "$2" ]] || { echo "nenhuma ordem em $2 (crie: maestro order --create)"; return 0; }
   local proj="$1" odir="$2" f any=0 iv_now mark id _skip="" _seen=" " _dupe=""
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
   iv_now=$(_intent_version "$(_intent_file "$proj")")
   shopt -s nullglob
   for f in "$odir"/*.md; do
@@ -121,6 +128,8 @@ _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
 # ------------------------------------------------------------- ação: --status
 _order_show_context() { # <proj> <arquivo> [status] → blocos direção(E22)/verif(E23b)/doc no boletim (vazio se não citado)
   local proj="$1" of="$2" st="${3-}" _ov _ivn _ihn _oh _vrep _vl _vareas _od
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
+  _docs_lib_load     # ordem 015: cmd_docs não é mais residente (bloco `doc` abaixo)
   _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
   if [[ -n "$_ov" ]]; then
     printf '  direção : v%s\n' "$_ov"

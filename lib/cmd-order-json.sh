@@ -18,10 +18,14 @@
 # hooks/lib/common.sh (já residentes no processo por essa altura: REPO_DIR,
 # die(), _order_field/_order_status/_order_evidence_match/_order_proof_tree/
 # _order_deferred_tree/_order_moved_since_accept/_order_intent_stale/
-# _order_verif_areas/_order_verif_report, _intent_version/_intent_file/
-# _intent_body_hash, _order_evidence_label — todas já no escopo). Módulo
-# ausente derruba SÓ o comando --json (die env em _order_json_lib_load),
-# nunca o CLI; `--status` sem `--json` nunca carrega este arquivo.
+# _order_verif_areas/_order_verif_report, _order_evidence_label — todas já no
+# escopo). Módulo ausente derruba SÓ o comando --json (die env em
+# _order_json_lib_load), nunca o CLI; `--status` sem `--json` nunca carrega
+# este arquivo.
+#
+# `_intent_version`/`_intent_file`/`_intent_body_hash` (lib/core-intent.sh,
+# ordem 015) NÃO são residentes: `_order_json_direcao_frag` chama
+# `_intent_lib_load` antes de usá-las, mesma técnica de `_verif_lib_load`.
 #
 # Mesma convenção de core-order-state.sh/cmd-order.sh: proj/of/oid/st chegam
 # por parâmetro posicional, nessa ordem. Cada bloco do boletim (prova/
@@ -78,6 +82,7 @@ _order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto 
 
 _order_json_direcao_frag() { # <proj> <arquivo> → objeto "direcao" (E22), ou "null" — MESMO condicional de _order_show_context
   local proj="$1" of="$2" _ov _ivn
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
   _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
   [[ -n "$_ov" ]] || { printf 'null'; return 0; }
   local d_stale=0 d_bump=0

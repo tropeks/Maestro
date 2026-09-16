@@ -63,6 +63,33 @@ grep -q 'CATRACA DE DOCS' <<<"$out" && ok "reprova nomeando doc e contagens" || 
 echo '## E2' >> "$P/docs/SPEC.md"; ci emenda2
 "$BIN" docs --check --project "$P" >/dev/null; chk "emenda quita a catraca" "$?" "0"
 
+echo "-- catraca: chave repetida no .tsv (edição manual) — a ÚLTIMA linha vence"
+# .maestro-docs.tsv é editado à mão às vezes (o cabeçalho dele convida a
+# isso); a leitura tem de reproduzir o `declare -A base["$_d"]=$_n` original
+# (chave repetida: a ÚLTIMA sobrescreve), não o primeiro match (rodada de
+# correção da ordem 015 — _docs_baseline_get retornava cedo demais).
+P10="$tmp/p10"; mkdir -p "$P10/src" "$P10/docs"; git -C "$P10" init -q
+cat > "$P10/docs/SPEC.md" <<'DOC'
+---
+covers:
+  - src/**
+---
+# Spec
+DOC
+echo a > "$P10/src/app.py"
+printf 'version: 1\ndocs: [docs/SPEC.md]\n' > "$P10/.maestro.yaml"
+git -C "$P10" add -A; git -C "$P10" -c user.email=t@t -c user.name=t commit -qm base
+ci10() { git -C "$P10" add -A; git -C "$P10" -c user.email=t@t -c user.name=t commit -qm "$1"; }
+echo b >> "$P10/src/app.py"; ci10 m1
+echo c >> "$P10/src/app.py"; ci10 m2
+echo d >> "$P10/src/app.py"; ci10 m3
+# n=3 commits na área desde o doc. Baseline escrito À MÃO com a MESMA chave
+# duas vezes: primeira linha 5 (folgada, esconderia o drift), última linha 1
+# (a que deve valer). Só a leitura correta (última vence) reprova.
+printf 'docs/SPEC.md\t5\ndocs/SPEC.md\t1\n' > "$P10/.maestro-docs.tsv"
+"$BIN" docs --check --project "$P10" >/dev/null
+chk "chave duplicada no .tsv: a ÚLTIMA linha vence (baseline efetivo=1, n=3 > 1 → exit 1)" "$?" "1"
+
 echo "-- degradações e avisos"
 python3 - "$P/.maestro.yaml" <<'PY'
 import sys

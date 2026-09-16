@@ -8,11 +8,14 @@
 # só predicados e leituras sobre o arquivo da ordem e o repo/ledger.
 #
 # Sourced por bin/maestro (_order_lib_load, I-2) ANTES de lib/cmd-order.sh, no
-# MESMO processo — REPO_DIR, die(), maestro_evidence_file, _intent_* já no
-# escopo. `maestro_verif_*`/`verif_base_ref`/`verif_record_hint` (lib/cmd-verify.sh,
+# MESMO processo — REPO_DIR, die(), maestro_evidence_file já no escopo.
+# `maestro_verif_*`/`verif_base_ref`/`verif_record_hint` (lib/cmd-verify.sh,
 # ordem 011) NÃO são mais residentes: _order_verif_areas chama
 # `_verif_lib_load` antes de usá-las (mesma técnica de `_ev_lib_load`),
-# acoplamento mapeado pela ordem A e resolvido aqui.
+# acoplamento mapeado pela ordem A e resolvido aqui. `_intent_version`/
+# `_intent_file` (lib/core-intent.sh, ordem 015) também NÃO são residentes:
+# `_order_stamp_intent`/`_order_intent_gate` chamam `_intent_lib_load` antes
+# de usá-las, mesma técnica.
 #
 # Convenção (firmada em _order_field antes de custar caro, E24): nenhuma
 # função fecha sobre local de outra — `proj`/`of`/`oid` chegam SEMPRE por
@@ -155,12 +158,15 @@ _order_verif_gate() { # <proj> <arquivo> <id> — recusa (exit 1) o aceite sem o
 
 # --------------------------------------------------------------- direção (E22)
 _order_stamp_intent() { # <proj> <arquivo> — grava sob QUAL direção o aceite foi dado
-  local proj="$1" nv; nv=$(_intent_version "$(_intent_file "$proj")")
+  local proj="$1" nv
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
+  nv=$(_intent_version "$(_intent_file "$proj")")
   [[ -n "$nv" ]] && printf 'accepted_intent: %s\n' "$nv" >> "$2"
   return 0
 }
 _order_intent_gate() { # <proj> <arquivo> <id> <intent_reviewed> — aceite sob direção velha é decisão nova
   local proj="$1" f="$2" id="$3" reviewed="$4" nv ov
+  _intent_lib_load   # ordem 015: _intent_* não é mais residente
   nv=$(_intent_version "$(_intent_file "$proj")")
   _order_intent_stale "$f" "$nv" || return 0
   ov=$(_order_field "$f" intent_version)

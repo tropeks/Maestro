@@ -1534,361 +1534,47 @@ doctor() {
 }
 
 # ------------------------------------------------------------------ docs (E16)
+#
+# `maestro docs`: E24 moveu a catraca de drift inteira (declaração, medição
+# por doc, baseline e veredito) para lib/cmd-docs.sh
+# (docs/designs/e24-nucleo-e-adaptadores.md). Aqui fica só o carregador, no
+# molde de `_verif_lib_load`/`_order_lib_load`, com die env no lugar dos
+# stubs: módulo ausente derruba SÓ este comando (I-2), nunca o CLI. `cmd_docs`
+# é chamado de FORA (lib/cmd-order.sh, `_order_show_context`) — esse sítio
+# chama `_docs_lib_load` antes de usar, mesma técnica.
 
-cmd_docs() { # S-1601/S-1602: docs canônicos como CONTRATO — drift mecânico
-  # O doc declara `covers:` (globs) e opcionalmente `reviewed: <sha>` no
-  # frontmatter YAML. Drift por FRONTEIRA COM QUITAÇÃO (pesquisa E16: "mesmo
-  # commit" era falso positivo estrutural): STALE = commits que tocaram os
-  # covers DESDE max(último commit no doc, reviewed) — qualquer toque no doc,
-  # ou re-atestar via reviewed (provenance stamp, padrão Fiberplane Drift),
-  # zera o contador sem edição cosmética. Contamos COMMITS, não dias: tempo
-  # pune projeto parado; commits medem divergência real. Catraca versionada
-  # (.maestro-docs.tsv): brownfield entra sem gritar, crescer trava (--check).
-  local check=0 write_baseline=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}"
-  while (( $# )); do
-    case "$1" in
-      --check)    check=1 ;;
-      --baseline) write_baseline=1 ;;
-      --project)  proj="${2:-}"; shift ;;
-      *) die validation "flag desconhecida '$1'" "maestro docs [--check|--baseline] [--project d]" 1 ;;
-    esac
-    shift
-  done
-  # shellcheck source=hooks/lib/common.sh
-  source "$REPO_DIR/hooks/lib/common.sh"
-
-  local yaml="$proj/.maestro.yaml" dlist=""
-  if [[ -f "$yaml" ]]; then
-    dlist=$(awk '/^docs:/ { sub(/^docs:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' "$yaml" 2>/dev/null | tr -d '[]" ' | tr ',' ' ')
+_docs_lib_load() { # carrega lib/cmd-docs.sh — uma vez, degradando por comando (I-2)
+  declare -f cmd_docs >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/cmd-docs.sh" ]]; then
+    # shellcheck source=lib/cmd-docs.sh
+    source "$REPO_DIR/lib/cmd-docs.sh" && return 0
   fi
-  if [[ -z "${dlist// /}" ]]; then
-    echo "docs canônicos: nenhum declarado (.maestro.yaml → docs: [a.md, b.md])"
-    return 0
-  fi
-  git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 \
-    || die env "docs exige git (drift é medido em commits)" "" 2
-
-  local total_repo
-  total_repo=$(git -C "$proj" ls-files 2>/dev/null | grep -c . || true)
-  local bfile="$proj/.maestro-docs.tsv"
-  declare -A base=()
-  if [[ -f "$bfile" ]]; then
-    local _d _n
-    while IFS=$'\t' read -r _d _n; do
-      [[ "$_d" == \#* || -z "$_d" ]] && continue
-      [[ "$_n" =~ ^[0-9]+$ ]] && base["$_d"]=$_n
-    done < "$bfile"
-  fi
-
-  local d exceeded=() out_lines=() new_baseline="" total_stale=0
-  for d in $dlist; do
-    local df="$proj/$d"
-    if [[ ! -f "$df" ]]; then
-      out_lines+=("$d: AUSENTE — declarado no .maestro.yaml e não existe")
-      exceeded+=("$d (ausente)")
-      continue
-    fi
-    # frontmatter: covers (lista) + reviewed (sha) — só as primeiras 40 linhas
-    local covers reviewed
-    covers=$(awk 'NR==1 && $0 != "---" { exit } NR>40 { exit }
-      /^---$/ { fm++; next } fm != 1 { next }
-      /^covers:/ { inc=1; next }
-      inc && /^[ \t]*-[ \t]*/ { s=$0; sub(/^[ \t]*-[ \t]*/, "", s); gsub(/["\x27 ]/, "", s); print s; next }
-      inc { inc=0 }' "$df" 2>/dev/null | grep -E '^[A-Za-z0-9._*/-]+$' || true)
-    reviewed=$(awk 'NR>40 { exit } /^---$/ { fm++; next } fm != 1 { next }
-      /^reviewed:[ \t]*[0-9a-f]{7,40}[ \t]*$/ { sub(/^reviewed:[ \t]*/, ""); print; exit }' "$df" 2>/dev/null || true)
-    if [[ -z "$covers" ]]; then
-      out_lines+=("$d: sem covers: no frontmatter — doc canônico sem área governada é só prosa")
-      continue
-    fi
-    # fronteira = mais NOVO entre último commit do doc e reviewed
-    local b_doc b_rev="" boundary
-    b_doc=$(git -C "$proj" log -1 --format=%H -- "$d" 2>/dev/null || true)
-    if [[ -n "$reviewed" ]] && git -C "$proj" cat-file -e "$reviewed^{commit}" 2>/dev/null; then
-      b_rev="$reviewed"
-    fi
-    boundary="$b_doc"
-    if [[ -n "$b_rev" ]]; then
-      if [[ -z "$boundary" ]] || git -C "$proj" merge-base --is-ancestor "$boundary" "$b_rev" 2>/dev/null; then
-        boundary="$b_rev"
-      fi
-    fi
-    # pathspecs dos covers + fan-out. set -f: sem ele, `src/**` expande contra
-    # o CWD do bash antes de chegar ao git (mordeu no smoke — glob é do git).
-    local spec=() g fan=0
-    set -f
-    for g in $covers; do spec+=(":(glob)$g"); done
-    # S-1809: contrato é o que o doc PROMETE, não todo arquivo que encosta na
-    # área. Teste VERIFICA contrato, não o define; e bookkeeping do próprio
-    # Maestro (baseline da catraca, arquivos de ordem) não é contrato de coisa
-    # nenhuma. Sem isto, dividir um arquivo de teste ou regravar o baseline
-    # envelhecia o doc de ARQUITETURA — e o caminho "honesto" (`reviewed:`)
-    # está corretamente barrado, porque atestar o doc inteiro seria mentira.
-    # Sinal que fica sempre vermelho e ninguém pode limpar sem mentir deixa de
-    # ser sinal. Medido no NetForge: três docs STALE por causa de um commit que
-    # só mexeu num .tsv de catraca.
-    #
-    # Doc que GOVERNA teste continua enxergando teste: se os próprios covers
-    # citam caminho de teste, a exclusão não se aplica a ele.
-    if [[ "$covers" != *test* && "$covers" != *spec* ]]; then
-      spec+=(":(glob,exclude)**/tests/**" ":(glob,exclude)**/test/**"
-             ":(glob,exclude)**/__tests__/**" ":(glob,exclude)**/*_test.*"
-             ":(glob,exclude)**/*.test.*" ":(glob,exclude)**/*.spec.*"
-             ":(glob,exclude)**/conftest.py")
-    fi
-    spec+=(":(exclude).maestro/**" ":(glob,exclude)**/.maestro-*.tsv")
-    set +f
-    fan=$(git -C "$proj" ls-files -- "${spec[@]}" 2>/dev/null | grep -c . || true)
-    local fanwarn=""
-    if [[ "$total_repo" -gt 20 && "$fan" -gt $(( total_repo / 2 )) ]]; then
-      fanwarn=" · covers engole ${fan}/${total_repo} arquivos — glob largo demais vira ruído"
-    fi
-    local n=0
-    if [[ -z "$boundary" ]]; then
-      out_lines+=("$d: NÃO VERSIONADO (commite o doc para o drift existir)$fanwarn")
-      new_baseline+="$d	0"$'\n'
-      continue
-    fi
-    n=$(git -C "$proj" rev-list --count "$boundary..HEAD" -- "${spec[@]}" 2>/dev/null || echo 0)
-    [[ "$n" =~ ^[0-9]+$ ]] || n=0
-    total_stale=$(( total_stale + n ))
-    if (( n == 0 )); then
-      out_lines+=("$d: FRESCO (nenhum commit nos covers desde o doc/reviewed)$fanwarn")
-    else
-      out_lines+=("$d: STALE — $n commit(s) na área governada sem emenda (quite: emende, ou reviewed: $(git -C "$proj" rev-parse --short=7 HEAD))$fanwarn")
-    fi
-    new_baseline+="$d	$n"$'\n'
-    local bl="${base[$d]:-0}"
-    (( check == 1 )) && (( n > bl )) && exceeded+=("$d: $n > baseline $bl")
-  done
-
-  printf '%s\n' "${out_lines[@]}"
-
-  if (( write_baseline == 1 )); then
-    { printf '# maestro docs baseline (E16/S-1602) — catraca de drift: só desce.\n'
-      printf '%s' "$new_baseline"
-    } > "$bfile.tmp.$$" && mv -f "$bfile.tmp.$$" "$bfile" \
-      || { rm -f "$bfile.tmp.$$"; die env "falha ao gravar $bfile" "" 2; }
-    printf -- '---\nbaseline gravado: %s (%s doc(s))\n' "${bfile##*/}" "$(wc -w <<<"$dlist" | tr -d ' ')"
-    return 0
-  fi
-  if (( check == 1 )); then
-    if [[ ${#exceeded[@]} -gt 0 ]]; then
-      printf -- '---\nCATRACA DE DOCS: drift novo acima do baseline — %s\n' "$(join_semi "${exceeded[@]}")"
-      printf 'Emende o doc no mesmo changeset, ou re-ateste com reviewed: — a régua não sobe.\n'
-      return 1
-    fi
-    printf -- '---\ndentro da catraca de docs\n'
-  fi
-  return 0
+  die env "lib/cmd-docs.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
 }
 
 # ---------------------------------------------------------------- intent (E22)
-# A direção do projeto vira ARTEFATO em vez de frase no prompt: o
-# `.maestro/INTENT.md` viaja com o repo (como a ordem do E15), tem VERSÃO que só
-# sobe com conteúdo, e é o número que as ordens citam. Seis seções obrigatórias;
-# título sem texto conta como ausente — seção vazia não é direção, é intenção de
-# escrever direção. O hash é do corpo SEM o carimbo: carimbar não é mudar o
-# conteúdo, e sem isso `--bump` viraria contador de saves.
+#
+# `maestro intent`: E24 moveu o FORMATO do INTENT (carimbo, seções, hash) para
+# lib/core-intent.sh — o dono do formato — e as ações do CLI para
+# lib/cmd-intent.sh (docs/designs/e24-nucleo-e-adaptadores.md). Aqui fica só o
+# carregador, no molde de `_order_lib_load`/`_ev_lib_load`, com die env no
+# lugar dos stubs: módulo ausente derruba SÓ este comando (I-2), nunca o CLI.
+# `_intent_valid`/`_intent_version`/`_intent_file`/`_intent_body_hash` são
+# chamados de FORA desta família (lib/cmd-order.sh, lib/core-order-state.sh,
+# lib/cmd-order-json.sh — acoplamento mapeado na ordem 015): cada um desses
+# chama `_intent_lib_load` antes de usar qualquer uma, mesma técnica de
+# `_verif_lib_load`.
 
-_intent_file() { printf '%s/.maestro/INTENT.md' "${1:-$PWD}"; }
-
-# 8 hex do sha256 do corpo (tudo depois da linha `-->`). sha256sum é aceitável
-# aqui: isto é CLI, não hot path — o session-start só lê `version:` com awk.
-_intent_body_hash() { # <arquivo> → 8 hex ou vazio
-  local h=""
-  h=$(sed '1,/^-->$/d' "$1" 2>/dev/null | sha256sum 2>/dev/null | head -c 8) || h=""
-  printf '%s' "$h"
-  return 0
-}
-
-_intent_stamp_field() { # <arquivo> <chave> → valor do carimbo
-  awk -F': ' -v k="$2" 'NR>20 || /^-->$/ { exit } $1 == k { print substr($0, length(k)+3); exit }' \
-    "$1" 2>/dev/null || true
-}
-
-_intent_version() { # <arquivo> → inteiro ≥1 (normalizado) ou vazio
-  local v=""
-  [[ -f "$1" && -r "$1" ]] || { printf ''; return 0; }
-  v=$(_intent_stamp_field "$1" version)
-  if [[ "$v" =~ ^[0-9]{1,9}$ ]] && (( 10#$v >= 1 )); then printf '%s' "$((10#$v))"; fi
-  return 0
-}
-
-# "<seção>\t<linhas de texto>" para as SEIS obrigatórias, na ordem de exigência.
-# A ordem das seções DENTRO do arquivo é livre; a contagem ignora o carimbo e
-# linhas em branco. `## ` é fronteira de seção; `### ` conta como texto.
-_intent_sections() { # <arquivo>
-  awk '
-    BEGIN { n = split("Problema|Público|Resultado|Prioridades|Limites|Fora de escopo", req, "|"); body = 0; sec = "" }
-    NR == 1 && $0 !~ /^<!-- maestro-intent/ { body = 1 }
-    !body { if ($0 ~ /^-->$/) body = 1; next }
-    /^## / { sec = substr($0, 4); sub(/[ \t]+$/, "", sec); next }
-    { t = $0; gsub(/[ \t]/, "", t); if (t != "" && sec != "") cnt[sec]++ }
-    END { for (i = 1; i <= n; i++) printf "%s\t%d\n", req[i], (req[i] in cnt ? cnt[req[i]] : 0) }
-  ' "$1" 2>/dev/null || true
-}
-
-_intent_missing() { # <arquivo> → seções ausentes/vazias separadas por " · "
-  local out="" name cnt
-  while IFS=$'\t' read -r name cnt; do
-    [[ -n "$name" ]] || continue
-    (( cnt > 0 )) || out+="${out:+ · }$name"
-  done < <(_intent_sections "$1")
-  printf '%s' "$out"
-  return 0
-}
-
-_intent_valid() { # <projeto> → rc 0 se há direção CITÁVEL (carimbo + 6 seções)
-  local f; f=$(_intent_file "$1")
-  [[ -f "$f" && -r "$f" ]] || return 1
-  [[ -n "$(_intent_version "$f")" ]] || return 1
-  [[ -z "$(_intent_missing "$f")" ]] || return 1
-  return 0
-}
-
-cmd_intent() { # E22/S-2201: direção versionada do projeto
-  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" sid=""
-  while (( $# )); do
-    case "$1" in
-      --init)    action="init" ;;
-      --show)    action="show" ;;
-      --check)   action="check" ;;
-      --bump)    action="bump" ;;
-      --session) sid="${2:-}"; shift ;;
-      --project) proj="${2:-}"; shift ;;
-      *) die validation "flag desconhecida '$1'" \
-           "maestro intent [--init|--show|--check|--bump] [--project d] [--session s]" 1 ;;
-    esac
-    shift
-  done
-  [[ -n "$action" ]] || action="show"
-
-  # shellcheck source=hooks/lib/common.sh
-  source "$REPO_DIR/hooks/lib/common.sh"
-  local f; f=$(_intent_file "$proj")
-
-  if [[ "$action" == "init" ]]; then
-    [[ -f "$f" ]] && die validation "já existe direção em $f" \
-      "leia (maestro intent) e mude o conteúdo; para subir a versão, maestro intent --bump" 1
-    mkdir -p "${f%/*}" 2>/dev/null || die env "não consigo criar ${f%/*}" "cheque permissões" 2
-    local bt="${f%/*}/.INTENT.body.$$" pname
-    pname=$(cd -P -- "$proj" 2>/dev/null && basename -- "$PWD") || pname="projeto"
-    # As instruções ficam ANTES da primeira seção de propósito: texto dentro de
-    # uma seção a tornaria "preenchida" e o --check passaria em direção vazia.
-    cat > "$bt" <<TEMPLATE || die env "falha ao gravar $bt" "" 2
-# Direção — $pname
-
-Preencha as seis seções abaixo. Seção sem texto conta como AUSENTE
-(\`maestro intent --check\` diz quais faltam). A versão só sobe com
-\`maestro intent --bump\`, e só quando o conteúdo mudou — é o número que as
-ordens citam, não um contador de saves.
-
-## Problema
-
-## Público
-
-## Resultado
-
-## Prioridades
-
-## Limites
-
-## Fora de escopo
-TEMPLATE
-    local bh head_sha
-    bh=$(sha256sum < "$bt" 2>/dev/null | head -c 8) || bh="none"
-    head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
-    {
-      printf '<!-- maestro-intent v1\n'
-      printf 'version: 1\nts: %s\nhead: %s\n' "$(date -Iseconds)" "$head_sha"
-      printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$bh"
-      printf -- '-->\n'
-      cat "$bt"
-    } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
-      || { rm -f "$f.tmp.$$" "$bt" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
-    rm -f "$bt" 2>/dev/null || :
-    log_event intent ${sid:+session_id="$sid"} n=1 via=manual
-    printf 'direção criada: %s (v1, sem conteúdo ainda)\n' "$f"
-    printf '  preencha as seis seções e confira com: maestro intent --check\n'
-    return 0
+_intent_lib_load() { # carrega core-intent.sh + cmd-intent.sh — uma vez, degradando por comando (I-2)
+  declare -f cmd_intent >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/core-intent.sh" && -f "$REPO_DIR/lib/cmd-intent.sh" ]]; then
+    # shellcheck source=lib/core-intent.sh
+    source "$REPO_DIR/lib/core-intent.sh"
+    # shellcheck source=lib/cmd-intent.sh
+    source "$REPO_DIR/lib/cmd-intent.sh" && return 0
   fi
-
-  if [[ ! -f "$f" || ! -r "$f" ]]; then
-    case "$action" in
-      show)  printf 'sem direção — maestro intent --init (E22: a direção do projeto é artefato versionado)\n'; return 0 ;;
-      *)     printf 'sem direção em %s — maestro intent --init\n' "$f"; return 1 ;;
-    esac
-  fi
-
-  local ver hash stamped miss
-  ver=$(_intent_version "$f")
-  hash=$(_intent_body_hash "$f")
-  stamped=$(_intent_stamp_field "$f" hash)
-  miss=$(_intent_missing "$f")
-
-  if [[ "$action" == "show" || "$action" == "check" ]]; then
-    if [[ -z "$ver" ]]; then
-      printf 'INTENT sem carimbo legível: %s\n' "$f"
-      printf '  o cabeçalho precisa de `<!-- maestro-intent v1` + `version: <n>` até a linha `-->`\n'
-      if [[ "$action" == "check" ]]; then return 1; fi
-      return 0
-    fi
-    local name cnt filled=0
-    if [[ "$action" == "show" ]]; then
-      printf 'direção: INTENT v%s · hash %s · %s\n' "$ver" "${hash:-?}" "$f"
-      printf '  carimbo : ts %s · head %s · sessão %s\n' \
-        "$(_intent_stamp_field "$f" ts)" "$(_intent_stamp_field "$f" head)" \
-        "$(_intent_stamp_field "$f" author_session)"
-    fi
-    while IFS=$'\t' read -r name cnt; do
-      [[ -n "$name" ]] || continue
-      if (( cnt > 0 )); then
-        filled=$((filled + 1))
-        if [[ "$action" == "show" ]]; then printf '  %-16s %s linha(s)\n' "$name" "$cnt"; fi
-      else
-        if [[ "$action" == "show" ]]; then printf '  %-16s VAZIA\n' "$name"; fi
-      fi
-    done < <(_intent_sections "$f")
-    if [[ -n "$stamped" && -n "$hash" && "$stamped" != "$hash" ]]; then
-      printf '  conteúdo editado desde o carimbo v%s → maestro intent --bump\n' "$ver"
-    fi
-    if [[ -n "$miss" ]]; then
-      printf 'direção INCOMPLETA (%s de 6 seções): falta %s\n' "$filled" "$miss"
-      if [[ "$action" == "check" ]]; then return 1; fi
-      return 0
-    fi
-    printf 'direção OK: INTENT v%s, 6/6 seções, hash %s\n' "$ver" "${hash:-?}"
-    return 0
-  fi
-
-  # bump ---------------------------------------------------------------------
-  [[ -n "$ver" ]] || die validation "carimbo ilegível em $f" \
-    "conserte o cabeçalho (maestro intent --check) antes de versionar" 1
-  if [[ -n "$stamped" && -n "$hash" && "$stamped" == "$hash" ]]; then
-    die validation "o conteúdo não mudou desde o carimbo v$ver" \
-      "a versão é o número que as ordens citam, não um contador de saves — edite $f antes" 1
-  fi
-  local nv head_sha
-  nv=$(( ver + 1 ))
-  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
-  # O corpo é COPIADO byte a byte (sed do carimbo para baixo): o bump troca o
-  # carimbo, nunca o texto — e o hash gravado é o do corpo que já está no disco.
-  {
-    printf '<!-- maestro-intent v1\n'
-    printf 'version: %s\nts: %s\nhead: %s\n' "$nv" "$(date -Iseconds)" "$head_sha"
-    printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$hash"
-    printf -- '-->\n'
-    sed '1,/^-->$/d' "$f"
-  } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
-    || { rm -f "$f.tmp.$$" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
-  log_event intent ${sid:+session_id="$sid"} n="$nv" via=manual
-  printf 'direção v%s → v%s (hash %s)\n' "$ver" "$nv" "$hash"
-  if [[ -n "$miss" ]]; then
-    printf 'AVISO: ainda incompleta — falta %s (as ordens só citam direção completa)\n' "$miss"
-  fi
-  printf 'ordens novas nascem citando v%s; as antigas passam a pedir revisão do plano\n' "$nv"
-  return 0
+  die env "lib/cmd-intent.sh (ou core-intent.sh) não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
 }
 
 # ------------------------------------------------------------------ order (E15)
@@ -2237,160 +1923,20 @@ _habits_lib_load() { # carrega lib/cmd-habits.sh — uma vez, degradando por com
 }
 
 # ----------------------------------------------------------------- brief (E8)
+#
+# `maestro brief`: E24 moveu `cmd_brief`/`brief_verdict`/`brief_auto_skeleton`
+# para lib/cmd-brief.sh (docs/designs/e24-nucleo-e-adaptadores.md). Aqui fica
+# só o carregador, no molde de `_order_lib_load`/`_verif_lib_load`, com die
+# env no lugar dos stubs: módulo ausente derruba SÓ este comando (I-2), nunca
+# o CLI.
 
-cmd_brief() { # S-801: brief de projeto — estado situacional carimbado por conteúdo
-  # Bash puro de propósito: o brief é a arma contra o cold start e não pode
-  # depender de Bun para existir. Carimbos: ts/epoch (idade), head (freshness
-  # barata, comparada também pelo hook), wtree (S-701 — conteúdo, só no CLI:
-  # ~200ms não cabe no NFR do hook), session (auditoria). O brief é ESTADO
-  # local de trabalho (classe do gate-policy.sh) — nunca memória (ADR-007) e
-  # nunca log: caminhos e narrativa jamais tocam o routing.jsonl.
-  local mode="read" file="" sid="" proj="${CLAUDE_PROJECT_DIR:-$PWD}"
-  while (( $# )); do
-    case "$1" in
-      --write)   mode="write" ;;
-      --auto)    mode="auto" ;;
-      --path)    mode="path" ;;
-      --file)    file="${2:-}"; shift ;;
-      --session) sid="${2:-}"; shift ;;
-      --project) proj="${2:-}"; shift ;;
-      *) die validation "flag desconhecida '$1'" \
-           "maestro brief [--write|--auto|--path] [--file f] [--session id] [--project dir]" 1 ;;
-    esac
-    shift
-  done
-  [[ -z "$sid" || "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] \
-    || die validation "session_id inválido" "use o id injetado pelo SessionStart" 1
-  [[ -d "$proj" ]] || die validation "projeto '$proj' não é um diretório" "--project <dir>" 1
-
-  # shellcheck source=hooks/lib/common.sh
-  if [[ -f "$REPO_DIR/hooks/lib/common.sh" ]]; then
-    source "$REPO_DIR/hooks/lib/common.sh"
-  else
-    die env "hooks/lib/common.sh não encontrado" "reinstale o plugin (maestro doctor)" 2
+_brief_lib_load() { # carrega lib/cmd-brief.sh — uma vez, degradando por comando (I-2)
+  declare -f cmd_brief >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/cmd-brief.sh" ]]; then
+    # shellcheck source=lib/cmd-brief.sh
+    source "$REPO_DIR/lib/cmd-brief.sh" && return 0
   fi
-  local bf; bf=$(maestro_brief_file "$proj")
-
-  if [[ "$mode" == "path" ]]; then printf '%s\n' "$bf"; return 0; fi
-
-  if [[ "$mode" == "read" ]]; then
-    if [[ ! -f "$bf" ]]; then
-      printf 'nenhum brief para este projeto (crie: maestro brief --write, narrativa via stdin; --auto gera o esqueleto)\n'
-      return 0
-    fi
-    brief_verdict "$bf" "$proj"
-    printf -- '---\n'
-    # pula o cabeçalho de carimbos; o leitor quer a narrativa
-    awk 'skip==1 { print; next } /^-->$/ { skip=1 }' "$bf"
-    return 0
-  fi
-
-  # --- write | auto ----------------------------------------------------------
-  local narrative=""
-  if [[ "$mode" == "auto" ]]; then
-    narrative=$(brief_auto_skeleton "$proj")
-  elif [[ -n "$file" ]]; then
-    [[ -f "$file" && -r "$file" ]] || die validation "arquivo '$file' ilegível" "--file <narrativa.md>" 1
-    narrative=$(head -c 16384 -- "$file")
-  else
-    [[ -t 0 ]] && die validation "narrativa ausente" \
-      "passe a narrativa via stdin (heredoc), --file, ou use --auto" 1
-    narrative=$(head -c 16384)
-  fi
-  [[ -n "${narrative//[[:space:]]/}" ]] || die validation "narrativa vazia" \
-    "o brief sem conteúdo não poupa varredura nenhuma" 1
-
-  local head_sha="none" wtree="none" ts epoch
-  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
-  if [[ -x "$REPO_DIR/bin/maestro-wtree" ]]; then
-    wtree=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || wtree="none"
-  fi
-  [[ "$wtree" =~ ^[0-9a-f]{40}$ ]] || wtree="none"
-  ts=$(date -Iseconds); epoch=$(date +%s)
-
-  mkdir -p "${bf%/*}" 2>/dev/null \
-    || die env "não consigo criar ${bf%/*}" "cheque permissões ou MAESTRO_HOME" 2
-  local tmp="$bf.tmp.$$"
-  {
-    printf '<!-- maestro-brief v1\n'
-    printf 'ts: %s\nepoch: %s\nhead: %s\nwtree: %s\nsession: %s\n' \
-      "$ts" "$epoch" "$head_sha" "$wtree" "${sid:-desconhecido}"
-    printf -- '-->\n'
-    printf '%s\n' "$narrative"
-  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$bf" 2>/dev/null \
-    || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar $bf" "cheque permissões" 2; }
-  printf 'brief gravado: %s (%sB' "$bf" "$(wc -c < "$bf" | tr -d ' ')"
-  [[ "$head_sha" != "none" ]] && printf ', HEAD %s' "${head_sha:0:7}"
-  printf ')\n'
-  return 0
-}
-
-brief_verdict() { # <brief> <proj> → uma linha de freshness no stdout
-  local bf="$1" proj="$2" b_epoch="" b_head="" b_wtree=""
-  # só as primeiras 8 linhas: o cabeçalho é fixo e a narrativa não é confiável
-  eval "$(awk 'NR>8 || /^-->$/ { exit }
-    /^epoch: /  { v=substr($0,8);  if (v ~ /^[0-9]+$/)      print "b_epoch=" v }
-    /^head: /   { v=substr($0,7);  if (v ~ /^([0-9a-f]{40}|none)$/) print "b_head=\047" v "\047" }
-    /^wtree: /  { v=substr($0,8);  if (v ~ /^([0-9a-f]{40}|none)$/) print "b_wtree=\047" v "\047" }' "$bf" 2>/dev/null)" 2>/dev/null || :
-
-  local age="idade desconhecida"
-  if [[ "$b_epoch" =~ ^[0-9]+$ ]]; then
-    local d=$(( $(date +%s) - b_epoch ))
-    if   (( d < 0 ));     then age="carimbo no futuro"
-    elif (( d < 3600 ));  then age="há $(( d / 60 ))min"
-    elif (( d < 86400 )); then age="há $(( d / 3600 ))h"
-    else                       age="há $(( d / 86400 ))d"; fi
-  fi
-
-  local cur_head; cur_head=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || cur_head=""
-  if [[ -z "$b_epoch$b_head" ]]; then
-    printf 'brief: carimbo ilegível (regrave: maestro brief --write) — %s\n' "$bf"
-  elif [[ -z "$cur_head" || "$b_head" == "none" ]]; then
-    printf 'brief: escrito %s (fora de git — sem veredito de conteúdo) — %s\n' "$age" "$bf"
-  elif [[ "$b_head" == "$cur_head" ]]; then
-    local same=""
-    if [[ "$b_wtree" != "none" && -x "$REPO_DIR/bin/maestro-wtree" ]]; then
-      local cw; cw=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || cw=""
-      if [[ "$cw" == "$b_wtree" ]]; then same=", working tree idêntico"
-      elif [[ -n "$cw" ]]; then same=", working tree MUDOU desde o carimbo"; fi
-    fi
-    printf 'brief: FRESCO — HEAD %s inalterado, escrito %s%s\n' "${cur_head:0:7}" "$age" "$same"
-  else
-    local n; n=$(git -C "$proj" rev-list --count "$b_head..$cur_head" 2>/dev/null) || n=""
-    if [[ "$n" =~ ^[0-9]+$ ]]; then
-      printf 'brief: STALE — %s commit(s) desde o carimbo (%s → %s), escrito %s. Confie no git, não nele.\n' \
-        "$n" "${b_head:0:7}" "${cur_head:0:7}" "$age"
-    else
-      printf 'brief: STALE — HEAD mudou desde o carimbo (%s → %s; histórico reescrito?), escrito %s\n' \
-        "${b_head:0:7}" "${cur_head:0:7}" "$age"
-    fi
-  fi
-  return 0
-}
-
-brief_auto_skeleton() { # <proj> → esqueleto determinístico no stdout (sem LLM)
-  local proj="$1"
-  printf '# Brief — %s (esqueleto --auto; substitua pela narrativa real)\n\n' "${proj##*/}"
-  if git -C "$proj" rev-parse --git-dir >/dev/null 2>&1; then
-    printf '## Últimos commits\n'
-    git -C "$proj" log --oneline -5 2>/dev/null | sed 's/^/- /' || :
-    local dirty; dirty=$(git -C "$proj" status --porcelain 2>/dev/null | grep -c . || true)
-    printf '\n## Working tree\n- %s arquivo(s) sujo(s)\n' "${dirty:-0}"
-    local branch; branch=$(git -C "$proj" branch --show-current 2>/dev/null) || branch=""
-    [[ -n "$branch" ]] && printf -- '- branch: %s\n' "$branch"
-  else
-    printf -- '- fora de git: sem histórico para resumir\n'
-  fi
-  local n_rec=0 recs
-  shopt -s nullglob
-  recs=("$MAESTRO_HOME/sessions"/*.json); n_rec=${#recs[@]}
-  shopt -u nullglob
-  printf '\n## Maestro\n- %s decision record(s) no estado local\n' "$n_rec"
-  printf '\n## Em curso / próximo passo\n- (a sessão que fecha o trabalho escreve isto)\n'
-  # Convenção `[spock] aguardando:` (ENGINEERING_SPEC): a ronda do supervisor lê
-  # essa linha na tela da pane. Sem ela, agente parado espera até alguém olhar.
-  printf -- '- rodada que termina precisando de algo do supervisor fecha a resposta com a linha exata: `[spock] aguardando: <o quê>`\n'
-  return 0
+  die env "lib/cmd-brief.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
 }
 
 # --------------------------------------------------------------- upgrade (E19)
@@ -2672,7 +2218,7 @@ cmd="${1:-}"
 case "$cmd" in
   doctor) shift; doctor "$@" ;;
   decide|status|log) shift; delegate "$cmd" "$@" ;;
-  brief) shift; cmd_brief "$@" ;;
+  brief) shift; _brief_lib_load; cmd_brief "$@" ;;
   habits) shift; _habits_lib_load; cmd_habits "$@" ;;
   consent) shift; cmd_consent "$@" ;;
   outcome) shift; _outcome_lib_load; cmd_outcome "$@" ;;
@@ -2681,10 +2227,10 @@ case "$cmd" in
   graph) shift; cmd_graph "$@" ;;
   evidence) shift; _ev_lib_load; cmd_evidence "$@" ;;
   order) shift; _order_lib_load; cmd_order "$@" ;;
-  docs) shift; cmd_docs "$@" ;;
+  docs) shift; _docs_lib_load; cmd_docs "$@" ;;
   upgrade) shift; cmd_upgrade "$@" ;;
   telemetry) shift; _telemetry_lib_load; cmd_telemetry "$@" ;;
-  intent) shift; cmd_intent "$@" ;;        # E22
+  intent) shift; _intent_lib_load; cmd_intent "$@" ;;        # E22
   verify) shift; _verif_lib_load; cmd_verify "$@" ;;   # E23b
   delegation) shift; _delegation_lib_load; cmd_delegation "$@" ;; # E23a
   ""|-h|--help) usage ;;

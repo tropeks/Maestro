@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# maestro lib/cmd-brief.sh — E8/S-801, extraído de bin/maestro na ordem 015
+# (E24 ordem C, docs/designs/e24-nucleo-e-adaptadores.md).
+#
+# `maestro brief`: bash puro de propósito — o brief é a arma contra o cold
+# start e não pode depender de Bun para existir. Carimbos: ts/epoch (idade),
+# head (freshness barata, comparada também pelo hook), wtree (S-701 —
+# conteúdo, só no CLI: ~200ms não cabe no NFR do hook), session (auditoria).
+# O brief é ESTADO local de trabalho (classe do gate-policy.sh) — nunca
+# memória (ADR-007) e nunca log: caminhos e narrativa jamais tocam o
+# routing.jsonl.
+#
+# Sourced por bin/maestro (via _brief_lib_load, I-2) DENTRO do mesmo
+# processo. `cmd_brief` despacha para leitura (`_brief_action_read`) ou
+# escrita (`_brief_action_write`, modos --write/--auto); `brief_verdict` e
+# `brief_auto_skeleton` migram como estavam (nomes já estáveis, sem
+# acoplamento externo).
+#
+# Convenção (E24): parâmetro posicional, nenhuma função fecha sobre local de
+# outra.
+#
+# TRAVA DE CONTRATO (ordem 015): o envelope do brief e os campos que o
+# SessionStart injeta não mudam aqui.
+
+_brief_action_read() { # <brief> <proj> — modo leitura: veredito de freshness + narrativa
+  local bf="$1" proj="$2"
+  if [[ ! -f "$bf" ]]; then
+    printf 'nenhum brief para este projeto (crie: maestro brief --write, narrativa via stdin; --auto gera o esqueleto)\n'
+    return 0
+  fi
+  brief_verdict "$bf" "$proj"
+  printf -- '---\n'
+  # pula o cabeçalho de carimbos; o leitor quer a narrativa
+  awk 'skip==1 { print; next } /^-->$/ { skip=1 }' "$bf"
+  return 0
+}
+
+_brief_action_write() { # <modo:write|auto> <arquivo> <proj> <sid> <brief> — grava narrativa carimbada por conteúdo
+  local mode="$1" file="$2" proj="$3" sid="$4" bf="$5" narrative=""
+  if [[ "$mode" == "auto" ]]; then
+    narrative=$(brief_auto_skeleton "$proj")
+  elif [[ -n "$file" ]]; then
+    [[ -f "$file" && -r "$file" ]] || die validation "arquivo '$file' ilegível" "--file <narrativa.md>" 1
+    narrative=$(head -c 16384 -- "$file")
+  else
+    [[ -t 0 ]] && die validation "narrativa ausente" \
+      "passe a narrativa via stdin (heredoc), --file, ou use --auto" 1
+    narrative=$(head -c 16384)
+  fi
+  [[ -n "${narrative//[[:space:]]/}" ]] || die validation "narrativa vazia" \
+    "o brief sem conteúdo não poupa varredura nenhuma" 1
+
+  local head_sha="none" wtree="none" ts epoch
+  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
+  if [[ -x "$REPO_DIR/bin/maestro-wtree" ]]; then
+    wtree=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || wtree="none"
+  fi
+  [[ "$wtree" =~ ^[0-9a-f]{40}$ ]] || wtree="none"
+  ts=$(date -Iseconds); epoch=$(date +%s)
+
+  mkdir -p "${bf%/*}" 2>/dev/null \
+    || die env "não consigo criar ${bf%/*}" "cheque permissões ou MAESTRO_HOME" 2
+  local tmp="$bf.tmp.$$"
+  {
+    printf '<!-- maestro-brief v1\n'
+    printf 'ts: %s\nepoch: %s\nhead: %s\nwtree: %s\nsession: %s\n' \
+      "$ts" "$epoch" "$head_sha" "$wtree" "${sid:-desconhecido}"
+    printf -- '-->\n'
+    printf '%s\n' "$narrative"
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$bf" 2>/dev/null \
+    || { rm -f "$tmp" 2>/dev/null; die env "falha ao gravar $bf" "cheque permissões" 2; }
+  printf 'brief gravado: %s (%sB' "$bf" "$(wc -c < "$bf" | tr -d ' ')"
+  [[ "$head_sha" != "none" ]] && printf ', HEAD %s' "${head_sha:0:7}"
+  printf ')\n'
+  return 0
+}
+
+cmd_brief() { # S-801: brief de projeto — parseia flags e despacha leitura/escrita
+  local mode="read" file="" sid="" proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  while (( $# )); do
+    case "$1" in
+      --write)   mode="write" ;;
+      --auto)    mode="auto" ;;
+      --path)    mode="path" ;;
+      --file)    file="${2:-}"; shift ;;
+      --session) sid="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" \
+           "maestro brief [--write|--auto|--path] [--file f] [--session id] [--project dir]" 1 ;;
+    esac
+    shift
+  done
+  [[ -z "$sid" || "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] \
+    || die validation "session_id inválido" "use o id injetado pelo SessionStart" 1
+  [[ -d "$proj" ]] || die validation "projeto '$proj' não é um diretório" "--project <dir>" 1
+
+  # shellcheck source=hooks/lib/common.sh
+  if [[ -f "$REPO_DIR/hooks/lib/common.sh" ]]; then
+    source "$REPO_DIR/hooks/lib/common.sh"
+  else
+    die env "hooks/lib/common.sh não encontrado" "reinstale o plugin (maestro doctor)" 2
+  fi
+  local bf; bf=$(maestro_brief_file "$proj")
+
+  if [[ "$mode" == "path" ]]; then printf '%s\n' "$bf"; return 0; fi
+  if [[ "$mode" == "read" ]]; then _brief_action_read "$bf" "$proj"; return 0; fi
+  _brief_action_write "$mode" "$file" "$proj" "$sid" "$bf"
+}
+
+brief_verdict() { # <brief> <proj> → uma linha de freshness no stdout
+  local bf="$1" proj="$2" b_epoch="" b_head="" b_wtree=""
+  # só as primeiras 8 linhas: o cabeçalho é fixo e a narrativa não é confiável
+  eval "$(awk 'NR>8 || /^-->$/ { exit }
+    /^epoch: /  { v=substr($0,8);  if (v ~ /^[0-9]+$/)      print "b_epoch=" v }
+    /^head: /   { v=substr($0,7);  if (v ~ /^([0-9a-f]{40}|none)$/) print "b_head=\047" v "\047" }
+    /^wtree: /  { v=substr($0,8);  if (v ~ /^([0-9a-f]{40}|none)$/) print "b_wtree=\047" v "\047" }' "$bf" 2>/dev/null)" 2>/dev/null || :
+
+  local age="idade desconhecida"
+  if [[ "$b_epoch" =~ ^[0-9]+$ ]]; then
+    local d=$(( $(date +%s) - b_epoch ))
+    if   (( d < 0 ));     then age="carimbo no futuro"
+    elif (( d < 3600 ));  then age="há $(( d / 60 ))min"
+    elif (( d < 86400 )); then age="há $(( d / 3600 ))h"
+    else                       age="há $(( d / 86400 ))d"; fi
+  fi
+
+  local cur_head; cur_head=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || cur_head=""
+  if [[ -z "$b_epoch$b_head" ]]; then
+    printf 'brief: carimbo ilegível (regrave: maestro brief --write) — %s\n' "$bf"
+  elif [[ -z "$cur_head" || "$b_head" == "none" ]]; then
+    printf 'brief: escrito %s (fora de git — sem veredito de conteúdo) — %s\n' "$age" "$bf"
+  elif [[ "$b_head" == "$cur_head" ]]; then
+    local same=""
+    if [[ "$b_wtree" != "none" && -x "$REPO_DIR/bin/maestro-wtree" ]]; then
+      local cw; cw=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || cw=""
+      if [[ "$cw" == "$b_wtree" ]]; then same=", working tree idêntico"
+      elif [[ -n "$cw" ]]; then same=", working tree MUDOU desde o carimbo"; fi
+    fi
+    printf 'brief: FRESCO — HEAD %s inalterado, escrito %s%s\n' "${cur_head:0:7}" "$age" "$same"
+  else
+    local n; n=$(git -C "$proj" rev-list --count "$b_head..$cur_head" 2>/dev/null) || n=""
+    if [[ "$n" =~ ^[0-9]+$ ]]; then
+      printf 'brief: STALE — %s commit(s) desde o carimbo (%s → %s), escrito %s. Confie no git, não nele.\n' \
+        "$n" "${b_head:0:7}" "${cur_head:0:7}" "$age"
+    else
+      printf 'brief: STALE — HEAD mudou desde o carimbo (%s → %s; histórico reescrito?), escrito %s\n' \
+        "${b_head:0:7}" "${cur_head:0:7}" "$age"
+    fi
+  fi
+  return 0
+}
+
+brief_auto_skeleton() { # <proj> → esqueleto determinístico no stdout (sem LLM)
+  local proj="$1"
+  printf '# Brief — %s (esqueleto --auto; substitua pela narrativa real)\n\n' "${proj##*/}"
+  if git -C "$proj" rev-parse --git-dir >/dev/null 2>&1; then
+    printf '## Últimos commits\n'
+    git -C "$proj" log --oneline -5 2>/dev/null | sed 's/^/- /' || :
+    local dirty; dirty=$(git -C "$proj" status --porcelain 2>/dev/null | grep -c . || true)
+    printf '\n## Working tree\n- %s arquivo(s) sujo(s)\n' "${dirty:-0}"
+    local branch; branch=$(git -C "$proj" branch --show-current 2>/dev/null) || branch=""
+    [[ -n "$branch" ]] && printf -- '- branch: %s\n' "$branch"
+  else
+    printf -- '- fora de git: sem histórico para resumir\n'
+  fi
+  local n_rec=0 recs
+  shopt -s nullglob
+  recs=("$MAESTRO_HOME/sessions"/*.json); n_rec=${#recs[@]}
+  shopt -u nullglob
+  printf '\n## Maestro\n- %s decision record(s) no estado local\n' "$n_rec"
+  printf '\n## Em curso / próximo passo\n- (a sessão que fecha o trabalho escreve isto)\n'
+  # Convenção `[spock] aguardando:` (ENGINEERING_SPEC): a ronda do supervisor lê
+  # essa linha na tela da pane. Sem ela, agente parado espera até alguém olhar.
+  printf -- '- rodada que termina precisando de algo do supervisor fecha a resposta com a linha exata: `[spock] aguardando: <o quê>`\n'
+  return 0
+}
