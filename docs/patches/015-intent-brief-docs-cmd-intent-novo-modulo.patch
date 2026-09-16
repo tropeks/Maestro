@@ -1,9 +1,9 @@
 diff --git a/lib/cmd-intent.sh b/lib/cmd-intent.sh
 new file mode 100644
-index 0000000..65d64ba
+index 0000000..2767820
 --- /dev/null
 +++ b/lib/cmd-intent.sh
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,180 @@
 +#!/usr/bin/env bash
 +# maestro lib/cmd-intent.sh — E22/S-2201, extraído de bin/maestro na ordem
 +# 015 (E24 ordem C, docs/designs/e24-nucleo-e-adaptadores.md).
@@ -172,12 +172,15 @@ index 0000000..65d64ba
 +    return 0
 +  fi
 +  if [[ ! -f "$f" || ! -r "$f" ]]; then
-+    _intent_action_missing "$action" "$f"
-+    return $?
++    # set -e mata a função na hora se este bare call falhar (mesma classe de
++    # bug de _docs_catraca_verdict, rodada de correção da ordem 015) — guard
++    # explícito devolve o controle, idioma do repo.
++    _intent_action_missing "$action" "$f" && return 0
++    return 1
 +  fi
 +
 +  case "$action" in
-+    show|check) _intent_action_report "$action" "$f" ;;
++    show|check) _intent_action_report "$action" "$f" && return 0; return 1 ;;
 +    bump)       _intent_action_bump "$f" "$sid" "$proj" ;;
 +  esac
 +}

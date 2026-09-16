@@ -1,9 +1,9 @@
 diff --git a/lib/cmd-docs.sh b/lib/cmd-docs.sh
 new file mode 100644
-index 0000000..5439a99
+index 0000000..05abfb8
 --- /dev/null
 +++ b/lib/cmd-docs.sh
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,218 @@
 +#!/usr/bin/env bash
 +# maestro lib/cmd-docs.sh — E16/S-1601/S-1602, extraído de bin/maestro na
 +# ordem 015 (E24 ordem C, docs/designs/e24-nucleo-e-adaptadores.md).
@@ -24,14 +24,21 @@ index 0000000..5439a99
 +#
 +# Convenção (E24): parâmetro posicional, nenhuma função fecha sobre local de
 +# outra. Sem `declare -A` de módulo: a busca de baseline por doc é O(linhas
-+# do .tsv) via grep de leitura (_docs_baseline_get) — evita o array
++# do .tsv) via leitura sequencial (_docs_baseline_get) — evita o array
 +# associativo virar LOCAL do carregador quando este arquivo é sourceado de
 +# dentro de uma função (armadilha registrada na ordem 015: `declare -A` sem
 +# `-g` no topo de módulo sourceado de dentro de função vira local do
-+# carregador, não do módulo).
++# carregador, não do módulo). _docs_baseline_get varre o arquivo INTEIRO e só
++# imprime no fim: chave repetida no .tsv, a ÚLTIMA linha vence — mesma
++# semântica do `declare -A base=()` original (rodada de correção da ordem
++# 015: a primeira versão retornava no primeiro match, invertendo o contrato).
 +#
 +# TRAVA DE CONTRATO (ordem 015): a forma do baseline (.maestro-docs.tsv) e o
 +# significado de "só desce" não mudam aqui.
++#
++# `total_stale` (bin/maestro:1583,1654 antes desta ordem) NÃO migrou: era
++# acumulado e nunca lido — dead code do original, removido aqui de propósito
++# (rodada de correção da ordem 015).
 +
 +_docs_declared_list() { # <proj> → docs declarados no .maestro.yaml (uma linha, separados por espaço), vazio se nenhum
 +  local proj="$1" yaml="$proj/.maestro.yaml" dlist=""
@@ -42,14 +49,14 @@ index 0000000..5439a99
 +  return 0
 +}
 +
-+_docs_baseline_get() { # <bfile> <doc> → contagem gravada na catraca para <doc>, ou 0 (ausente/linha inválida)
-+  local bfile="$1" doc="$2" d n
++_docs_baseline_get() { # <bfile> <doc> → contagem gravada na catraca para <doc>, ou 0 (ausente/linha inválida; chave repetida: a ÚLTIMA vence)
++  local bfile="$1" doc="$2" d n found=""
 +  [[ -f "$bfile" ]] || { printf '0'; return 0; }
 +  while IFS=$'\t' read -r d n; do
 +    [[ "$d" == \#* || -z "$d" ]] && continue
-+    [[ "$d" == "$doc" && "$n" =~ ^[0-9]+$ ]] && { printf '%s' "$n"; return 0; }
++    [[ "$d" == "$doc" && "$n" =~ ^[0-9]+$ ]] && found="$n"
 +  done < "$bfile"
-+  printf '0'
++  printf '%s' "${found:-0}"
 +  return 0
 +}
 +
@@ -207,8 +214,11 @@ index 0000000..5439a99
 +    return 0
 +  fi
 +  if (( check == 1 )); then
-+    _docs_catraca_verdict "${exceeded[@]}"
-+    return $?
++    # set -e mata a função na hora se este bare call falhar e nada capturar o
++    # status antes do return (rodada de correção da ordem 015) — o guard
++    # abaixo devolve o controle explicitamente, idioma do repo.
++    _docs_catraca_verdict "${exceeded[@]}" && return 0
++    return 1
 +  fi
 +  return 0
 +}
