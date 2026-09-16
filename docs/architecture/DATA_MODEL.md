@@ -703,8 +703,11 @@ execução gerado. Estado NUNCA gravado — derivado: branch existe (git) · pro
 (recibo §8 com wtree_after == árvore do tip do branch) · aceita (`accepted_at`
 anexado pelo diretor via --accept, que exige provada) · absorvida (`absorbed_by`
 anexado via `--accept --absorbed-by`, que exige a ABSORVENTE já provada/aceita —
-emenda v1.11). Log: `order_create`/`order_accept` com `n` (id) — nunca
-título/caminho (absorção reaproveita `order_accept`; §4 não ganha vocábulo novo).
+emenda v1.11) · adiada (`deferred_by` escrito à mão no cabeçalho — SUSPENSA,
+distinta de absorvida: volta, e continua visível — emenda v1.14). Log:
+`order_create`/`order_accept` com `n` (id) — nunca título/caminho (absorção
+reaproveita `order_accept`; §4 não ganha vocábulo novo; adiar não passa por
+`log_event`).
 
 #### Emenda E22 (S-2202) — a ordem cita a direção que a autorizou
 
@@ -785,6 +788,73 @@ congelando caminho nem gerando cutucão de aceite pendente.
 Log: reaproveita `order_accept` (chave `n`) e `delegation phase=accepted` —
 nenhum vocábulo novo em §4; quem audita distingue aceita de absorvida pelo
 campo gravado no ARQUIVO da ordem, não pelo tipo de evento no ledger.
+`# classification: public` (a ordem é conteúdo do repo do usuário)
+
+#### Emenda v1.14 (ordem 013) — `deferred_by` e o estado SUSPENSO (distinto de absorvida)
+
+Causa: `_order_status` tinha um caminho terminal (`absorbed_by`, v1.11) mas
+nenhum caminho SUSPENSO. Ordem cujo trabalho o Capitão adiou POR DECISÃO
+ficava presa em `aberta`/`em_execucao` para sempre e o recibo (`--status`) lia
+o veredito genérico de `maestro evidence`, que VENCE por idade (o TTL do
+recibo, `MAESTRO_EVIDENCE_MAX_AGE`) e por mudança de árvore (o branch andando
+sem prova nova) — os dois sinais existem para trabalho que ANDA; adiado não
+anda, e a leitura acusava `VENCIDA` todo dia sobre um trabalho que ninguém
+abandonou. Caso real: ordem 004 do projeto Vitali, `deferred_by:` escrito à
+mão no cabeçalho pelo gerente de lá porque o modelo não tinha a palavra — e
+nada lia o campo.
+
+**Distinção que decide o desenho:** `absorbed_by` é TERMINAL (o trabalho foi
+provado em outro lugar; a ordem nunca mais anda). `deferred_by` é SUSPENSO — o
+trabalho foi adiado por decisão e VOLTA; retomar é remover o campo e seguir o
+fluxo normal. Confundir os dois faria a ordem adiada sumir da fila (o
+comportamento de `absorvida`), o oposto do desejado: ela continua VISÍVEL em
+`--list`/`--status`, só sem cobrar aceite nem acusar prova vencida enquanto o
+campo existir. Não compartilha mecanismo com o pedido da issue #20 (estado
+terminal para ordem RECUSADA, decidido NÃO fazer — nunca volta) pelo mesmo
+motivo.
+
+Campo novo no CABEÇALHO da ordem (dentro das 20 linhas que `_order_field` lê —
+mesma janela e mesma garantia contra corpo escrito à mão virar campo por
+acidente), escrito à mão pelo humano (não há flag de CLI que o grave; ao
+contrário de `absorbed_by`, adiar não é um veredito mecânico sobre uma prova):
+
+```
+deferred_by: <quem decidiu adiar>
+```
+
+`deferred_by` **exige quem adiou**, pelo mesmo motivo que `killed` exige
+`kill_reason` (§3, emenda v1.9) e `absorbed_by` exige a absorvente provada:
+adiar é desfecho, e desfecho sem autor não se audita. A exigência é a mesma
+técnica de `absorbed_by`: campo AUSENTE ou vazio não ativa nada — `_order_status`
+só deriva `adiada` quando `_order_field` devolve um valor não-vazio; ordem SEM
+o campo segue vencendo exatamente como antes desta emenda.
+
+**Estado derivado `adiada`**, verificado logo depois de `absorbed_by` (antes
+de `absorbed_by` só porque `absorbed_by` já é terminal e ganha — a ordem
+nunca tem os dois; a leitura testa `accepted_at` → `absorbed_by` → `deferred_by`
+→ branch/recibo, nessa ordem). A leitura de `--status` NUNCA diz `VENCIDA`
+para uma ordem adiada — diz `ADIADA por <deferred_by> — prova congelada em
+<árvore>`, onde `<árvore>` é o `wtree_after` do recibo JÁ gravado para o
+rótulo da ordem (`_order_deferred_tree`, núcleo puro em
+`lib/core-order-state.sh`), nunca comparado ao tip ATUAL do branch — essa
+comparação é exatamente o que "venceria" o recibo por mudança de árvore, e
+uma ordem suspensa não tem tip para comparar (retomar é tirar o campo antes
+de o branch andar de novo). Sem recibo gravado ainda, a leitura diz "sem
+recibo gravado ainda (nada a congelar)" — nunca `NENHUMA`/`VENCIDA`. O bloco
+de verificação por área obrigatória (§9, Emenda E23b) também não roda para
+`adiada` pelo mesmo motivo: compararia o mesmo tip.
+
+`deferred_by` entra no MESMO teste de exclusão que `accepted_at`/`absorbed_by`
+no laço de contagem de `ordens: N pendente(s)` de `hooks/session-start.sh`
+(mesma técnica da emenda v1.11): ordem adiada não gera cutucão de aceite
+pendente enquanto o campo existir. Ao contrário de `absorbed_by`, **não**
+entra no laço de frozen zones — zona congelada por uma ordem suspensa continua
+protegida (o trabalho pode ser retomado a qualquer momento; congelar evita
+outro agente pisar no meio-tempo), decisão que fica registrada aqui para quem
+ler depois e cogitar estender a exclusão.
+
+Log: nenhum vocábulo novo em §4 — `deferred_by` é escrito à mão, fora do CLI,
+e não passa por `log_event`.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)

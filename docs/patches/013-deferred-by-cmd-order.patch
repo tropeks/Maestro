@@ -1,0 +1,70 @@
+--- a/lib/cmd-order.sh
++++ b/lib/cmd-order.sh
+@@ -119,8 +119,8 @@ _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
+ }
+ 
+ # ------------------------------------------------------------- ação: --status
+-_order_show_context() { # <proj> <arquivo> → blocos direção(E22)/verif(E23b)/doc no boletim (vazio se não citado)
+-  local proj="$1" of="$2" _ov _ivn _ihn _oh _vrep _vl _vareas _od
++_order_show_context() { # <proj> <arquivo> [status] → blocos direção(E22)/verif(E23b)/doc no boletim (vazio se não citado)
++  local proj="$1" of="$2" st="${3-}" _ov _ivn _ihn _oh _vrep _vl _vareas _od
+   _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
+   if [[ -n "$_ov" ]]; then
+     printf '  direção : v%s\n' "$_ov"
+@@ -132,10 +132,15 @@ _order_show_context() { # <proj> <arquivo> → blocos direção(E22)/verif(E23b)
+         printf '           a direção foi editada sem bump (ainda v%s, conteúdo outro) — maestro intent --bump\n' "$_ov"
+     fi
+   fi
+-  _vareas=$(_order_verif_areas "$proj" "$of"); _vrep=$(_order_verif_report "$proj" "$of" "$_vareas")
+-  if [[ -n "$_vrep" ]]; then
+-    printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
+-    while IFS= read -r _vl; do [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"; done <<<"$_vrep"
++  # ordem 013: adiada não anda — verificação por área compara com o tip ATUAL
++  # do branch, e é exatamente esse "vencer por mudança de árvore" que
++  # trabalho suspenso não deve sofrer. Pula o bloco inteiro (não reprova).
++  if [[ "$st" != "adiada" ]]; then
++    _vareas=$(_order_verif_areas "$proj" "$of"); _vrep=$(_order_verif_report "$proj" "$of" "$_vareas")
++    if [[ -n "$_vrep" ]]; then
++      printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
++      while IFS= read -r _vl; do [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"; done <<<"$_vrep"
++    fi
+   fi
+   _od=$(_order_field "$of" doc)
+   if [[ -n "$_od" ]]; then
+@@ -166,6 +171,10 @@ _order_show_next() { # <proj> <arquivo> <id> <status> <branch> → bloco final (
+     absorvida)   # issue #12: terminal, DISTINTO de aceita
+       printf '  encerrada por absorção — provada junto de %s; nada mais a executar aqui.\n' "$(_order_field "$of" absorbed_by)"
+       ;;
++    adiada)   # ordem 013: SUSPENSA, distinta de absorvida — não é terminal, volta
++      printf '  suspensa por decisão de %s — não cobra aceite nem prova enquanto o campo existir.\n' "$(_order_field "$of" deferred_by)"
++      printf '  próximo : retomar é remover deferred_by do cabeçalho e seguir o fluxo normal.\n'
++      ;;
+     *) echo '  próximo : executor abre o branch, entrega e prova via ledger' ;;
+   esac
+ }
+@@ -182,12 +191,24 @@ _order_action_status() { # <proj> <arquivo> <id> — imprime o boletim completo
+   if [[ "$st" == "absorvida" ]]; then
+     printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)\n' \
+       "$(_order_field "$of" absorbed_by)" "$(_order_field "$of" absorbed_tree | head -c 12)"
++  elif [[ "$st" == "adiada" ]]; then
++    # ordem 013: NUNCA "VENCIDA" — nem por idade nem por mudança de árvore.
++    # A árvore mostrada é a que o recibo JÁ CONGELOU (_order_deferred_tree),
++    # nunca comparada ao tip atual do branch (essa comparação é o que
++    # "venceria" o recibo por mudança de árvore).
++    local _dtree; _dtree=$(_order_deferred_tree "$proj" "$of")
++    if [[ -n "$_dtree" ]]; then
++      printf 'ADIADA por %s — prova congelada em %s (idade e mudança de árvore não se aplicam: trabalho adiado não anda)\n' \
++        "$(_order_field "$of" deferred_by)" "${_dtree:0:12}"
++    else
++      printf 'ADIADA por %s — sem recibo gravado ainda (nada a congelar)\n' "$(_order_field "$of" deferred_by)"
++    fi
+   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
+     printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
+   else
+     "$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$proj" "$of")" --project "$proj" 2>/dev/null | head -1 || echo "?"
+   fi
+-  _order_show_context "$proj" "$of"
++  _order_show_context "$proj" "$of" "$st"
+   _order_show_next "$proj" "$of" "$oid" "$st" "$br"
+ }
+ 
