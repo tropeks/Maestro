@@ -55,7 +55,14 @@
 #   Lote 1 (telemetry)  23  funções já eram pequenas — moveu, não decompôs
 #   Lote order          22  primeira descida: sumiu a leitura de 132 linhas que
 #                           o ponto cego do sensor produzia para cmd_order
+#   Ordens 009/010/011  22  evidence/habits/retro, ledger/record e verify saíram
+#                           sem decompor função nova acima do teto
+#   Ordem 015 (E24 C)   13  PRIMEIRA descida grande: intent/brief/docs saíram e
+#                           as três funções gigantes foram DECOMPOSTAS, não só
+#                           movidas — cmd_docs 147, cmd_intent 143, cmd_brief 86
+#                           viraram 20 funções, nenhuma acima de 47 linhas.
+#                           22 → 13 num lote. Faltam 7 para o alvo.
 deep-nesting	11	1790737199	10
 oversized-file	13
-oversized-function	22	1790737199	6
+oversized-function	13	1790737199	6
 skipped-test	1
