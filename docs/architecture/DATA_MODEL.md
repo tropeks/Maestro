@@ -857,6 +857,120 @@ Log: nenhum vocábulo novo em §4 — `deferred_by` é escrito à mão, fora do 
 e não passa por `log_event`.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
+#### Emenda v1.15 (ordem 014, issue #18) — `--status --json`: fonte única de estado para o supervisor
+
+Causa: o supervisor mora em repo próprio e **recalculava** a derivação de
+estado da ordem por conta — a derivação vive aqui e evolui aqui, então as
+duas leituras divergiam, e a que interrompe humano é a que erra. Medido
+nesta sessão: catorze interrupções cobrando aceite de ordem que já tinha
+estado terminal — sete antes de `absorvida` existir (issue #12, já
+corrigida) e sete depois, porque o consumidor externo não conhecia o campo.
+Cada estado novo que o Maestro cria (`absorvida`, ordem 004; `adiada`, ordem
+013) alargava o buraco. Precedente do próprio repo:
+`hooks/lib/habit-sensors.awk` é **sensor único, dois momentos** — divergência
+entre eles seria dois vocabulários de smell; aqui são dois vocabulários de
+**estado**.
+
+`maestro order --status N --json` (decisão sobre `--porcelain`: **JSON**,
+não KV/porcelain — o vocabulário de dado de máquina já estabelecido neste
+arquivo é JSON em toda parte que importa, `session.json` §3, `routing.jsonl`
+§4, o recibo de evidência §8; `--porcelain` não tem precedente no CLI do
+Maestro e a saída tem estrutura aninhada — `prova`/`direcao`/`verificacao`
+são objetos, não pares chave=valor linha a linha). **Zero dependência
+nova**: emitido por `printf`/concatenação de string em bash puro
+(`_order_json_field`/`_order_json_bool`/`_order_json_esc`, este último
+escapando `\`/`"`/controle — necessário porque `deferred_by` é **escrito à
+mão** pelo humano, v1.14, e não passa pela mesma validação de regex que
+`branch`/ids).
+
+**Mesma fonte, nunca duas derivações**: `_order_action_status_json` lê os
+MESMOS predicados de `core-order-state.sh` que `_order_action_status` (texto)
+lê — `_order_status`, `_order_evidence_match`/`_order_proof_tree`,
+`_order_deferred_tree`, `_order_moved_since_accept`, `_order_intent_stale`,
+`_order_verif_areas`/`_order_verif_report` — e, no caminho de fallback de
+prova (estado `provada`/`aberta`/`em_execucao`), a MESMA invocação de
+`maestro evidence --label ... --project ...` que o texto já chamava. O campo
+`estado` no JSON é literal e exclusivamente o retorno de `_order_status`; o
+teste (`tests/cli/test-order-014-status-json.sh`) prova, para os SEIS
+estados do contrato, que o valor de `estado` no JSON é byte-idêntico ao que
+o modo texto imprime, e sabota (numa cópia) uma segunda derivação injetada
+só no caminho JSON para provar que a MESMA asserção reprova.
+
+**Forma do objeto** (chave → tipo; `null` é valor válido, nunca string
+vazia):
+
+```json
+{
+  "id": "014",
+  "estado": "aberta|em_execucao|provada|aceita|absorvida|adiada",
+  "branch": "order/014-...", "branch_existe": true, "branch_tip": "abc1234",
+  "arquivo": "<caminho gravado no cabeçalho>",
+  "terminal": false, "suspensa": false,
+  "pede_aceite": true, "motivo": "revisar e aceitar",
+  "direcao": {"ordem": "2", "atual": "2", "desatualizada": false, "hash_bump_pendente": false},
+  "verificacao": [{"rotulo": "backend", "estado": "VÁLIDA"}],
+  "absorvido_por": null, "adiado_por": null,
+  "prova": {"estado": "valida", "detalhe": "VÁLIDA na aceitação — ...", "arvore": "<sha ou null>"}
+}
+```
+
+`direcao`/`verificacao` são `null` exatamente quando o bloco correspondente
+do texto (`_order_show_context`) não seria impresso (sem `intent_version`
+carimbado; `adiada`, que pula verificação pelo mesmo motivo do texto — E23b
+compararia com o tip atual, o que "venceria" o recibo congelado). `prova.estado`
+é um vocabulário PEQUENO e DISTINTO do `estado` do topo (`valida|vencida|
+nenhuma|absorvida|adiada|desconhecida`) — não é uma segunda leitura de
+`estado`, é a leitura já existente do veredito de `maestro evidence`
+(`VÁLIDA`/`VENCIDA`/`NENHUMA`) rebaixada para minúsculo ASCII.
+
+**`pede_aceite`/`terminal`/`suspensa`/`motivo` são o que fecha a issue**: sem
+eles, o supervisor teria de reimplementar o mapeamento "estado → preciso
+interromper o humano?" toda vez que um estado novo nascer aqui — exatamente
+o defeito medido. São computados pelo MESMO `case "$st" in ...)` que
+`_order_show_next` (texto) usa para decidir a mensagem de "próximo": mesma
+fonte, fan-out em campos estruturados, não uma segunda regra.
+
+**Garantia de compatibilidade com estado futuro (o que esta emenda promete
+e o que NÃO promete):**
+1. Campo NOVO é sempre **aditivo** — nunca removido nem renomeado; provado
+   por medição (mesmo método da ordem 005, `tests/cli/test-order-issue11.sh`
+   item 4): o teste injeta uma chave top-level desconhecida no objeto e
+   mostra que um leitor que só lê `id`/`estado`/`branch` continua recebendo
+   a mesma resposta — JSON é aberto por natureza, leitor que ignora chave
+   que não conhece nunca quebra.
+2. **O CONJUNTO de valores de `estado` é contrato** (item 2 da trava desta
+   ordem) — um SÉTIMO valor de `estado` exige emenda própria aqui, PARAR e
+   chamar; esta emenda não abre exceção. O que ELA garante é que um
+   consumidor escrito contra os campos `pede_aceite`/`terminal`/`suspensa`
+   (em vez de contra a string crua de `estado`) sobrevive a um estado
+   FUTURO sem mudança nenhuma — porque esses três campos são computados
+   AQUI, no Maestro, pela mesma emenda que introduzir o estado novo, não
+   recalculados pelo consumidor. Um consumidor que insiste em ler `estado`
+   como string terá de tratar valor desconhecido explicitamente (é a
+   recomendação: decidir por `pede_aceite`, não por comparação de string).
+3. **O que NÃO foi garantido — dito, não inventado**: não há checagem
+   automática (doctor/schema) que IMPEÇA um estado novo de nascer em
+   `_order_status` sem que `_order_action_status_json` também o cubra —
+   ambos vivem na mesma função Bash de um jeito que um `case` esquecido
+   simplesmente cai no `*)` genérico (`motivo="aguardando execução"`,
+   `pede_aceite=0`) em vez de falhar ruidosamente. Ordens futuras que
+   introduzirem estado (mesma trava desta ordem: PARAR e chamar) devem
+   ATUALIZAR `_order_action_status_json` no mesmo changeset que atualiza
+   `_order_status`/`_order_show_next` — o teste dos seis estados reprovaria
+   se o novo estado divergisse de texto para JSON, mas não reprova sozinho
+   se o `case` do JSON simplesmente não ganhar um braço novo e cair no
+   default (`aguardando execução`/`pede_aceite:false`) para um estado que na
+   verdade deveria pedir aceite. É dívida CONHECIDA, não uma garantia
+   mecânica — fica registrada aqui para quem abrir a próxima ordem de
+   estado.
+
+`--json` só se aplica a `--status N` (decidido NÃO estender a `--list` nesta
+ordem — fora do escopo da issue #18, que é sobre UMA ordem por consulta;
+`--list --json` fica para quando houver consumidor real). Log: nenhum
+vocábulo novo em §4 — `--status` (com ou sem `--json`) é leitura pura, nunca
+loga.
+`# classification: public` (a ordem é conteúdo do repo do usuário)
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o
