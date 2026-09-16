@@ -1,0 +1,186 @@
+diff --git a/lib/cmd-intent.sh b/lib/cmd-intent.sh
+new file mode 100644
+index 0000000..2767820
+--- /dev/null
++++ b/lib/cmd-intent.sh
+@@ -0,0 +1,180 @@
++#!/usr/bin/env bash
++# maestro lib/cmd-intent.sh — E22/S-2201, extraído de bin/maestro na ordem
++# 015 (E24 ordem C, docs/designs/e24-nucleo-e-adaptadores.md).
++#
++# `maestro intent`: o FORMATO do INTENT (carimbo, seções, hash) mora em
++# lib/core-intent.sh — o dono do formato (sourced ANTES deste arquivo, mesmo
++# processo, via _intent_lib_load — I-2). Aqui só as ações do CLI:
++# `--init`/`--show`/`--check`/`--bump`, uma função por ação, cmd_intent só
++# despacha.
++#
++# Convenção (E24): parâmetro posicional, nenhuma função fecha sobre local de
++# outra.
++
++_intent_action_missing() { # <ação> <arquivo> → mensagem "sem direção"; rc 0 (show) ou 1 (demais)
++  local action="$1" f="$2"
++  case "$action" in
++    show)  printf 'sem direção — maestro intent --init (E22: a direção do projeto é artefato versionado)\n'; return 0 ;;
++    *)     printf 'sem direção em %s — maestro intent --init\n' "$f"; return 1 ;;
++  esac
++}
++
++_intent_action_init() { # <proj> <sid> <arquivo> — cria o gabarito de seis seções (E22)
++  local proj="$1" sid="$2" f="$3"
++  [[ -f "$f" ]] && die validation "já existe direção em $f" \
++    "leia (maestro intent) e mude o conteúdo; para subir a versão, maestro intent --bump" 1
++  mkdir -p "${f%/*}" 2>/dev/null || die env "não consigo criar ${f%/*}" "cheque permissões" 2
++  local bt="${f%/*}/.INTENT.body.$$" pname
++  pname=$(cd -P -- "$proj" 2>/dev/null && basename -- "$PWD") || pname="projeto"
++  # As instruções ficam ANTES da primeira seção de propósito: texto dentro de
++  # uma seção a tornaria "preenchida" e o --check passaria em direção vazia.
++  cat > "$bt" <<TEMPLATE || die env "falha ao gravar $bt" "" 2
++# Direção — $pname
++
++Preencha as seis seções abaixo. Seção sem texto conta como AUSENTE
++(\`maestro intent --check\` diz quais faltam). A versão só sobe com
++\`maestro intent --bump\`, e só quando o conteúdo mudou — é o número que as
++ordens citam, não um contador de saves.
++
++## Problema
++
++## Público
++
++## Resultado
++
++## Prioridades
++
++## Limites
++
++## Fora de escopo
++TEMPLATE
++  local bh head_sha
++  bh=$(sha256sum < "$bt" 2>/dev/null | head -c 8) || bh="none"
++  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
++  {
++    printf '<!-- maestro-intent v1\n'
++    printf 'version: 1\nts: %s\nhead: %s\n' "$(date -Iseconds)" "$head_sha"
++    printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$bh"
++    printf -- '-->\n'
++    cat "$bt"
++  } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
++    || { rm -f "$f.tmp.$$" "$bt" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
++  rm -f "$bt" 2>/dev/null || :
++  log_event intent ${sid:+session_id="$sid"} n=1 via=manual
++  printf 'direção criada: %s (v1, sem conteúdo ainda)\n' "$f"
++  printf '  preencha as seis seções e confira com: maestro intent --check\n'
++  return 0
++}
++
++_intent_action_report() { # <ação:show|check> <arquivo> → mostra/checa 6 seções; rc conforme --check
++  local action="$1" f="$2" ver hash stamped miss
++  ver=$(_intent_version "$f")
++  hash=$(_intent_body_hash "$f")
++  stamped=$(_intent_stamp_field "$f" hash)
++  miss=$(_intent_missing "$f")
++
++  if [[ -z "$ver" ]]; then
++    printf 'INTENT sem carimbo legível: %s\n' "$f"
++    printf '  o cabeçalho precisa de `<!-- maestro-intent v1` + `version: <n>` até a linha `-->`\n'
++    [[ "$action" == "check" ]] && return 1
++    return 0
++  fi
++  local name cnt filled=0
++  if [[ "$action" == "show" ]]; then
++    printf 'direção: INTENT v%s · hash %s · %s\n' "$ver" "${hash:-?}" "$f"
++    printf '  carimbo : ts %s · head %s · sessão %s\n' \
++      "$(_intent_stamp_field "$f" ts)" "$(_intent_stamp_field "$f" head)" \
++      "$(_intent_stamp_field "$f" author_session)"
++  fi
++  while IFS=$'\t' read -r name cnt; do
++    [[ -n "$name" ]] || continue
++    if (( cnt > 0 )); then
++      filled=$((filled + 1))
++      if [[ "$action" == "show" ]]; then printf '  %-16s %s linha(s)\n' "$name" "$cnt"; fi
++    else
++      if [[ "$action" == "show" ]]; then printf '  %-16s VAZIA\n' "$name"; fi
++    fi
++  done < <(_intent_sections "$f")
++  if [[ -n "$stamped" && -n "$hash" && "$stamped" != "$hash" ]]; then
++    printf '  conteúdo editado desde o carimbo v%s → maestro intent --bump\n' "$ver"
++  fi
++  if [[ -n "$miss" ]]; then
++    printf 'direção INCOMPLETA (%s de 6 seções): falta %s\n' "$filled" "$miss"
++    [[ "$action" == "check" ]] && return 1
++    return 0
++  fi
++  printf 'direção OK: INTENT v%s, 6/6 seções, hash %s\n' "$ver" "${hash:-?}"
++  return 0
++}
++
++_intent_action_bump() { # <arquivo> <sid> <proj> — sobe a versão quando o corpo mudou desde o carimbo
++  local f="$1" sid="$2" proj="$3" ver hash stamped miss nv head_sha
++  ver=$(_intent_version "$f")
++  hash=$(_intent_body_hash "$f")
++  stamped=$(_intent_stamp_field "$f" hash)
++  miss=$(_intent_missing "$f")
++  [[ -n "$ver" ]] || die validation "carimbo ilegível em $f" \
++    "conserte o cabeçalho (maestro intent --check) antes de versionar" 1
++  if [[ -n "$stamped" && -n "$hash" && "$stamped" == "$hash" ]]; then
++    die validation "o conteúdo não mudou desde o carimbo v$ver" \
++      "a versão é o número que as ordens citam, não um contador de saves — edite $f antes" 1
++  fi
++  nv=$(( ver + 1 ))
++  head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
++  # O corpo é COPIADO byte a byte (sed do carimbo para baixo): o bump troca o
++  # carimbo, nunca o texto — e o hash gravado é o do corpo que já está no disco.
++  {
++    printf '<!-- maestro-intent v1\n'
++    printf 'version: %s\nts: %s\nhead: %s\n' "$nv" "$(date -Iseconds)" "$head_sha"
++    printf 'author_session: %s\nhash: %s\n' "${sid:-desconhecido}" "$hash"
++    printf -- '-->\n'
++    sed '1,/^-->$/d' "$f"
++  } > "$f.tmp.$$" && mv -f "$f.tmp.$$" "$f" \
++    || { rm -f "$f.tmp.$$" 2>/dev/null; die env "falha ao gravar $f" "" 2; }
++  log_event intent ${sid:+session_id="$sid"} n="$nv" via=manual
++  printf 'direção v%s → v%s (hash %s)\n' "$ver" "$nv" "$hash"
++  if [[ -n "$miss" ]]; then
++    printf 'AVISO: ainda incompleta — falta %s (as ordens só citam direção completa)\n' "$miss"
++  fi
++  printf 'ordens novas nascem citando v%s; as antigas passam a pedir revisão do plano\n' "$nv"
++  return 0
++}
++
++cmd_intent() { # E22/S-2201: direção versionada do projeto — parseia flags e despacha por ação
++  local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" sid=""
++  while (( $# )); do
++    case "$1" in
++      --init)    action="init" ;;
++      --show)    action="show" ;;
++      --check)   action="check" ;;
++      --bump)    action="bump" ;;
++      --session) sid="${2:-}"; shift ;;
++      --project) proj="${2:-}"; shift ;;
++      *) die validation "flag desconhecida '$1'" \
++           "maestro intent [--init|--show|--check|--bump] [--project d] [--session s]" 1 ;;
++    esac
++    shift
++  done
++  [[ -n "$action" ]] || action="show"
++
++  # shellcheck source=hooks/lib/common.sh
++  source "$REPO_DIR/hooks/lib/common.sh"
++  local f; f=$(_intent_file "$proj")
++
++  if [[ "$action" == "init" ]]; then
++    _intent_action_init "$proj" "$sid" "$f"
++    return 0
++  fi
++  if [[ ! -f "$f" || ! -r "$f" ]]; then
++    # set -e mata a função na hora se este bare call falhar (mesma classe de
++    # bug de _docs_catraca_verdict, rodada de correção da ordem 015) — guard
++    # explícito devolve o controle, idioma do repo.
++    _intent_action_missing "$action" "$f" && return 0
++    return 1
++  fi
++
++  case "$action" in
++    show|check) _intent_action_report "$action" "$f" && return 0; return 1 ;;
++    bump)       _intent_action_bump "$f" "$sid" "$proj" ;;
++  esac
++}

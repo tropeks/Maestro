@@ -1,0 +1,224 @@
+diff --git a/lib/cmd-docs.sh b/lib/cmd-docs.sh
+new file mode 100644
+index 0000000..05abfb8
+--- /dev/null
++++ b/lib/cmd-docs.sh
+@@ -0,0 +1,218 @@
++#!/usr/bin/env bash
++# maestro lib/cmd-docs.sh — E16/S-1601/S-1602, extraído de bin/maestro na
++# ordem 015 (E24 ordem C, docs/designs/e24-nucleo-e-adaptadores.md).
++#
++# `maestro docs`: o doc declara `covers:` (globs) e opcionalmente
++# `reviewed: <sha>` no frontmatter YAML. Drift por FRONTEIRA COM QUITAÇÃO
++# (pesquisa E16: "mesmo commit" era falso positivo estrutural): STALE =
++# commits que tocaram os covers DESDE max(último commit no doc, reviewed) —
++# qualquer toque no doc, ou re-atestar via reviewed (provenance stamp, padrão
++# Fiberplane Drift), zera o contador sem edição cosmética. Contamos COMMITS,
++# não dias: tempo pune projeto parado; commits medem divergência real.
++# Catraca versionada (.maestro-docs.tsv): brownfield entra sem gritar, crescer
++# trava (--check).
++#
++# Sourced por bin/maestro (via _docs_lib_load, I-2) DENTRO do mesmo
++# processo. Também chamado de FORA (lib/cmd-order.sh, `_order_show_context`):
++# esse sítio chama `_docs_lib_load` antes, mesma técnica de `_verif_lib_load`.
++#
++# Convenção (E24): parâmetro posicional, nenhuma função fecha sobre local de
++# outra. Sem `declare -A` de módulo: a busca de baseline por doc é O(linhas
++# do .tsv) via leitura sequencial (_docs_baseline_get) — evita o array
++# associativo virar LOCAL do carregador quando este arquivo é sourceado de
++# dentro de uma função (armadilha registrada na ordem 015: `declare -A` sem
++# `-g` no topo de módulo sourceado de dentro de função vira local do
++# carregador, não do módulo). _docs_baseline_get varre o arquivo INTEIRO e só
++# imprime no fim: chave repetida no .tsv, a ÚLTIMA linha vence — mesma
++# semântica do `declare -A base=()` original (rodada de correção da ordem
++# 015: a primeira versão retornava no primeiro match, invertendo o contrato).
++#
++# TRAVA DE CONTRATO (ordem 015): a forma do baseline (.maestro-docs.tsv) e o
++# significado de "só desce" não mudam aqui.
++#
++# `total_stale` (bin/maestro:1583,1654 antes desta ordem) NÃO migrou: era
++# acumulado e nunca lido — dead code do original, removido aqui de propósito
++# (rodada de correção da ordem 015).
++
++_docs_declared_list() { # <proj> → docs declarados no .maestro.yaml (uma linha, separados por espaço), vazio se nenhum
++  local proj="$1" yaml="$proj/.maestro.yaml" dlist=""
++  if [[ -f "$yaml" ]]; then
++    dlist=$(awk '/^docs:/ { sub(/^docs:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' "$yaml" 2>/dev/null | tr -d '[]" ' | tr ',' ' ')
++  fi
++  printf '%s' "$dlist"
++  return 0
++}
++
++_docs_baseline_get() { # <bfile> <doc> → contagem gravada na catraca para <doc>, ou 0 (ausente/linha inválida; chave repetida: a ÚLTIMA vence)
++  local bfile="$1" doc="$2" d n found=""
++  [[ -f "$bfile" ]] || { printf '0'; return 0; }
++  while IFS=$'\t' read -r d n; do
++    [[ "$d" == \#* || -z "$d" ]] && continue
++    [[ "$d" == "$doc" && "$n" =~ ^[0-9]+$ ]] && found="$n"
++  done < "$bfile"
++  printf '%s' "${found:-0}"
++  return 0
++}
++
++_docs_doc_covers() { # <arquivo> → lista "covers:" do frontmatter YAML (multi-linha, espaço-separável), vazio se ausente
++  awk 'NR==1 && $0 != "---" { exit } NR>40 { exit }
++    /^---$/ { fm++; next } fm != 1 { next }
++    /^covers:/ { inc=1; next }
++    inc && /^[ \t]*-[ \t]*/ { s=$0; sub(/^[ \t]*-[ \t]*/, "", s); gsub(/["\x27 ]/, "", s); print s; next }
++    inc { inc=0 }' "$1" 2>/dev/null | grep -E '^[A-Za-z0-9._*/-]+$' || true
++}
++
++_docs_doc_reviewed() { # <arquivo> → sha em "reviewed:" do frontmatter, vazio se ausente
++  awk 'NR>40 { exit } /^---$/ { fm++; next } fm != 1 { next }
++    /^reviewed:[ \t]*[0-9a-f]{7,40}[ \t]*$/ { sub(/^reviewed:[ \t]*/, ""); print; exit }' "$1" 2>/dev/null || true
++}
++
++_docs_boundary() { # <proj> <doc_relativo> <reviewed_sha> → sha da fronteira (doc ou reviewed, o mais NOVO), vazio se não versionado
++  local proj="$1" d="$2" reviewed="$3" b_doc b_rev="" boundary
++  b_doc=$(git -C "$proj" log -1 --format=%H -- "$d" 2>/dev/null || true)
++  if [[ -n "$reviewed" ]] && git -C "$proj" cat-file -e "$reviewed^{commit}" 2>/dev/null; then
++    b_rev="$reviewed"
++  fi
++  boundary="$b_doc"
++  if [[ -n "$b_rev" ]]; then
++    if [[ -z "$boundary" ]] || git -C "$proj" merge-base --is-ancestor "$boundary" "$b_rev" 2>/dev/null; then
++      boundary="$b_rev"
++    fi
++  fi
++  printf '%s' "$boundary"
++  return 0
++}
++
++_docs_measure() { # <proj> <total_repo> <covers> <boundary> → "n\x1ffanwarn" — commits na área desde a fronteira (n=0 se não versionado)
++  local proj="$1" total_repo="$2" covers="$3" boundary="$4" spec=() g fan=0 fanwarn="" n=0
++  # pathspecs dos covers + fan-out. set -f: sem ele, `src/**` expande contra
++  # o CWD do bash antes de chegar ao git (mordeu no smoke — glob é do git).
++  set -f
++  for g in $covers; do spec+=(":(glob)$g"); done
++  # S-1809: contrato é o que o doc PROMETE, não todo arquivo que encosta na
++  # área. Bookkeeping do próprio Maestro (baseline da catraca, arquivos de
++  # ordem) não é contrato de coisa nenhuma. Doc que GOVERNA teste continua
++  # enxergando teste: se os próprios covers citam caminho de teste, a
++  # exclusão não se aplica a ele.
++  if [[ "$covers" != *test* && "$covers" != *spec* ]]; then
++    spec+=(":(glob,exclude)**/tests/**" ":(glob,exclude)**/test/**"
++           ":(glob,exclude)**/__tests__/**" ":(glob,exclude)**/*_test.*"
++           ":(glob,exclude)**/*.test.*" ":(glob,exclude)**/*.spec.*"
++           ":(glob,exclude)**/conftest.py")
++  fi
++  spec+=(":(exclude).maestro/**" ":(glob,exclude)**/.maestro-*.tsv")
++  set +f
++  fan=$(git -C "$proj" ls-files -- "${spec[@]}" 2>/dev/null | grep -c . || true)
++  if [[ "$total_repo" -gt 20 && "$fan" -gt $(( total_repo / 2 )) ]]; then
++    fanwarn=" · covers engole ${fan}/${total_repo} arquivos — glob largo demais vira ruído"
++  fi
++  if [[ -n "$boundary" ]]; then
++    n=$(git -C "$proj" rev-list --count "$boundary..HEAD" -- "${spec[@]}" 2>/dev/null || echo 0)
++    [[ "$n" =~ ^[0-9]+$ ]] || n=0
++  fi
++  printf '%s\x1f%s' "$n" "$fanwarn"
++  return 0
++}
++
++_docs_drift_for() { # <proj> <total_repo> <d> <baseline_n> <check> → "out_line\x1fbaseline_line\x1fexcedido" (campos vazios quando não se aplicam)
++  local proj="$1" total_repo="$2" d="$3" bl="$4" check="$5" df="$proj/$d"
++  if [[ ! -f "$df" ]]; then
++    printf '%s\x1f\x1f%s' "$d: AUSENTE — declarado no .maestro.yaml e não existe" "$d (ausente)"
++    return 0
++  fi
++  local covers reviewed
++  covers=$(_docs_doc_covers "$df"); reviewed=$(_docs_doc_reviewed "$df")
++  if [[ -z "$covers" ]]; then
++    printf '%s\x1f\x1f' "$d: sem covers: no frontmatter — doc canônico sem área governada é só prosa"
++    return 0
++  fi
++  local boundary; boundary=$(_docs_boundary "$proj" "$d" "$reviewed")
++  local measured n fanwarn
++  measured=$(_docs_measure "$proj" "$total_repo" "$covers" "$boundary")
++  IFS=$'\x1f' read -r n fanwarn <<<"$measured"
++  if [[ -z "$boundary" ]]; then
++    printf '%s\x1f%s\x1f' "$d: NÃO VERSIONADO (commite o doc para o drift existir)$fanwarn" "$d	0"
++    return 0
++  fi
++  local exc=""
++  [[ "$check" == "1" && "$n" -gt "$bl" ]] && exc="$d: $n > baseline $bl"
++  if (( n == 0 )); then
++    printf '%s\x1f%s\x1f%s' "$d: FRESCO (nenhum commit nos covers desde o doc/reviewed)$fanwarn" "$d	$n" "$exc"
++  else
++    printf '%s\x1f%s\x1f%s' \
++      "$d: STALE — $n commit(s) na área governada sem emenda (quite: emende, ou reviewed: $(git -C "$proj" rev-parse --short=7 HEAD))$fanwarn" \
++      "$d	$n" "$exc"
++  fi
++  return 0
++}
++
++_docs_write_baseline() { # <bfile> <new_baseline> <n_docs> — grava (tmp+mv) e imprime confirmação; die env se falhar
++  local bfile="$1" new_baseline="$2" n_docs="$3"
++  { printf '# maestro docs baseline (E16/S-1602) — catraca de drift: só desce.\n'
++    printf '%s' "$new_baseline"
++  } > "$bfile.tmp.$$" && mv -f "$bfile.tmp.$$" "$bfile" \
++    || { rm -f "$bfile.tmp.$$"; die env "falha ao gravar $bfile" "" 2; }
++  printf -- '---\nbaseline gravado: %s (%s doc(s))\n' "${bfile##*/}" "$n_docs"
++  return 0
++}
++
++_docs_catraca_verdict() { # <excedidos...> → imprime veredito de --check; rc 0 dentro da catraca, 1 se estourou
++  if [[ $# -gt 0 ]]; then
++    printf -- '---\nCATRACA DE DOCS: drift novo acima do baseline — %s\n' "$(join_semi "$@")"
++    printf 'Emende o doc no mesmo changeset, ou re-ateste com reviewed: — a régua não sobe.\n'
++    return 1
++  fi
++  printf -- '---\ndentro da catraca de docs\n'
++  return 0
++}
++
++cmd_docs() { # S-1601/S-1602: docs canônicos como CONTRATO — parseia flags, mede drift por doc, despacha baseline/catraca
++  local check=0 write_baseline=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}"
++  while (( $# )); do
++    case "$1" in
++      --check)    check=1 ;;
++      --baseline) write_baseline=1 ;;
++      --project)  proj="${2:-}"; shift ;;
++      *) die validation "flag desconhecida '$1'" "maestro docs [--check|--baseline] [--project d]" 1 ;;
++    esac
++    shift
++  done
++  # shellcheck source=hooks/lib/common.sh
++  source "$REPO_DIR/hooks/lib/common.sh"
++
++  local dlist; dlist=$(_docs_declared_list "$proj")
++  if [[ -z "${dlist// /}" ]]; then
++    echo "docs canônicos: nenhum declarado (.maestro.yaml → docs: [a.md, b.md])"
++    return 0
++  fi
++  git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 \
++    || die env "docs exige git (drift é medido em commits)" "" 2
++
++  local total_repo bfile="$proj/.maestro-docs.tsv"
++  total_repo=$(git -C "$proj" ls-files 2>/dev/null | grep -c . || true)
++
++  local d exceeded=() out_lines=() new_baseline="" bl result out_line bl_line exc
++  for d in $dlist; do
++    bl=$(_docs_baseline_get "$bfile" "$d")
++    result=$(_docs_drift_for "$proj" "$total_repo" "$d" "$bl" "$check")
++    IFS=$'\x1f' read -r out_line bl_line exc <<<"$result"
++    out_lines+=("$out_line")
++    [[ -n "$bl_line" ]] && new_baseline+="$bl_line"$'\n'
++    [[ -n "$exc" ]] && exceeded+=("$exc")
++  done
++
++  printf '%s\n' "${out_lines[@]}"
++
++  if (( write_baseline == 1 )); then
++    _docs_write_baseline "$bfile" "$new_baseline" "$(wc -w <<<"$dlist" | tr -d ' ')"
++    return 0
++  fi
++  if (( check == 1 )); then
++    # set -e mata a função na hora se este bare call falhar e nada capturar o
++    # status antes do return (rodada de correção da ordem 015) — o guard
++    # abaixo devolve o controle explicitamente, idioma do repo.
++    _docs_catraca_verdict "${exceeded[@]}" && return 0
++    return 1
++  fi
++  return 0
++}
