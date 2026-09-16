@@ -1,0 +1,14 @@
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -767,7 +767,10 @@ build_and_emit() {
+       # issue #12 (ordem 004): absorvida é terminal — não conta como
+       # pendente, mesmo motivo de accepted_at (o cutucão cobra aceite de
+       # trabalho que a absorção já fechou em outro lugar).
+-      grep -qE '^(accepted_at|absorbed_by): ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
++      # ordem 013: adiada é SUSPENSA (não terminal, volta), mas trabalho que
++      # ninguém abandonou não deve gerar cutucão de aceite pendente — mesmo
++      # motivo, mesmo teste de exclusão.
++      grep -qE '^(accepted_at|absorbed_by|deferred_by): ' "$_ofl" 2>/dev/null || _on=$(( _on + 1 ))
+     done
+     shopt -u nullglob
+   fi
