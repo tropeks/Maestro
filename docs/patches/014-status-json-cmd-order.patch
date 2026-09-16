@@ -1,0 +1,59 @@
+--- a/lib/cmd-order.sh
++++ b/lib/cmd-order.sh
+@@ -293,10 +293,31 @@
+   printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
+ }
+ 
++# ----------------------------------------- ação: --status --json (ordem 014, issue #18)
++#
++# A emissão JSON mora em MÓDULO PRÓPRIO (lib/cmd-order-json.sh, vocabulário
++# cmd- do E24: responsabilidade distinta o bastante pra ter nome — texto e
++# JSON são dois ADAPTADORES do mesmo núcleo, não a mesma peça): puxar
++# _order_action_status_json para cá engordaria este arquivo acima do teto de
++# `oversized-file` (400 linhas) sem nenhum motivo além de conveniência de
++# edição. Carregado SOB DEMANDA — só quando `--status` vem com `--json` — no
++# molde de `_order_lib_load`/`_verif_lib_load`: módulo ausente derruba SÓ
++# este comando (I-2, `die env`), nunca o CLI inteiro; `--status` SEM `--json`
++# nunca paga o custo de sourcing de um módulo que não usa.
++_order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
++  declare -f _order_action_status_json >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
++    # shellcheck source=lib/cmd-order-json.sh
++    source "$REPO_DIR/lib/cmd-order-json.sh" && return 0
++  fi
++  die env "lib/cmd-order-json.sh não encontrado em $REPO_DIR" \
++    "reinstale o plugin (maestro doctor)" 2
++}
++
+ # ------------------------------------------------------------------ despacho
+ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
+   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
+-  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by=""
++  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0
+   while (( $# )); do
+     case "$1" in
+       --create)  action="create" ;;
+@@ -312,10 +333,11 @@
+       --doc)     odoc="${2:-}"; shift ;;
+       --intent-reviewed) intent_reviewed=1 ;;   # E22
+       --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12, usa-se COM --accept
++      --json) json_out=1 ;;   # ordem 014/issue #18, só com --status: fonte única p/ o supervisor ler
+       --session) sid="${2:-}"; shift ;;
+       --project) proj="${2:-}"; shift ;;
+       *) die validation "flag desconhecida '$1'" \
+-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
++           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
+     esac
+     shift
+   done
+@@ -339,7 +361,9 @@
+   [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
+ 
+   case "$action" in
+-    status) _order_action_status "$proj" "$of" "$oid" ;;
++    status)
++      if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$of" "$oid"
++      else _order_action_status "$proj" "$of" "$oid"; fi ;;
+     accept)
+       if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
+       else _order_accept_own "$proj" "$of" "$oid" "$sid" "$intent_reviewed"; fi ;;
