@@ -700,11 +700,13 @@ direção, §13): a ordem atravessa clone e máquina via git. Carimbo
 `<!-- maestro-order v1 -->` com id/ts/epoch/head/branch/frozen/budget_*/doc/
 author_session; corpo markdown livre (objetivo, critérios, Ask-First) + contrato de
 execução gerado. Estado NUNCA gravado — derivado: branch existe (git) · provada
-(recibo §8 com wtree_after == árvore do tip do branch) · aceita (`accepted_at`
-anexado pelo diretor via --accept, que exige provada) · absorvida (`absorbed_by`
-anexado via `--accept --absorbed-by`, que exige a ABSORVENTE já provada/aceita —
-emenda v1.11) · adiada (`deferred_by` escrito à mão no cabeçalho — SUSPENSA,
-distinta de absorvida: volta, e continua visível — emenda v1.14). Log:
+(recibo §8 com wtree_after == árvore do tip do branch; branch AUSENTE usa a
+árvore que o recibo CONGELOU, sem tip pra comparar — emenda v1.16) · aceita
+(`accepted_at` anexado pelo diretor via --accept, que exige provada) ·
+absorvida (`absorbed_by` anexado via `--accept --absorbed-by`, que exige a
+ABSORVENTE já provada/aceita — emenda v1.11) · adiada (`deferred_by` escrito
+à mão no cabeçalho — SUSPENSA, distinta de absorvida: volta, e continua
+visível — emenda v1.14). Log:
 `order_create`/`order_accept` com `n` (id) — nunca título/caminho (absorção
 reaproveita `order_accept`; §4 não ganha vocábulo novo; adiar não passa por
 `log_event`).
@@ -986,6 +988,93 @@ ordem — fora do escopo da issue #18, que é sobre UMA ordem por consulta;
 `--list --json` fica para quando houver consumidor real). Log: nenhum
 vocábulo novo em §4 — `--status` (com ou sem `--json`) é leitura pura, nunca
 loga.
+`# classification: public` (a ordem é conteúdo do repo do usuário)
+
+#### Emenda v1.16 (ordem 017) — `provada` sem branch: a árvore CONGELADA, não o tip
+
+Causa: `_order_status` tinha só o teste `git rev-parse --verify` pra decidir
+se o branch existe, e "branch ausente" tem dois sentidos opostos que o código
+só conhecia um. Nunca criado (nada começou) e mergeado-e-DELETADO (tudo
+terminou, fim normal de toda ordem — apagar branch mergeado é o caminho
+feliz) caíam no MESMO `printf 'aberta'`. Caso real, medido no vulcan
+(2026-09-16): `.maestro/orders/002-lab-como-ambiente-de-prova-cript.md`, com
+recibo válido gravado e branch já apagado, lia `estado":"aberta"` —
+"reabre a cada merge" quando na verdade nunca fechou, e o único sinal de que
+o trabalho existiu (o recibo) desaparecia da leitura assim que o branch
+sumia. **Não é o hash da árvore absorvente**: `absorbed_tree` é só IMPRESSO,
+nunca comparado, nos três lugares em que aparece (`lib/cmd-order-json.sh`,
+`lib/cmd-order.sh` × 2) — não há invariante de árvore ali para violar.
+
+**O invariante que esta emenda instala:** ordem com prova no ledger nunca lê
+`aberta`. O recibo é durável — sobrevive ao branch, ao worktree e ao
+checkout, é o artefato que este projeto criou para SER a prova.
+
+**Decisão do diretor: NÃO abre estado novo no enum.** Um sétimo valor de
+`estado` é mudança de contrato para todo consumidor que faz `switch` nele —
+o supervisor e o `watcher.ts` do ponte-daemon, que hoje já erram com os
+valores que CONHECEM (mandam aceitar ordem `absorvida`); somar um valor que
+eles não conhecem pioraria um consumidor já quebrado, não consertaria nada.
+`provada`, com `pede_aceite:true`/`motivo:"revisar e aceitar"`, já É a ação
+certa aqui, e todo consumidor já sabe lidar com ela — reaproveita em vez de
+inventar.
+
+**`provada` passa a ter DOIS critérios, e nenhum dos dois é mais frouxo que
+o outro** — o recibo sempre precisa existir e ter `exit=0`; o que muda é
+CONTRA O QUE ele é conferido:
+- **branch vivo** (comportamento de antes desta emenda, inalterado):
+  `wtree_after` do recibo == árvore do tip ATUAL do branch (`_order_evidence_match`).
+- **branch ausente** (nunca existiu OU foi apagado — o mesmo teste
+  `git rev-parse --verify` cobre os dois; a distinção entre eles é feita
+  pela PRESENÇA do recibo, não por outro sinal): não há tip vivo pra
+  comparar, então vale a árvore que o recibo CONGELOU (`wtree_after`, sem
+  comparação nenhuma) — `_order_evidence_frozen_tree`, núcleo puro em
+  `lib/core-order-state.sh`. **Isto não afrouxa a prova**: o gate continua
+  sendo `exit=0` no recibo, com o mesmo rigor de `_order_evidence_match`
+  (recibo com falha, ou nenhum recibo, continua `aberta`, nunca `provada`);
+  só o alvo da comparação muda, porque não há tip pra comparar depois que o
+  branch some. Sem recibo nenhum (nunca começou), `aberta` continua certo —
+  o invariante não se aplica a quem nunca produziu prova.
+
+**Precedente reaproveitado, não reinventado**: a ordem 013 (`adiada`,
+emenda v1.14) já tinha enfrentado "recibo válido sem tip vivo para
+comparar" — `_order_deferred_tree` varre `_order_evidence_candidates` e lê
+`wtree_after` sem jamais comparar com o tip, pelo mesmo motivo por outra
+causa (lá é "adiada não anda", aqui é "o branch sumiu"; nos dois casos
+comparar com um tip inexistente é que seria o erro — "venceria" o recibo por
+mudança de árvore que não pode ser medida). `_order_evidence_frozen_tree`
+reusa a MESMA varredura (candidatos + `wtree_after`), mas não é a MESMA
+função: `_order_deferred_tree` não exige `exit=0` porque ali o gate já é o
+campo `deferred_by` escrito à mão (a árvore é só para EXIBIÇÃO, "sem recibo
+gravado ainda" é uma saída válida); aqui o `exit=0` É o gate que decide
+`provada` em vez de `aberta` — tem que ser tão rígido quanto
+`_order_evidence_match` já é quando o branch existe. Por isso é irmã, não a
+mesma função.
+
+`_order_proof_tree` (usado por `_order_json_prova_frag` para `prova.arvore`
+no `--status --json`) ganha o mesmo fallback: quando `_order_evidence_match`
+devolve vazio por falta de branch, cai para `_order_evidence_frozen_tree` em
+vez de deixar `prova.arvore` como `null` — o consumidor externo vê a árvore
+provada mesmo sem branch vivo.
+
+**`_order_json_acao_frag` (lib/cmd-order-json.sh) NÃO mudou** — `provada` já
+tinha o braço `pede=1; motivo="revisar e aceitar"` no `case`, e `terminal`
+continua `false` para `provada` (não é fim de linha: humano ainda decide
+aceitar, marcar `absorvida`/`adiada`, ou reabrir o branch). O contrato do
+JSON (nome de campo, forma do objeto, CONJUNTO de valores de `estado`) não
+mudou nesta emenda — é o caso raro em que a causa (`_order_status`) e o
+fallback de exibição (`_order_proof_tree`) bastam, sem tocar o vocabulário
+externo.
+
+Prova: `tests/cli/test-order-017-provada-sem-branch.sh` reproduz o caso do
+vulcan (recibo válido + branch mergeado-e-apagado + sem carimbo → nunca
+`aberta`), o caso legítimo (sem recibo e sem branch → `aberta`), o recibo com
+`exit≠0` (continua `aberta`, o gate não afrouxou), `aceita`/`absorvida`
+terminais com o branch deletado, e os quatro campos do `--json`
+(`estado`/`terminal`/`pede_aceite`/`motivo`/`prova.arvore`) para o caso do
+vulcan — mesmo padrão PENDENTE/reprova-de-verdade das ordens 003/004A/013:
+sem o patch em `docs/patches/017-estado-terminal-core-order-state.patch`
+aplicado, PENDENTE (nunca falha; `lib/` está na denylist de autoproteção do
+gate); com o patch, cobra de verdade.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
