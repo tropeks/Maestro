@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 2
-ts: 2026-09-10T12:33:49-03:00
-head: ac91cacf8e91995f888226a7ffb33aa67dc5fe53
-author_session: c63227f9-8cee-4c01-965f-10182f66b500
-hash: b1b21050
+version: 3
+ts: 2026-09-17T09:16:35-03:00
+head: aa91b8f123465b6809bb25fb84bdc7071db42df3
+author_session: desconhecido
+hash: 64b18664
 -->
 # Direção — Maestro
 
@@ -74,7 +74,7 @@ Ordem de desempate: em qualquer colisão, vence a prioridade mais alta desta lis
 - Classificador de intenção dedicado em Haiku (latência + custo + infra) e roteamento por regex/keywords (é a rigidez que motivou o projeto) — ambos rejeitados (ADR-002).
 - Bloquear edição direta incondicionalmente — rejeitado pelo usuário no G0 (ADR-003).
 - Split de `bin/maestro` e `src/cli.ts` em núcleo + adaptadores (E24) — só depois de E23 provado em uso por ≥1 semana; refatorar antes é mover código sem evidência de fronteira (EPICS E24).
-- Interceptar contatos de fim de sessão via hook Stop/SessionEnd — fora do v1 (EPICS E17).
+- Interceptar contatos de fim de sessão via hook Stop/SessionEnd — ~~fora do v1 (EPICS E17)~~ **dentro, por emenda v3 (2026-09-17, decisão do Capitão de 16/09):** o hook Stop já existe e está ligado desde S-2101; o gerente PERGUNTA por `director_ask` da Ponte e espera por `director_wait` no próprio turno; o hook nunca espera (`exit 0` sem stdout, NFR 50 ms); gatilho = socket presente E linha `[spock] aguardando:`. Continua fora: qualquer capacidade de o gerente mandar, e injeção acima do teto de 8000 B.
 - Importar código do fork pstack ou adotar seu ethos "ship the 80%" (EPICS E25).
 - Trocar o Legatus atual pelo Legatus vNext — adiado até o vNext se provar em uso (EPICS E21).
 - Os gerentes e o supervisor: vivem em repos próprios; o Maestro só garante suportar N sessões concorrentes sem se corromper (EPICS E26).
