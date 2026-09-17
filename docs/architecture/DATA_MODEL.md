@@ -1059,7 +1059,7 @@ provada mesmo sem branch vivo.
 **`_order_json_acao_frag` (lib/cmd-order-json.sh) NÃO mudou** — `provada` já
 tinha o braço `pede=1; motivo="revisar e aceitar"` no `case`, e `terminal`
 continua `false` para `provada` (não é fim de linha: humano ainda decide
-aceitar, marcar `absorbida`/`adiada`, ou reabrir o branch). O contrato do
+aceitar, marcar `absorvida`/`adiada`, ou reabrir o branch). O contrato do
 JSON (nome de campo, forma do objeto, CONJUNTO de valores de `estado`) não
 mudou nesta emenda — é o caso raro em que a causa (`_order_status`) e o
 fallback de exibição (`_order_proof_tree`) bastam, sem tocar o vocabulário
