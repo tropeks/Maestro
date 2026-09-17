@@ -1,0 +1,15 @@
+diff --git a/hooks/post-edit-habits.sh b/hooks/post-edit-habits.sh
+index 5b9a992..98ba93e 100755
+--- a/hooks/post-edit-habits.sh
++++ b/hooks/post-edit-habits.sh
+@@ -50,8 +50,8 @@ TOOL=""; FILE=""; SID="desconhecido"
+ if command -v jq >/dev/null 2>&1; then
+   FILE=$(printf '%s' "$RAW" | jq -r '.tool_input.file_path // empty' 2>/dev/null) || FILE=""
+ fi
+-if [[ -z "$FILE" && "$RAW" =~ \"file_path\"[[:space:]]*:[[:space:]]*\"([^\"]{1,1024})\" ]]; then
+-  FILE="${BASH_REMATCH[1]}"
++if [[ -z "$FILE" && "$RAW" =~ \"file_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
++  FILE="${BASH_REMATCH[1]:0:1024}"
+   [[ "$FILE" == *'\'* ]] && FILE=""   # escape no caminho: só o jq decodifica com segurança
+ fi
+ 

@@ -9,6 +9,10 @@ set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOK="$REPO/hooks/post-edit-habits.sh"
 ENGINE="$REPO/hooks/lib/habit-sensors.awk"
+# issue #42 / ordem 021: protocolo de medição de latência (N, folga da mediana,
+# portão de carga) centralizado — ver tests/lib/latency.sh. Mesmo helper de
+# test-gate.sh e test-guarda-destrutiva.sh.
+source "$REPO/tests/lib/latency.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -452,5 +456,62 @@ FX
 MAESTRO_HABITS=doc-governed run_hook "$PROJ/other/y.py" Edit docg-2
 chk "edit FORA do covers → silêncio" "$RC" "0"
 rm -f "$PROJ/.maestro.yaml"
+
+# ---------------------------------------------------------------------------
+echo "-- NFR: latência < 50ms — fallback de regex SEM jq (issue #42)"
+# ---------------------------------------------------------------------------
+# post-edit-habits.sh:53 usava \"([^\"]{1,1024})\" — bash/glibc compila e casa
+# quantificadores {m,n} grandes em ~O(N²), custo pago mesmo sem o padrão
+# casar. MAS o regex é FALLBACK do jq: com `jq` no PATH devolvendo o
+# caminho, `FILE` já vem preenchido e o `&&` curto-circuita — o regex nunca
+# roda (medido ~0,3ms). Testar só o caminho COM jq não provaria nada sobre
+# o defeito; este bloco monta um PATH SEM jq (mesmo sandbox de coreutils
+# que tests/hooks/test-guarda-destrutiva.sh usa) para ser o único jeito de
+# de fato exercitar a linha 53.
+NOJQ="$tmp/nojq"; mkdir -p "$NOJQ"
+for b in bash env cat date dirname stat flock mkdir mv grep sed head tail wc tr sort seq chmod ls awk basename cut paste printf; do
+  src=$(command -v "$b" 2>/dev/null) && ln -sf "$src" "$NOJQ/$b" 2>/dev/null
+done
+if command -v jq >/dev/null 2>&1 && ! PATH="$NOJQ" command -v jq >/dev/null 2>&1; then
+  ok "sandbox sem jq montado"
+else
+  bad "sandbox sem jq não ficou de pé"
+fi
+
+LAT_PROJ="$tmp/latproj"; mkdir -p "$LAT_PROJ"
+LAT_PAYLOAD="$tmp/lat-payload.json"
+# file_path aponta para um arquivo INEXISTENTE de propósito: o hook sai logo
+# depois de resolver FILE (o `-f "$FILE"` falha), isolando o custo do
+# parsing — onde mora o regex de #42 — do resto do pipeline (sensores awk).
+printf '{"session_id":"lat-sid","tool_name":"Edit","tool_input":{"file_path":"%s/nao-existe.py"}}' \
+  "$LAT_PROJ" > "$LAT_PAYLOAD"
+
+maestro_latency_read_load
+# maestro_latency_measure roda "$bin" < "$input" direto (sem wrapper) — o PATH
+# sem jq precisa estar no AMBIENTE por fora da chamada, não numa função.
+OLDPATH="$PATH"
+export PATH="$NOJQ"
+maestro_latency_probe "$HOOK"
+maestro_latency_measure "$HOOK" "$LAT_PAYLOAD"
+export PATH="$OLDPATH"
+maestro_latency_report "post-edit-habits(sem-jq)" "$MIN" "$MED" "$MAX" 50
+case "$MAESTRO_LATENCY_VERDICT" in
+  ok) ok "latência ok — sem jq (mediana ${MED}ms < teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO])" ;;
+  inconclusivo)
+    echo "INCONCLUSIVO sob carga — sem jq (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — não conta como falha)" ;;
+  fail) bad "regressão de latência (issue #42) — sem jq (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — sem carga para culpar; suspeito: ([^\"]{1,1024}) na linha 53, quantificador O(N²) no bash/glibc)" ;;
+esac
+
+# sanidade: COM jq no PATH (o caso comum), o MESMO payload roda muito mais
+# rápido — confirma que o `&&` de fato curto-circuita e que o custo acima é
+# do FALLBACK, não do hook inteiro.
+if command -v jq >/dev/null 2>&1; then
+  maestro_latency_measure "$HOOK" "$LAT_PAYLOAD"
+  if (( MED < MAESTRO_LATENCY_TETO )); then
+    ok "com jq no PATH → mediana ${MED}ms (confirma que o regex de #42 é só fallback)"
+  else
+    bad "com jq no PATH → mediana ${MED}ms inesperadamente alta (esperava curto-circuito)"
+  fi
+fi
 
 exit $fail
