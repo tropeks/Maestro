@@ -607,6 +607,7 @@ wtree_before=<hash40|none> / wtree_after=<hash40|none>
 cmd_match=yes|no|free            # E23b — o comando rodado é o DECLARADO?
 load1m_x100=<int> / ncpu=<int>   # issue #11 (ordem 005) — carga no momento do record
 inconclusive=<int>               # issue #11 — nº de asserções INCONCLUSIVO sob carga
+probe_ms=<int>                   # ordem 016 PR1 — sonda de baseline (capacidade, não carga)
 ```
 
 VÁLIDA exige: wtree atual == wtree_after (conteúdo byte-idêntico ao provado), before ==
@@ -692,6 +693,37 @@ aceite (`_order_proof_tree`, `bin/maestro`), e com `.maestro/` fora do
 fingerprint essa igualdade sobrevive ao próprio carimbo — decidido "não
 coube" na ordem 003 (issue #6), com prova em `tests/cli/test-order.sh`.
 `# classification: confidential` (paths derivados + hashes locais)
+
+#### Emenda v1.17 (ordem 016 PR1, 2026-09-17) — `probe_ms`: sonda de baseline
+
+Causa: carga (`load1m_x100`, emenda anterior) mede CONTENÇÃO, não CAPACIDADE — duas
+máquinas na mesma carga podem ter pisos de execução muito diferentes. Medido em
+2026-09-16, mesma máquina e mesma janela, com o teto de latência forçado alto para não
+mascarar: `gate_pass` deu min 92ms antes do E24 (`4051dc4`) e 79ms depois (`c73ad3d`) —
+idêntico, sem regressão de código. O modelo de custo documentado (`tests/lib/latency.sh`)
+diz ~12ms para o caminho que passa; nesta forge o MÍNIMO observado é 79ms. Conclusão:
+esta forge é ~6x mais lenta por invocação que o runner da CI de referência, e nada no
+recibo dizia isso.
+
+Campo novo, **aditivo, no FIM** (mesma regra das emendas anteriores — `cmd_match` nunca
+sai da janela do leitor): `probe_ms=<int>`, a MEDIANA de N invocações NO-OP do hook
+`hooks/pre-tool-gate.sh` pelo caminho do kill-switch (`MAESTRO_OFF=1`), medidas no INÍCIO
+da corrida — o piso já documentado no modelo de custo ("~3ms bash+source de
+`lib/common.sh`, custo do kill-switch sozinho"): mesmo binário, mesmo interpretador,
+mesmo `source`, zero trabalho além disso. `lib/cmd-evidence.sh` (`_ev_cmd_measure_probe`)
+mede; `lib/core-evidence.sh` (`_ev_write`/`_ev_read_vars`) é o dono do formato, como
+sempre. Schema **continua** `maestro-evidence-v1`, sem migração — recibo anterior a esta
+emenda não tem a linha, e o leitor (velho ou novo) ignora em silêncio o que não casa por
+nome, mesmo tratamento da emenda anterior (`load1m_x100`/`ncpu`/`inconclusive`).
+
+**Escopo desta emenda é só medir e gravar — nenhum enforcement muda.** O teto de
+latência (`maestro_latency_report`, `tests/lib/latency.sh`) continua decidido exatamente
+como antes desta emenda, com o `× FOLGA` binário e o portão de carga; `probe_ms` também
+passa a ser impresso ao lado de min/mediana/max/teto/load no relatório de latência dos
+testes de hook (mesmo arquivo). A hipótese de que a RAZÃO medição÷sonda cancela carga e
+isola capacidade — o que justificaria um teto calibrado por sonda no lugar da folga
+binária — é do PR 2 desta ordem, condicionada à CI publicar `SONDA_REF`; esta emenda não
+a assume.
 
 ### 9. Work order — `<projeto>/.maestro/orders/NNN-slug.md` (E15, VERSIONADO)
 
