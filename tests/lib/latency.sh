@@ -112,6 +112,43 @@ maestro_latency_measure() {
   MED="${sorted[$((n / 2))]}"; MIN="${sorted[0]}"; MAX="${sorted[$((n - 1))]}"
 }
 
+# --- N da sonda: função e rationale próprios da sonda (ver abaixo) ---------
+: "${MAESTRO_LATENCY_PROBE_N:=11}"
+
+# maestro_latency_probe <binário-do-hook> — ordem 016 PR1: sonda de baseline.
+# N invocações NO-OP do MESMO hook sob medição, pelo caminho do kill-switch
+# (MAESTRO_OFF=1) — o piso já documentado no modelo de custo acima ("~3ms
+# bash+source de lib/common.sh, custo do kill-switch sozinho"): mesmo
+# binário, mesmo interpretador, mesmo `source`, zero trabalho depois disso.
+# Mede a CAPACIDADE desta máquina NESTA corrida — carga (load, ver abaixo)
+# mede CONTENÇÃO; a sonda mede quão rápido esta forge executa um piso fixo.
+#
+# A HIPÓTESE que o PR1 existe para testar (ainda NÃO aplicada a nenhum
+# teto): se sonda e medição inflam JUNTAS sob contenção, a razão
+# medição÷sonda isola capacidade e cancela carga. PR1 só MEDE e IMPRIME
+# (aqui) e GRAVA (lib/cmd-evidence.sh); o teto continua decidido como hoje
+# (ver maestro_latency_report abaixo) — nenhum enforcement novo.
+#
+# Preenche PROBE_MS (mediana de N amostras). N=11, não MAESTRO_LATENCY_N
+# (31): esta função roda UMA VEZ por arquivo de teste (como
+# maestro_latency_read_load), não uma vez por CASO do laço de medição —
+# não precisa da mesma robustez estatística da medição em si, e mantém o
+# overhead da sonda desprezível perto do tempo total da suíte. Ímpar:
+# mediana sem empate. `/dev/null` como stdin: o kill-switch sai antes de
+# qualquer leitura de payload (hooks/lib/common.sh:maestro_killswitch).
+maestro_latency_probe() {
+  local bin="$1" n="$MAESTRO_LATENCY_PROBE_N" i t0 t1 ts=()
+  for ((i = 0; i < n; i++)); do
+    t0="${EPOCHREALTIME/./}"
+    MAESTRO_OFF=1 "$bin" < /dev/null >/dev/null 2>&1
+    t1="${EPOCHREALTIME/./}"
+    ts+=( $(( (t1 - t0) / 1000 )) )
+  done
+  local sorted
+  mapfile -t sorted < <(printf '%s\n' "${ts[@]}" | sort -n)
+  PROBE_MS="${sorted[$((n / 2))]}"
+}
+
 # maestro_latency_read_load — lê /proc/loadavg e nproc UMA VEZ (fora do laço
 # de medição, que não pode ter fork extra). Preenche MAESTRO_LATENCY_LOAD1M
 # (string, ex. "7.84"), MAESTRO_LATENCY_NCPU e MAESTRO_LATENCY_OVER (1 = load
@@ -158,9 +195,13 @@ maestro_latency_report() {
     MAESTRO_LATENCY_TETO="$lim"
     MAESTRO_LATENCY_TETO_MOTIVO="estrito — máquina quieta"
   fi
-  printf '     %-24s min=%sms  mediana=%sms  max=%sms  (orçamento %sms, teto %sms [%s], load %s/%s CPUs)\n' \
+  # ordem 016 PR1: sonda ao lado da carga — mesmo caso da carga (informação
+  # no relatório, não portão; ver maestro_latency_probe acima). `${PROBE_MS:-n/d}`
+  # porque `set -u` está ligado e um chamador pode legitimamente não ter
+  # sondado (ex.: teste que não passa pelo NFR de latência).
+  printf '     %-24s min=%sms  mediana=%sms  max=%sms  (orçamento %sms, teto %sms [%s], load %s/%s CPUs, sonda %sms)\n' \
     "$nome" "$min" "$med" "$max" "$lim" "$MAESTRO_LATENCY_TETO" "$MAESTRO_LATENCY_TETO_MOTIVO" \
-    "$MAESTRO_LATENCY_LOAD1M" "$MAESTRO_LATENCY_NCPU"
+    "$MAESTRO_LATENCY_LOAD1M" "$MAESTRO_LATENCY_NCPU" "${PROBE_MS:-n/d}"
   if (( med < MAESTRO_LATENCY_TETO )); then
     MAESTRO_LATENCY_VERDICT=ok
   elif (( MAESTRO_LATENCY_OVER == 1 )); then

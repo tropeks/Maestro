@@ -397,6 +397,9 @@ write_record subagent
 # de jq, caminho que passa ~12ms, caminho de bloqueio ~32ms, +5ms de análise
 # léxica de 8KB).
 maestro_latency_read_load
+# ordem 016 PR1: sonda de baseline, medida uma vez (como a carga acima) —
+# ver rationale em tests/lib/latency.sh:maestro_latency_probe.
+maestro_latency_probe "$GUARD"
 for pair in "rotina(passa):bash-rm-node-modules.json:50" \
             "perigo(bloqueia):bash-rm-root.json:50" \
             "ofuscado:bash-obfuscado.json:50" \

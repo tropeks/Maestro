@@ -391,6 +391,9 @@ write_record sess-abc123 14400
 # test-guarda-destrutiva.sh — o método sempre foi compartilhado, agora o
 # arquivo também é).
 maestro_latency_read_load
+# ordem 016 PR1: sonda de baseline, medida uma vez (como a carga acima) —
+# ver rationale em tests/lib/latency.sh:maestro_latency_probe.
+maestro_latency_probe "$GATE"
 # `adv-huge-path` (22 KB) não é carga real — nenhum arquivo tem esse caminho.
 # O orçamento dele existe só para provar que o gate não degenera.
 for pair in "gate_pass:edit-go.json:50" "denylist:deny-hooks-lib.json:50" \
