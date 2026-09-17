@@ -57,6 +57,24 @@ _order_evidence_match() { # <proj> <arquivo> → "rótulo árvore" do 1º candid
   done
   return 0
 }
+_order_evidence_frozen_tree() { # <proj> <arquivo> → wtree_after do recibo VÁLIDO (exit=0), sem comparar com tip
+  # ordem 017: branch AUSENTE (nunca criado OU mergeado-e-apagado) não tem
+  # tip vivo pra comparar — mesma situação de _order_deferred_tree (ordem
+  # 013), por outro motivo (lá é "adiada não anda", aqui é "o branch sumiu").
+  # Reusa a VARREDURA de _order_deferred_tree (candidatos + wtree_after),
+  # mas não pode reusar a função: _order_deferred_tree não exige exit=0 (ali
+  # o gate já é o campo deferred_by, a árvore é só para exibição) e aqui o
+  # exit=0 É o gate — é o que decide 'provada' em vez de 'aberta', tem de
+  # ser tão rígido quanto _order_evidence_match exige quando o branch existe.
+  local proj="$1" f="$2" cand ev_f ev_w
+  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)"); do
+    ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+    [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
+    ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
+    [[ -n "$ev_w" ]] && { printf '%s' "$ev_w"; return 0; }
+  done
+  return 0
+}
 _order_status() { # <proj> <arquivo> → status derivado no stdout
   local proj="$1" f="$2" br
   grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
@@ -64,6 +82,12 @@ _order_status() { # <proj> <arquivo> → status derivado no stdout
   [[ -n "$(_order_field "$f" deferred_by)" ]] && { printf 'adiada'; return 0; }   # ordem 013: suspensa, NÃO terminal — distinta de absorvida
   br=$(_order_field "$f" branch)
   if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+    # ordem 017: branch ausente tem dois sentidos opostos — nunca criado
+    # (nada começou) vs mergeado-e-apagado (tudo terminou). O recibo no
+    # ledger é o que sobrevive aos dois e distingue: sem recibo, 'aberta'
+    # continua certo; com recibo válido, é 'provada' (árvore CONGELADA do
+    # recibo, decisão do diretor — não abre estado novo no enum).
+    [[ -n "$(_order_evidence_frozen_tree "$proj" "$f")" ]] && { printf 'provada'; return 0; }
     printf 'aberta'; return 0
   fi
   [[ -n "$(_order_evidence_match "$proj" "$f")" ]] && { printf 'provada'; return 0; }
@@ -71,7 +95,17 @@ _order_status() { # <proj> <arquivo> → status derivado no stdout
   return 0
 }
 _order_proof_tree() { # <proj> <arquivo> → árvore PROVADA (sha), vazio se não há prova
-  local m; m=$(_order_evidence_match "$1" "$2"); printf '%s' "${m#* }"
+  local proj="$1" f="$2" m br
+  m=$(_order_evidence_match "$proj" "$f")
+  if [[ -n "$m" ]]; then printf '%s' "${m#* }"; return 0; fi
+  # ordem 017: branch ausente não tem tip pra _order_evidence_match comparar
+  # (ela devolve vazio de propósito, cedo, na linha 1) — cai para a árvore
+  # CONGELADA do recibo, a MESMA que decidiu 'provada' em _order_status.
+  br=$(_order_field "$f" branch)
+  if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+    printf '%s' "$(_order_evidence_frozen_tree "$proj" "$f")"
+  fi
+  return 0
 }
 _order_deferred_tree() { # <proj> <arquivo> → wtree_after do recibo já gravado p/ esta ordem, vazio se nenhum
   # ordem 013: a árvore que a prova CONGELOU — nunca comparada ao tip atual

@@ -39,6 +39,47 @@ _ev_cmd_measure_load() { # → "load1m_x100<US>ncpu" (US=\x1f; TAB é IFS-whites
   return 0
 }
 
+# ordem 016 PR1: sonda de baseline. N invocações NO-OP do próprio hook pelo
+# caminho do kill-switch (MAESTRO_OFF=1) — o piso já documentado no modelo de
+# custo de tests/lib/latency.sh ("~3ms bash+source, custo do kill-switch
+# sozinho"): mesmo binário, mesmo interpretador, mesmo `source` de
+# lib/common.sh, zero trabalho depois disso. Mede a CAPACIDADE desta máquina
+# NESTA corrida — carga (acima) mede contenção; a sonda mede quão rápido a
+# forge executa um piso fixo. hooks/pre-tool-gate.sh é o alvo: já é tratado
+# como o hook de referência do comportamento do plugin em bin/maestro (lista
+# de arquivos que o doctor considera "definem comportamento"); o piso medido
+# aqui é o do KILL-SWITCH em si, que é o MESMO custo em qualquer hook
+# (maestro_killswitch roda antes de qualquer lógica específica de cada um).
+# PR1 só MEDE e GRAVA (probe_ms no recibo, ver _ev_write / core-evidence.sh);
+# o teto de latência continua decidido como hoje — o fator ÷SONDA_REF é do
+# PR2, depois que a CI publicar o número de referência.
+#
+# N=11: mesma técnica de amostragem de tests/lib/latency.sh (mediana contra
+# outlier de scheduler), só que menor — a sonda roda a CADA
+# `evidence --record` (potencialmente muitas vezes por sessão), então
+# repetir as 31 amostras da suíte de teste aqui seria desperdício; 11 é
+# ímpar (mediana sem empate) e já estabiliza o bastante para o que o PR1
+# precisa provar (razão estável entre faixas de carga). `/dev/null` como
+# stdin: o kill-switch sai antes de qualquer leitura de payload
+# (hooks/lib/common.sh:maestro_killswitch).
+_ev_cmd_measure_probe() { # → probe_ms (mediana de N invocações no-op via MAESTRO_OFF=1)
+  local bin="$REPO_DIR/hooks/pre-tool-gate.sh" n=11 i t0 t1 ts=() probe_ms=0
+  if [[ -x "$bin" ]]; then
+    for ((i = 0; i < n; i++)); do
+      t0="${EPOCHREALTIME/./}"
+      MAESTRO_OFF=1 "$bin" < /dev/null >/dev/null 2>&1
+      t1="${EPOCHREALTIME/./}"
+      ts+=( $(( (t1 - t0) / 1000 )) )
+    done
+    local sorted
+    mapfile -t sorted < <(printf '%s\n' "${ts[@]}" | sort -n)
+    probe_ms="${sorted[$((n / 2))]}"
+  fi
+  [[ "$probe_ms" =~ ^[0-9]+$ ]] || probe_ms=0
+  printf '%s' "$probe_ms"
+  return 0
+}
+
 _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
@@ -89,14 +130,17 @@ _ev_cmd_record() { # <proj> <label> <arquivo do recibo> -- <comando...> → grav
     w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"
   cmd_str="$*"
   cmd_hash=$(printf '%s' "$cmd_str" | sha256sum 2>/dev/null | head -c 16) || cmd_hash="none"
-  local decl cmd_match load1m_x100 ncpu
+  local decl cmd_match load1m_x100 ncpu probe_ms
   IFS=$'\x1f' read -r decl cmd_match <<<"$(_ev_cmd_match "$proj" "$label" "$cmd_str")"
   IFS=$'\x1f' read -r load1m_x100 ncpu <<<"$(_ev_cmd_measure_load)"
+  # ordem 016 PR1: sonda medida no INÍCIO da corrida, antes do comando sob
+  # prova rodar — mede a capacidade da máquina, não o efeito do comando nela.
+  probe_ms=$(_ev_cmd_measure_probe)
   _ev_cmd_run "$proj" -- "$@"
   [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
     w_after=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_after="none"
   _ev_write "$ef" "$label" "$cmd_hash" "$EV_RUN_RC" "$w_before" "$w_after" "$cmd_match" \
-    "$load1m_x100" "$ncpu" "$EV_RUN_INCONCLUSIVE" \
+    "$load1m_x100" "$ncpu" "$EV_RUN_INCONCLUSIVE" "$probe_ms" \
     || die env "falha ao gravar recibo" "cheque permissões/MAESTRO_HOME" 2
   if [[ "$w_before" != "$w_after" ]]; then
     printf 'evidência gravada: %s — exit %s, mas a árvore MUDOU durante a execução (recibo nasce contaminado)\n' \
@@ -160,7 +204,7 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime 
     echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
     (( check == 1 )) && return 1 || return 0
   fi
-  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc=""
+  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
   eval "$(_ev_read_vars "$ef")" 2>/dev/null || :
   [[ -n "$e_match" ]] || e_match="free"
   if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
