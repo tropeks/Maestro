@@ -694,7 +694,7 @@ fingerprint essa igualdade sobrevive ao próprio carimbo — decidido "não
 coube" na ordem 003 (issue #6), com prova em `tests/cli/test-order.sh`.
 `# classification: confidential` (paths derivados + hashes locais)
 
-#### Emenda v1.16 (ordem 016 PR1, 2026-09-17) — `probe_ms`: sonda de baseline
+#### Emenda v1.17 (ordem 016 PR1, 2026-09-17) — `probe_ms`: sonda de baseline
 
 Causa: carga (`load1m_x100`, emenda anterior) mede CONTENÇÃO, não CAPACIDADE — duas
 máquinas na mesma carga podem ter pisos de execução muito diferentes. Medido em
