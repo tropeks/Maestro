@@ -1,0 +1,42 @@
+diff --git a/lib/core-evidence.sh b/lib/core-evidence.sh
+index 867884b..f1e34b2 100644
+--- a/lib/core-evidence.sh
++++ b/lib/core-evidence.sh
+@@ -45,14 +45,23 @@ _ev_read_vars() { # <arquivo> → linhas "e_x=valor" (aspas simples), só campos
+     /^wtree_after=/  { if ($2 ~ /^([0-9a-f]{40}|none)$/) print "e_wa=\047" $2 "\047" }
+     /^load1m_x100=/  { if ($2 ~ /^[0-9]+$/)          print "e_load=" $2 }
+     /^ncpu=/         { if ($2 ~ /^[0-9]+$/)          print "e_ncpu=" $2 }
+-    /^inconclusive=/ { if ($2 ~ /^[0-9]+$/)          print "e_inc="  $2 }' "$f" 2>/dev/null
++    /^inconclusive=/ { if ($2 ~ /^[0-9]+$/)          print "e_inc="  $2 }
++    /^probe_ms=/     { if ($2 ~ /^[0-9]+$/)          print "e_probe=" $2 }' "$f" 2>/dev/null
+   return 0
+ }
+ 
+ # ------------------------------------------------------------------- escrita
+-_ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after> <cmd_match> <load1m_x100> <ncpu> <inconclusive> → grava (tmp+mv); rc 0/2
++_ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after> <cmd_match> <load1m_x100> <ncpu> <inconclusive> [probe_ms] → grava (tmp+mv); rc 0/2
+   local ef="$1" label="$2" cmd_hash="$3" rc="$4" w_before="$5" w_after="$6" \
+         cmd_match="$7" load1m_x100="$8" ncpu="$9" inconclusive="${10}"
++  # ordem 016 PR1: `probe_ms` é o 11º parâmetro, OPCIONAL na assinatura —
++  # `${11:-0}`, não `${11}` nu. `set -u` está ligado em quem sourceia este
++  # arquivo (ex.: tests/lib/test-evidence-ownership.sh, que chama _ev_write
++  # direto com os 10 args de antes desta ordem, provando a POSSE do formato
++  # sem depender de lib/cmd-evidence.sh); um `${11}` sem default MATA esse
++  # chamador com "unbound variable" — quebra a garantia ADITIVA que esta
++  # própria ordem promete (campo novo não pode quebrar chamador antigo).
++  local probe_ms="${11:-0}"
+   mkdir -p "${ef%/*}" 2>/dev/null || return 2
+   local tmp="$ef.tmp.$$"
+   {
+@@ -64,6 +73,11 @@ _ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after>
+     # issue #11 — campos ADITIVOS, no FIM (DATA_MODEL §8): campo novo nunca
+     # empurra o que já existe para fora da janela do leitor (velho OU novo).
+     printf 'load1m_x100=%s\nncpu=%s\ninconclusive=%s\n' "$load1m_x100" "$ncpu" "$inconclusive"
++    # ordem 016 PR1: sonda de baseline (N invocações NO-OP do hook pelo
++    # caminho do kill-switch, MAESTRO_OFF=1) — mede CAPACIDADE da máquina
++    # nesta corrida, ao lado da CARGA que já era gravada acima. Também
++    # ADITIVO, no FIM (mesma regra): nenhum campo existente sai da janela.
++    printf 'probe_ms=%s\n' "$probe_ms"
+   } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null && return 0
+   rm -f "$tmp" 2>/dev/null
+   return 2
