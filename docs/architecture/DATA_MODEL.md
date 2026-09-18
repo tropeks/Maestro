@@ -1109,6 +1109,142 @@ aplicado, PENDENTE (nunca falha; `lib/` está na denylist de autoproteção do
 gate); com o patch, cobra de verdade.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
+#### Emenda v1.18 (ordem 021) — o carimbo terminal sai da árvore: `~/.maestro/order-state/<slug>-<hash8>-<id>`
+
+Causa: `accepted_at`/`absorbed_by` eram escritos **só no arquivo da ordem, na
+árvore de trabalho**, e nunca commitados (`.maestro/orders/*.md` fica `??` ou
+`M` neste repo e nos projetos que o Maestro governa — ver `.gitignore`/fluxo
+de cada um). Qualquer `git checkout`/`stash`/`reset` que restaure o `HEAD`
+apaga o carimbo **em silêncio**, e a ordem volta a `provada`/`aberta`. Medido
+no Agenda_Studio (2026-09-18): o diretor fechou as ordens 012–016 como
+absorvidas, mergeou o PR, `main` andou, as cinco voltaram a `provada` nos dois
+leitores (`maestro order --list` e a ronda da Ponte) — o refechamento
+funcionou (`_order_accept_absorb` não disse "já absorvida"), provando que o
+carimbo tinha mesmo sumido, não que um leitor estava desatualizado. Mesma
+raiz da issue #36 (o carimbo de aceite não atravessa worktree), um degrau
+abaixo: lá não atravessa um `checkout`.
+
+**O desenho:** o estado terminal passa a ser gravado **fora da árvore**, em
+`maestro_order_state_file` (`hooks/lib/project-state.sh`, ordem 021) —
+`~/.maestro/order-state/<slug>-<hash8>-<id-com-3-dígitos>`, MESMA chave djb2
+de `maestro_brief_file`/`maestro_evidence_file` (§7/§8: worktree e repo
+principal são o MESMO projeto, E15 — propriedade que esta ordem precisa
+porque o `checkout` que apaga o carimbo do arquivo roda na MESMA árvore que o
+gravou). Chaveado por **ordem** (id), não por rótulo livre como a evidência:
+o id já é o identificador estável da ordem dentro do projeto. Formato
+chave=valor, schema versionado, escrita atômica (tmp+mv) — MESMA técnica de
+`_ev_write` (§8):
+
+```
+schema=maestro-order-state-v1
+id=<id numérico>
+outcome=aceita | absorvida
+# aceita:
+accepted_at=<timestamp>
+accepted_session=<session_id>
+accepted_tree=<árvore (sha) provada no aceite>
+# absorvida:
+absorbed_by=<id numérico | "main">
+absorbed_tree=<árvore (sha) que a ABSORVENTE provou>
+absorbed_at=<timestamp>
+absorbed_session=<session_id de quem carimbou>
+```
+
+A árvore entra como **DADO do carimbo** ("foi absorvida/aceita contra esta
+árvore"), nunca como condição de validade — não é reconferida depois; é
+histórico, igual já era no arquivo.
+
+**Precedência, quando arquivo e registro discordam** (`_order_status`,
+`lib/core-order-state.sh`, e os dois leitores de campo irmãos que ela ganha —
+`_order_terminal_field_header` para `absorbed_*`, no CABEÇALHO, e
+`_order_terminal_field_appended` para `accepted_*`, ANEXADO ao final,
+último-vence — MESMA distinção "irmã, não a mesma função" da emenda v1.16,
+porque ONDE cada campo vive no arquivo difere): **o registro, quando existe,
+É o estado — o arquivo é conveniência de leitura humana, nunca reconferido
+contra ele.** Três casos, os três testados:
+1. **Arquivo carimbado, registro ausente** (migração — toda ordem carimbada
+   antes desta emenda entrar): o carimbo do arquivo **ainda conta**,
+   comportamento idêntico a antes desta ordem. Nenhuma ordem já terminal
+   "reabre" quando este código entra.
+2. **Registro presente, arquivo restaurado** (o defeito que esta ordem
+   fecha — o caso do Agenda depois do `checkout`): o registro decide; o
+   estado continua terminal mesmo com o arquivo sem carimbo nenhum.
+3. **Os dois presentes e concordando** (fluxo normal depois desta ordem,
+   `--accept`/`--accept --absorbed-by` gravam os dois na mesma chamada): o
+   registro decide, e concorda com o arquivo — nenhuma mudança visível.
+
+Não há caminho de escrita que produza os dois presentes **discordando**
+(ambos são gravados na MESMA chamada de `--accept`, mesmo timestamp) — só
+adulteração manual do registro produziria isso, fora do escopo desta ordem.
+
+**Escrita:** `_order_accept_absorb`/`_order_accept_own`
+(`lib/cmd-order.sh`) chamam `_order_state_write` **depois** do carimbo no
+arquivo ter sido gravado com sucesso. Falha na escrita do registro **não
+degrada em silêncio** — `die env`, porque silenciar aqui reproduziria
+exatamente o defeito que a ordem fecha (o `--accept` pareceria ter
+funcionado, mas o estado ficaria vulnerável ao mesmo `checkout` de sempre).
+O retry é idempotente: o arquivo já tem o carimbo, então uma nova chamada de
+`--accept` recalcula os mesmos valores e tenta gravar o registro de novo (ou
+cai no ramo "já absorvida"/"já aceita" se ele colar na primeira tentativa
+seguinte).
+
+**Migração:** nenhuma ordem carimbada só no arquivo, em qualquer projeto
+desta máquina, precisa de `--accept` de novo — o caso 1 da precedência acima
+cobre isso por construção (arquivo carimbado + registro ausente → arquivo
+ainda conta). Conferido contra as ordens 012–016 do `~/dev/Agenda_Studio`
+(leitura apenas, `maestro order --list --project`): `_order_status`,
+patchado, devolve **exatamente o mesmo resultado** que o código sem patch —
+nenhuma das cinco muda de estado com esta ordem aplicada (a prova exigida é
+"não regride", não "conserta dados que já sumiram do arquivo"). Achado à
+parte, não causado por esta ordem: no clone desta máquina, as cinco JÁ
+liam `aberta`/`em_execucao` **antes** do patch — o `HEAD` corrente não tem
+`absorbed_by` em nenhuma delas (`grep -c '^absorbed_by:'` = 0 nas cinco),
+então o carimbo já havia sido perdido por um `checkout` anterior ao desta
+sessão. O registro fora da árvore não pode reconstruir um carimbo que nem o
+arquivo nem nenhum registro têm mais — só impede a PRÓXIMA perda, a partir do
+próximo `--accept` rodado sob este código.
+
+**Contrato externo intocado (TRAVA desta ordem):** nome de campo e forma do
+`--status --json` não mudam — `_order_json_acao_frag` não muda, `absorvido_por`
+continua o mesmo campo, só a LEITURA por trás dele ganha o fallback
+(`_order_terminal_field_header`). Nenhum valor novo no enum de `estado`: esta
+emenda muda ONDE o estado mora, não quais estados existem.
+
+**Adendo do diretor, mesmo corte — `--absorbed-by` para de fixar `main`:**
+`_order_accept_absorb` (`lib/cmd-order.sh`) tinha a string `'main'` literal
+em QUATRO pontos (gatilho, existência, árvore e — o que ninguém enxergava —
+o RÓTULO DO RECIBO em `maestro_evidence_file "$proj" main`). Repo cujo
+branch padrão é `master` (caso real: NetForge) não tinha caminho nenhum para
+fechar uma ordem como absorvida: `--absorbed-by main` recusava ("'main' não
+existe"), e `--absorbed-by master` também recusava, pela validação genérica
+que só aceita `main` ou id numérico. `_order_default_branch`
+(`lib/core-order-state.sh`) resolve o branch padrão de verdade — `origin/HEAD`
+→ `init.defaultBranch` LOCAL (só se o branch existir; config desatualizada
+não é sinal) → existência direta de `main`/`master` → fallback literal
+`main` — **sem rede** (E19). `main` e `master` viram os DOIS apelidos
+aceitos para "o branch padrão do repo", sempre resolvidos, nunca fixos; o
+carimbo passa a gravar o **nome real** do branch (não o apelido digitado), o
+que também resolve o rótulo do recibo pela mesma via. Repo cujo padrão já é
+`main` não muda de comportamento (a resolução acha `main` pela via da
+existência direta, mesmo sem `origin/HEAD`/config) — quem já grava recibo
+com rótulo `main` continua encontrando-o. `absorbed_by: <id numérico de 1-3
+dígitos | "main" | "master" | o branch padrão resolvido>` substitui a forma
+antiga da emenda v1.11 (`"main"` fixo).
+
+Prova: `tests/cli/test-order-021-estado-fora-da-arvore.sh` — as duas pontas
+(vermelha/verde) do teste-que-é-a-ordem (carimba → `git checkout` no arquivo
+→ estado continua terminal), nos dois desfechos (`absorvida` e `aceita`); os
+três casos de precedência; e a fixture da migração (registro nunca gravado +
+arquivo carimbado → segue terminal, nunca `aberta`). `tests/cli/test-order-
+021-absorb-default-branch.sh` — repo `main`-default sem regressão, repo
+`master`-default (o caso do NetForge) absorvendo com `--absorbed-by main` E
+com `--absorbed-by master`, carimbo gravando o branch real. Mesmo padrão
+PENDENTE/reprova-de-verdade das ordens 003/004A/013/017: sem os patches em
+`docs/patches/021-estado-terminal-*.patch` aplicados, PENDENTE (nunca falha;
+`lib/`/`hooks/` estão na denylist de autoproteção do gate); com os patches,
+cobram de verdade.
+`# classification: public` (a ordem é conteúdo do repo do usuário)
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o
