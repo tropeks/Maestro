@@ -174,3 +174,7 @@ nunca são exercitadas. Vai para a ordem 018. Se tropeçar, **relate e siga**.
   pega sintaxe em módulo sourceado.
 - Registre a HORA DE CHEGADA.
 - O aceite é do diretor: `maestro order --accept 016`.
+accepted_at: 2026-09-17T10:29:00-03:00
+accepted_session: desconhecido
+accepted_tree: 7a0a66396224e961dff2432ff0750db8e16a3d71
+accepted_intent: 3

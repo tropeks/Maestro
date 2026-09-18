@@ -364,6 +364,25 @@ Sem outros usos de IA. `ai-architect` **não é necessário** — o AI Touchpoin
 - Overhead dos hooks: < 100ms por invocação (percebido zero no fluxo)
 - Injeção do SessionStart: ≤ ~2k tokens (routing table + roster resumido) — o Maestro não pode causar o inchaço que combate
 - Rede nunca é dependência em runtime: a única chamada de rede é o fetch do auto-update (E19) — timeout ≤5s, uma vez por intervalo, falha silenciosa e registrada; tudo o mais é local
+- **Onde o NFR de 50 ms é cobrado, e onde não é** (decisão do Capitão, 2026-09-18, depois da ordem 016 e da 020): o teto de 50 ms vale na **máquina de referência (a CI)**. Nesta forge, o que conta é o **delta relativo** contra o baseline do mesmo caso — não o valor absoluto. Medido nos dois lados, sem carga sintética:
+
+  | caso | CI (4 CPUs, load 0,76) | forge (8 CPUs, load ~4) | razão |
+  |---|---|---|---|
+  | `gate_pass` | 22 ms | 119 ms | 5,4x |
+  | `denylist` | 13 ms | 65 ms | 5,0x |
+  | `allowlist` | 8 ms | 39 ms | 4,9x |
+  | `perigo(bloqueia)` | 20 ms | 101 ms | 5,1x |
+  | `ofuscado` | 19 ms | 100 ms | 5,3x |
+  | `comando-16KB` (teto 80) | 29 ms | 118 ms | 4,1x |
+  | `caminho-22KB` (teto 150) | 42 ms | 153 ms | 3,6x |
+  | sonda de baseline (E016) | 3 ms | 9–29 ms | — |
+
+  A CI fica com folga de 2x a 6x em todos; a forge estoura em todos. A razão é **~4,8x**, estável entre os casos — é capacidade por invocação, não contenção: medido com o código ANTES e DEPOIS do E24 (`gate_pass` min 92 ms vs 79 ms), o custo é o mesmo, então não há regressão de código a caçar aqui.
+
+  **Consequência prática:** um número absoluto medido nesta forge não reprova nem aprova o NFR. O que reprova é (a) a CI estourando o teto estrito, ou (b) o delta contra o baseline do mesmo caso crescendo nesta forge. Exemplo vivo, da ordem 020: `gate-report.sh` tem baseline de ~46–57 ms aqui **sem patch nenhum** — discutir se o patch "cabe em 50 ms" nesta máquina é a pergunta errada; a pergunta certa é o +7 ms que ele acrescenta.
+
+  Isto está escrito para a discussão não se repetir: ela já custou duas rodadas na ordem 016 e uma na 020.
+
 - Medição de latência (guarda destrutiva, gate) só é válida com load average de 1 minuto ≤ 2,0 (decisão do supervisor, nesta forge de 8 CPUs) — acima disso o veredito é `inconclusivo sob carga`, nunca `regressão`. O limiar é ABSOLUTO, não por CPU: um runner de CI com menos núcleos (ex. 4) mede um load absoluto baixo mesmo perto de saturação relativa, e um limiar por-CPU desligaria o teto estrito de latência em silêncio bem na máquina de referência onde o NFR é cobrado de verdade (`tests/lib/latency.sh` traz a evidência completa)
 
 ## Flags para o orchestrator
