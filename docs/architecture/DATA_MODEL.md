@@ -1245,6 +1245,97 @@ PENDENTE/reprova-de-verdade das ordens 003/004A/013/017: sem os patches em
 cobram de verdade.
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
+#### Emenda v1.19 (ordem 022) — `--accept` cura o registro ausente quando o carimbo já é terminal por arquivo
+
+**Débito de documentação, registrado antes do conserto**: a ordem 021 tirou o
+estado TERMINAL da árvore de trabalho — um registro em
+`~/.maestro/order-state/<slug-do-projeto>-<hash8>-<id>` (mesma chave djb2 do
+brief/evidência, §7/§8; formato `chave=valor`, schema `maestro-order-state-v1`,
+gravado por `_order_state_write`/lido por `_order_terminal_field_header`
+(campos do CABEÇALHO: `absorbed_*`) e `_order_terminal_field_appended`
+(campos ANEXADOS: `accepted_*`), em `lib/core-order-state.sh`) — mas o próprio
+patch da ordem 021 nunca ganhou emenda aqui (o código já cita "DATA_MODEL §9
+v1.18" em comentário, forward-reference que ficou pendente). Esta emenda
+registra o schema retroativamente, no mínimo necessário para o conserto
+abaixo fazer sentido — não é uma auditoria completa da ordem 021, que fica
+como débito à parte. **Precedência, já em vigor desde a ordem 021, inalterada
+por esta emenda**: registro presente decide sozinho (`outcome=aceita|absorvida`);
+registro ausente cai para o carimbo do ARQUIVO (`accepted_at`/`absorbed_by`) —
+é essa segunda perna que esta emenda conserta.
+
+**Causa, medida no Agenda_Studio (2026-09-18):** a queda para o arquivo
+cobre a LEITURA (ordem que fechou antes do patch da 021 continua lendo o
+estado certo hoje), mas não a ESCRITA: `maestro order --accept N
+[--absorbed-by M]` sobre uma ordem TERMINAL só-por-arquivo (registro
+ausente) caía direto no ramo "já aceita"/"já absorvida — nada a fazer" e
+retornava sem gravar o registro. Não havia comando para migrar — a ordem
+continuava vulnerável a "reabrir" no próximo `git checkout`/clone/stash que
+descartasse a modificação não commitada que é o carimbo do arquivo (a mesma
+causa-raiz que a ordem 021 fechou para o carimbo NOVO, um degrau abaixo: aqui
+é o carimbo VELHO, que nunca teve registro para começar).
+
+**O conserto:** os dois braços de `--accept` (`_order_accept_own`,
+reaceite-sem-movimento; `_order_accept_absorb`, `--absorbed-by`) passam a
+checar, quando `_order_status` já deriva terminal a partir do arquivo, se o
+registro fora da árvore existe (`_order_state_registrado`, novo predicado em
+`lib/cmd-order-accept.sh`). Ausente → CURA: grava o registro imediatamente,
+com os valores lidos do PRÓPRIO ARQUIVO (`_order_terminal_field_header`/
+`_order_terminal_field_appended`, as mesmas funções de leitura que já existem
+— nenhuma segunda derivação) — nunca os do instante da cura. Concretamente:
+quem absorveu/aceitou, quando, e contra qual árvore são os que já estavam
+carimbados; a `--session` de quem RODOU a cura não entra no registro
+(`absorbed_session`/`accepted_session` continuam sendo o autor histórico).
+Presente → comportamento de antes, sem mudança: "nada a fazer", registro
+intocado. Vale para os dois desfechos terminais, `absorvida` e `aceita`.
+
+**Campo ausente no arquivo grava sentinela, nunca um valor inventado.** Caso
+real e não hipotético: emenda v1.11 já documenta `absorbed_by: main`
+carimbado À MÃO antes do CLI conhecer o campo (`d394a47`), sem
+`absorbed_tree`/`absorbed_at`/`absorbed_session`. A cura grava
+`desconhecida` para árvore ausente (mesmo sentinela que `accepted_tree`/
+`absorbed_tree` já usam em outros pontos deste arquivo — nunca string vazia)
+e `desconhecido` para instante/sessão ausentes — o mesmo vocabulário
+"não sei", nunca "agora"/"quem migrou".
+
+**Cura não é reescrita — a garantia que decide a qualidade deste conserto:**
+o predicado que abre a cura (`_order_state_registrado` falso) é o MESMO que
+faz uma segunda tentativa virar no-op puro — resultado idempotente, registro
+byte-a-byte igual entre a primeira gravação e qualquer tentativa seguinte
+(inclusive depois de um `git checkout` que apague o carimbo do arquivo: a
+partir da cura, o registro é a fonte, e nem precisa mais do arquivo para
+continuar terminal).
+
+**Não loga `order_accept`/`delegation phase=accepted`.** A cura não é uma
+decisão nova de aceite/absorção — é bookkeeping preenchendo um registro para
+uma decisão que já aconteceu no passado (o arquivo já provava isso). Logar
+como se fosse um aceite de agora infla `session_end`/estatísticas de
+delegação com um evento que não ocorreu na sessão que rodou a cura. Nenhum
+vocábulo novo em §4.
+
+**Extração que acompanhou o conserto:** `lib/cmd-order.sh` tocava o teto do
+sensor `oversized-file` (400 linhas, margem zero) antes desta ordem —
+`_order_accept_absorb`/`_order_accept_own` saíram para `lib/cmd-order-accept.sh`,
+módulo próprio carregado sob demanda só na ação `--accept`, mesmo molde e
+mesmo motivo medido da emenda v1.15 (`lib/cmd-order-json.sh`, ordem 014):
+aceite/absorção é um ADAPTADOR de ESCRITA sobre o núcleo
+(`core-order-state.sh`) que `--status`/`--status --json` já leem como
+adaptadores de LEITURA. A extração, sozinha, não muda nenhum comportamento —
+provada por rodar a suíte completa com só ela aplicada, sem o conserto.
+
+Prova: `tests/cli/test-order-022-cura-registro.sh`, mesmo padrão
+PENDENTE/reprova-de-verdade das ordens 003/004A/012/013/017 — carimbo
+terminal é INJETADO no arquivo como modificação não commitada sobre uma base
+commitada sem carimbo (não pela CLI, que já patchada nunca reproduziria o
+registro ausente), reproduzindo as duas pontas: sem o conserto, `--accept`
+responde sem gravar e um `git checkout` no arquivo reabre a ordem (vermelho
+confirmado contra o código de hoje); com o conserto, `--accept` grava o
+registro a partir do arquivo (nunca do instante da cura, inclusive com
+sessão de quem carimbou originalmente preservada), o `git checkout` seguinte
+não reabre mais nada, e uma segunda tentativa é no-op com o registro
+inalterado byte a byte — nos dois desfechos (`absorvida`/`aceita`) e no caso
+de campo ausente no carimbo legado (v1.11).
+`# classification: public` (a ordem é conteúdo do repo do usuário)
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o
