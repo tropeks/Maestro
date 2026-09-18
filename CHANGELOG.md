@@ -6,6 +6,73 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-09-18
+
+### Added
+- **O gerente pergunta ao Diretor pela Ponte, sem teclado** (ordem 020, INTENT v3).
+  `.mcp.json` na raiz do plugin declara o servidor `ponte` (`ponte-daemon mcp`, socket
+  `${HOME}/.ponte/mcp.sock`, caminho por `$HOME` — nunca literal de máquina). O hook Stop
+  (`gate-report.sh`) detecta a linha `[spock] aguardando:` e, **só** com o socket presente,
+  devolve `{"decision":"block","reason":…}` instruindo o gerente a chamar `director.ask` e
+  iterar `director.wait` **no próprio turno**. O hook nunca espera: decide e sai, `exit 0`.
+  Não-laço por **duas redes independentes** — `stop_hook_active` do payload e um marcador
+  com TTL de 40min por sessão+gate, porque a primeira é suposição sobre plataforma e a
+  segunda não depende dela. Socket ausente → nada dispara e a sessão termina normal
+  (Prioridade 1: falha degrada para o fluxo manual, nunca bloqueia).
+- **Sonda de baseline no recibo** (ordem 016 PR1): `probe_ms` ao lado de `load1m_x100` e
+  `ncpu` — mediana de N invocações no-op pelo caminho do kill-switch. Aditivo; recibo
+  anterior segue legível. A hipótese que sustentaria o enforcement por sonda **não se
+  sustentou** nesta forge e está registrada como resultado negativo: a razão medição÷sonda
+  varia 4,13–6,08 e a sonda é proporcionalmente MAIS volátil que o sinal que normalizaria.
+- **`maestro order --status N --json`** (ordem 014, issue #18): fonte única de estado para
+  o supervisor, que antes recalculava a derivação por conta.
+- **Estado `adiada`** (ordem 013): `deferred_by` congela recibo, árvore e ratchet — suspensa,
+  distinta de absorvida.
+
+### Fixed
+- **Estado terminal não morre mais no `git checkout`** (ordens 021 e 022). O carimbo
+  (`absorbed_by`/`accepted_at`) vivia como modificação NÃO COMMITADA num arquivo rastreado:
+  qualquer operação git que restaurasse o `HEAD` o apagava em silêncio, e a ordem reabria.
+  Medido ao vivo no Agenda_Studio — cinco ordens perderam o carimbo em dois merges do mesmo
+  dia. Agora a fonte é `~/.maestro/order-state/<slug>-<hash8>-<id>`, fora da árvore, com a
+  mesma chave do brief e da evidência (herda o tratamento E15 de worktree e repo principal
+  como o MESMO projeto). O arquivo segue recebendo o carimbo por conveniência de leitura.
+  A 022 acrescenta a **cura**: ordem terminal só-por-arquivo passa a gravar o registro em
+  vez de o `accept` responder "nada a fazer" e parar.
+- **`--absorbed-by main` funciona em repo cujo branch padrão é `master`** (ordem 022). A
+  string `main` era literal em quatro pontos, inclusive no RÓTULO DO RECIBO — nenhuma ordem
+  do NetForge podia ser fechada como absorvida.
+- **Estado terminal não depende de o branch existir** (ordem 017). "Branch ausente" tinha
+  dois sentidos opostos e o código só conhecia um: deletar branch mergeado — o fim normal
+  de toda ordem — rebaixava a ordem para `aberta`. Agora, com recibo válido e sem branch,
+  vale a árvore CONGELADA do recibo (precedente da 013), sem valor novo no enum.
+- **Autoproteção do gate reconhece worktree do próprio plugin** (ordem 012): dentro de
+  worktree, `bin/` ficava livre mesmo com record válido — guarda vencida por mudança de
+  endereço. Liberou worktree por frente, que virou o padrão de trabalho.
+- **Quantificador `{1,N}` grande em regex bash** (issue #42): ~O(N²) no glibc, mesmo contra
+  entrada minúscula. `{1,1024}` no fallback sem `jq` do `post-edit-habits.sh` media 205ms
+  contra o NFR de 50ms; vira `+` com corte por substring — 21ms. Caminho acima do teto passa
+  a ser **rejeitado**, nunca truncado, com o comprimento (metadado) em stderr e sem vazar o
+  caminho.
+
+### Changed
+- **E24 ordem C** (ordem 015): `intent`, `brief` e `docs` saem de `bin/maestro`, que cai de
+  2692 para 2238 linhas. As três funções gigantes foram **decompostas**, não movidas —
+  `cmd_docs` (147), `cmd_intent` (143) e `cmd_brief` (86) viram 20 funções, nenhuma acima de
+  47. A régua desceu de 22 para 13 em `oversized-function`; os lotes anteriores, que só
+  moviam código, não a mexiam.
+- **`lib/cmd-order-accept.sh` extraído** (ordem 022): `cmd-order.sh` estava em 400 linhas
+  exatas, no teto do sensor. Caiu para 328.
+- **INTENT v3**: o hook Stop entra no escopo — a exclusão do v1 repousava na premissa "hook
+  Stop hoje inexistente em hooks.json", que caducou quando S-2101 o entregou. Continuam
+  fora: qualquer capacidade de o gerente MANDAR, e injeção acima de 8000B.
+- **NFR de latência registrado com os dois lados** (`ARCHITECTURE.md`): o teto de 50ms vale
+  na máquina de referência (a CI); nesta forge vale o **delta** contra o baseline do mesmo
+  caso. Medido: a forge é ~4,8x mais lenta por invocação, razão estável entre os sete casos,
+  e idêntica antes e depois do E24 — capacidade, não regressão.
+- Emendas do `DATA_MODEL`: **v1.16** (`provada` sem branch), **v1.17** (`probe_ms`),
+  **v1.18** (carimbo terminal fora da árvore), **v1.19** (cura do carimbo só-arquivo).
+
 ## [1.15.2] — 2026-09-10
 
 ### Changed
