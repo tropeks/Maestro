@@ -107,7 +107,11 @@ fakehome=$(mktemp -d "$tmp/home.XXXXXX")
 printf '{"mcpServers":{"supermemory":{"url":"https://SECRET.example"},"outro":{}}}' \
   > "$fakehome/.claude.json"
 h4=$(mktemp -d "$tmp/h4.XXXXXX")
-HOME="$fakehome" MAESTRO_HOME="$h4" "$BIN" doctor >"$tmp/doc3" 2>&1
+# CLAUDE_PROJECT_DIR isolado (ordem 020): sem isto, check_session_env também olha
+# "$PWD/.mcp.json" — quando a suíte roda de dentro do repo do plugin (o caso normal
+# de tests/run-all.sh), um .mcp.json legítimo na raiz do plugin vazaria para dentro
+# desta asserção de match exato, que quer só os dois nomes do ~/.claude.json FALSO.
+HOME="$fakehome" MAESTRO_HOME="$h4" CLAUDE_PROJECT_DIR="$fakehome" "$BIN" doctor >"$tmp/doc3" 2>&1
 grep -qE 'MCP fora-do-envelope: 2 server\(s\) — .*outro supermemory' "$tmp/doc3" \
   && ok "nomeia os servers do ~/.claude.json (ordenados)" \
   || bad "nomeia os servers do ~/.claude.json"

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ponte": {
+      "command": "ponte-daemon",
+      "args": ["mcp"],
+      "env": { "PONTE_MCP_SOCKET": "${HOME}/.ponte/mcp.sock" }
+    }
+  }
+}
