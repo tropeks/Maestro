@@ -79,3 +79,19 @@ maestro_evidence_file() { # <raiz-do-projeto> <rótulo> → caminho no stdout
   local base="${bf##*/}"; base="${base%.md}"
   printf '%s/evidence/%s-%s' "${MAESTRO_HOME:-$HOME/.maestro}" "$base" "${2:-suite}"
 }
+
+# ---------------------------------------------------------------------------
+# ordem 021 — caminho do REGISTRO de estado terminal de uma ordem (DATA_MODEL
+# §9, emenda v1.18), fora da árvore de trabalho. Mesma chave djb2 do brief:
+# `maestro_brief_file` já trata worktree e repo principal como o MESMO
+# projeto (E15, ver comentário acima) — a propriedade exigida aqui, porque o
+# `git checkout` que apaga o carimbo do ARQUIVO roda na MESMA árvore que
+# gravou o carimbo, e o registro tem de sobreviver a ele intacto. Por ORDEM
+# (id), não por rótulo livre como a evidência — o id já é o identificador
+# estável da ordem dentro do projeto.
+# ---------------------------------------------------------------------------
+maestro_order_state_file() { # <raiz-do-projeto> <id-da-ordem> → caminho no stdout
+  local bf; bf=$(maestro_brief_file "$1")
+  local base="${bf##*/}"; base="${base%.md}"
+  printf '%s/order-state/%s-%03d' "${MAESTRO_HOME:-$HOME/.maestro}" "$base" "$((10#${2:-0}))"
+}

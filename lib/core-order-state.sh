@@ -43,6 +43,22 @@ _order_evidence_candidates() { # <id> → as 2 variantes de rótulo (S-1802: can
   printf 'order-%s\n' "$((10#$1))"
   printf 'order-%03d\n' "$((10#$1))"
 }
+_order_default_branch() { # <proj> → branch padrão do repo, resolvido — SEM rede (NetForge: 'main' fixo recusava master)
+  # Ordem de resolução: origin/HEAD (mais confiável quando existe) → config
+  # LOCAL init.defaultBranch (só se o branch existir de verdade — config
+  # desatualizada não vira sinal) → existência direta de main/master →
+  # fallback literal 'main' (preserva a mensagem de hoje quando não há sinal
+  # nenhum). `git remote show` fica de fora de propósito: chamaria a rede.
+  local proj="$1" ref db
+  ref=$(git -C "$proj" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) \
+    && [[ -n "$ref" ]] && { printf '%s' "${ref#origin/}"; return 0; }
+  db=$(git -C "$proj" config --get init.defaultBranch 2>/dev/null)
+  [[ -n "$db" ]] && git -C "$proj" rev-parse --verify --quiet "$db" >/dev/null 2>&1 \
+    && { printf '%s' "$db"; return 0; }
+  git -C "$proj" rev-parse --verify --quiet main   >/dev/null 2>&1 && { printf 'main';   return 0; }
+  git -C "$proj" rev-parse --verify --quiet master >/dev/null 2>&1 && { printf 'master'; return 0; }
+  printf 'main'
+}
 
 # --------------------------------------------------------- estado derivado (proj)
 _order_evidence_match() { # <proj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
@@ -75,8 +91,80 @@ _order_evidence_frozen_tree() { # <proj> <arquivo> → wtree_after do recibo VÁ
   done
   return 0
 }
+# ------------------------------------ registro de estado TERMINAL, fora da árvore (ordem 021, DATA_MODEL §9 v1.18)
+#
+# Causa (medida no Agenda_Studio, issue da ordem 021): o carimbo terminal
+# (`accepted_at`/`absorbed_by`) só existia como modificação NÃO COMMITADA no
+# arquivo da ordem — `maestro order --accept` escreve na árvore de trabalho e
+# para aí. Qualquer `git checkout`/`stash`/`reset` que restaure o HEAD apaga o
+# carimbo em silêncio, e a ordem "reabre" sozinha. Mesma raiz da issue #36
+# (o carimbo de aceite não atravessa worktree), um degrau abaixo (aqui não
+# atravessa um checkout).
+#
+# O registro mora em `maestro_order_state_file` (hooks/lib/project-state.sh,
+# ordem 021) — MESMA chave djb2 do brief/evidência, por ORDEM (id) em vez de
+# rótulo livre. Formato chave=valor (mesmo parser/técnica de `_ev_write` em
+# lib/core-evidence.sh — schema versionado, tmp+mv atômico).
+_order_state_field() { # <arquivo-do-registro> <chave> → valor, ou vazio
+  [[ -f "$1" ]] || return 0
+  awk -F= -v k="$2" '$1 == k { print substr($0, length(k)+2); exit }' "$1" 2>/dev/null
+}
+_order_state_write() { # <proj> <arquivo-da-ordem> <outcome:aceita|absorvida> <k=v>... → grava o registro TERMINAL fora da árvore; rc 0/2
+  local proj="$1" of="$2" outcome="$3" oid sf tmp kv
+  shift 3
+  oid=$(_order_field "$of" id)
+  sf=$(maestro_order_state_file "$proj" "$oid") || return 2
+  [[ -n "$sf" ]] || return 2
+  mkdir -p "${sf%/*}" 2>/dev/null || return 2
+  tmp="$sf.tmp.$$"
+  { printf 'schema=maestro-order-state-v1\n'
+    printf 'id=%s\noutcome=%s\n' "$((10#$oid))" "$outcome"
+    for kv in "$@"; do printf '%s\n' "$kv"; done
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$sf" 2>/dev/null && return 0
+  rm -f "$tmp" 2>/dev/null
+  return 2
+}
+# Duas variantes de leitura — não é a MESMA função por CAMPO (v1.16 já
+# firmou o precedente: irmã, não a mesma, quando o rigor difere). Aqui o que
+# difere é ONDE cada campo vive no arquivo: `absorbed_*` no CABEÇALHO
+# (_order_field, janela de 20 linhas — emenda v1.11); `accepted_*` ANEXADO ao
+# FINAL, lido por grep+tail-1 SEM janela porque reaceite pode anexar mais de
+# um carimbo e o ÚLTIMO vence (S-1806). Nos dois casos: registro (quando tem
+# a chave) é a FONTE; arquivo é a conveniência de migração — MESMA
+# precedência de _order_status.
+_order_terminal_field_header() { # <proj> <arquivo> <chave> → valor de campo do CABEÇALHO (absorbed_*)
+  local proj="$1" f="$2" k="$3" sf v
+  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
+  if [[ -n "$sf" && -f "$sf" ]]; then
+    v=$(_order_state_field "$sf" "$k")
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
+  _order_field "$f" "$k"
+}
+_order_terminal_field_appended() { # <proj> <arquivo> <chave> → valor de campo ANEXADO ao final (accepted_*, último vence)
+  local proj="$1" f="$2" k="$3" sf v
+  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
+  if [[ -n "$sf" && -f "$sf" ]]; then
+    v=$(_order_state_field "$sf" "$k")
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
+  grep "^$k: " "$f" 2>/dev/null | tail -1 | sed "s/^$k: //"
+}
 _order_status() { # <proj> <arquivo> → status derivado no stdout
-  local proj="$1" f="$2" br
+  local proj="$1" f="$2" br sf so
+  # ordem 021: o registro fora da árvore é a FONTE do estado terminal.
+  # Presente → DECIDE, mesmo que o arquivo tenha sido restaurado por um
+  # checkout (é exatamente o defeito que esta ordem fecha). Ausente → o
+  # carimbo do ARQUIVO ainda conta (migração: ordens carimbadas antes desta
+  # ordem entrar, em qualquer projeto desta máquina, não podem "reabrir").
+  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
+  if [[ -n "$sf" && -f "$sf" ]]; then
+    so=$(_order_state_field "$sf" outcome)
+    case "$so" in
+      aceita)    printf 'aceita';    return 0 ;;
+      absorvida) printf 'absorvida'; return 0 ;;
+    esac
+  fi
   grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
   [[ -n "$(_order_field "$f" absorbed_by)" ]] && { printf 'absorvida'; return 0; }   # issue #12
   [[ -n "$(_order_field "$f" deferred_by)" ]] && { printf 'adiada'; return 0; }   # ordem 013: suspensa, NÃO terminal — distinta de absorvida
@@ -123,7 +211,10 @@ _order_deferred_tree() { # <proj> <arquivo> → wtree_after do recibo já gravad
 _order_moved_since_accept() { # <proj> <arquivo> → caminhos mudados desde o aceite (S-1806; vazio = não andou)
   local proj="$1" f="$2" at tip br
   br=$(_order_field "$f" branch)
-  at=$(grep '^accepted_tree: ' "$f" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+  # ordem 021: accepted_tree pode só existir no registro fora da árvore, se
+  # um checkout restaurou o arquivo depois do --accept — mesma precedência de
+  # _order_status.
+  at=$(_order_terminal_field_appended "$proj" "$f" accepted_tree) || true
   [[ -n "$at" && "$at" != "desconhecida" ]] || return 0
   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
   [[ -n "$tip" && "$at" != "$tip" ]] || return 0

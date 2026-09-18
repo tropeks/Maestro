@@ -49,11 +49,12 @@ _order_json_bool() { # <chave> <0|1> → "chave":true|false
 
 _order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto "prova" — MESMO condicional/chamada de _order_action_status
   local proj="$1" of="$2" oid="$3" st="$4" _ptree="" p_estado="" p_detalhe="" p_arvore=""
-  [[ "$st" == "aceita" ]] && _ptree=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+  # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
+  [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
   if [[ "$st" == "absorvida" ]]; then
-    p_estado="absorvida"; p_arvore=$(_order_field "$of" absorbed_tree)
+    p_estado="absorvida"; p_arvore=$(_order_terminal_field_header "$proj" "$of" absorbed_tree)
     p_detalhe=$(printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)' \
-      "$(_order_field "$of" absorbed_by)" "${p_arvore:0:12}")
+      "$(_order_terminal_field_header "$proj" "$of" absorbed_by)" "${p_arvore:0:12}")
   elif [[ "$st" == "adiada" ]]; then
     p_estado="adiada"; p_arvore=$(_order_deferred_tree "$proj" "$of")
     if [[ -n "$p_arvore" ]]; then
@@ -147,7 +148,7 @@ _order_action_status_json() { # <proj> <arquivo> <id> — o boletim de _order_ac
   out+=",$(_order_json_acao_frag "$proj" "$of" "$st")"
   out+=",\"direcao\":$(_order_json_direcao_frag "$proj" "$of")"
   out+=",\"verificacao\":$(_order_json_verificacao_frag "$proj" "$of" "$st")"
-  out+=",$(_order_json_field absorvido_por "$(_order_field "$of" absorbed_by)")"
+  out+=",$(_order_json_field absorvido_por "$(_order_terminal_field_header "$proj" "$of" absorbed_by)")"
   out+=",$(_order_json_field adiado_por "$(_order_field "$of" deferred_by)")"
   out+=",\"prova\":$(_order_json_prova_frag "$proj" "$of" "$oid" "$st")"
   out+='}'

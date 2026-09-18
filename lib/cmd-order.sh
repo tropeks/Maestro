@@ -163,7 +163,8 @@ _order_show_next() { # <proj> <arquivo> <id> <status> <branch> → bloco final (
     provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
     aceita)   # S-1805: avisa se o branch andou DEPOIS do aceite (compara CAMINHO, não árvore)
       local _at2 _tip2 _mudou=""
-      _at2=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+      # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
+      _at2=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
       _tip2=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
       if [[ -n "$_at2" && "$_at2" != "desconhecida" && -n "$_tip2" && "$_at2" != "$_tip2" ]]; then
         _mudou=$(git -C "$proj" diff --name-only "$_at2" "$_tip2" 2>/dev/null \
@@ -178,7 +179,8 @@ _order_show_next() { # <proj> <arquivo> <id> <status> <branch> → bloco final (
       fi
       ;;
     absorvida)   # issue #12: terminal, DISTINTO de aceita
-      printf '  encerrada por absorção — provada junto de %s; nada mais a executar aqui.\n' "$(_order_field "$of" absorbed_by)"
+      printf '  encerrada por absorção — provada junto de %s; nada mais a executar aqui.\n' \
+        "$(_order_terminal_field_header "$proj" "$of" absorbed_by)"
       ;;
     adiada)   # ordem 013: SUSPENSA, distinta de absorvida — não é terminal, volta
       printf '  suspensa por decisão de %s — não cobra aceite nem prova enquanto o campo existir.\n' "$(_order_field "$of" deferred_by)"
@@ -196,10 +198,12 @@ _order_action_status() { # <proj> <arquivo> <id> — imprime o boletim completo 
     && printf ' (existe, tip %s)\n' "$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)" \
     || printf ' (não existe)\n'
   printf '  prova   : '
-  [[ "$st" == "aceita" ]] && _ptree=$(grep '^accepted_tree: ' "$of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') || true
+  # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
+  [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
   if [[ "$st" == "absorvida" ]]; then
     printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)\n' \
-      "$(_order_field "$of" absorbed_by)" "$(_order_field "$of" absorbed_tree | head -c 12)"
+      "$(_order_terminal_field_header "$proj" "$of" absorbed_by)" \
+      "$(_order_terminal_field_header "$proj" "$of" absorbed_tree | head -c 12)"
   elif [[ "$st" == "adiada" ]]; then
     # ordem 013: NUNCA "VENCIDA" — nem por idade nem por mudança de árvore.
     # A árvore mostrada é a que o recibo JÁ CONGELOU (_order_deferred_tree),
@@ -223,28 +227,31 @@ _order_action_status() { # <proj> <arquivo> <id> — imprime o boletim completo 
 
 # ------------------------------------------------------------- ação: --accept
 _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — --accept --absorbed-by (issue #12)
-  local proj="$1" odir="$2" of="$3" oid="$4" sid="$5" absorbed_by="$6" st abs_tree="" stamp
+  local proj="$1" odir="$2" of="$3" oid="$4" sid="$5" absorbed_by="$6" st abs_tree="" stamp ts
   st=$(_order_status "$proj" "$of")
   case "$st" in
     aceita) die validation "ordem $oid já está aceita (provou o próprio trabalho)" \
               "--absorbed-by não se aplica a ordem já aceita" 1 ;;
-    absorvida) printf 'ordem %s já absorvida por %s — nada a fazer\n' "$oid" "$(_order_field "$of" absorbed_by)"; return 0 ;;
+    absorvida) printf 'ordem %s já absorvida por %s — nada a fazer\n' "$oid" "$(_order_terminal_field_header "$proj" "$of" absorbed_by)"; return 0 ;;
   esac
   [[ "$absorbed_by" != "$oid" && "$absorbed_by" != "$((10#$oid))" ]] \
     || die validation "ordem $oid não pode absorver a si mesma" "" 1
-  if [[ "$absorbed_by" == "main" ]]; then
-    git -C "$proj" rev-parse --verify --quiet main >/dev/null 2>&1 \
-      || die validation "'main' não existe neste repositório" "" 1
+  if [[ "$absorbed_by" == "main" || "$absorbed_by" == "master" ]]; then
+    # NetForge: 'main'/'master' são os DOIS apelidos pro branch padrão real.
+    local def_br; def_br=$(_order_default_branch "$proj")
+    git -C "$proj" rev-parse --verify --quiet "$def_br" >/dev/null 2>&1 \
+      || die validation "branch padrão do repo ('$def_br') não existe" "" 1
     local m_tip m_ef m_ew=""
-    m_tip=$(git -C "$proj" rev-parse --verify --quiet "main^{tree}" 2>/dev/null)
-    m_ef=$(maestro_evidence_file "$proj" main 2>/dev/null)
+    m_tip=$(git -C "$proj" rev-parse --verify --quiet "$def_br^{tree}" 2>/dev/null)
+    m_ef=$(maestro_evidence_file "$proj" "$def_br" 2>/dev/null)
     if [[ -n "$m_ef" && -f "$m_ef" ]] && grep -q '^exit=0$' "$m_ef" 2>/dev/null; then
       m_ew=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$m_ef" 2>/dev/null)
     fi
     [[ -n "$m_ew" && -n "$m_tip" && "$m_ew" == "$m_tip" ]] \
-      || die validation "main não tem recibo válido (label 'main') no conteúdo ATUAL" \
-           "grave no tip do main: maestro evidence --record --label main -- <suíte>" 1
+      || die validation "branch padrão '$def_br' não tem recibo válido (label '$def_br') no conteúdo ATUAL" \
+           "grave no tip do $def_br: maestro evidence --record --label $def_br -- <suíte>" 1
     abs_tree="$m_tip"
+    absorbed_by="$def_br"   # carimbo grava o branch REAL, não o apelido digitado
   elif [[ "$absorbed_by" =~ ^[0-9]{1,3}$ ]]; then
     local m_oid m_of m_st
     m_oid=$(printf '%03d' "$((10#$absorbed_by))")
@@ -253,25 +260,30 @@ _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — 
     m_st=$(_order_status "$proj" "$m_of")
     case "$m_st" in
       provada) abs_tree=$(_order_proof_tree "$proj" "$m_of") ;;
-      aceita)  abs_tree=$(grep '^accepted_tree: ' "$m_of" 2>/dev/null | tail -1 | sed 's/^accepted_tree: //') ;;
+      aceita)  abs_tree=$(_order_terminal_field_appended "$proj" "$m_of" accepted_tree) ;;
       *) die validation "ordem $absorbed_by está '$m_st', não 'provada' nem 'aceita'" \
            "a absorvente tem de provar o PRÓPRIO trabalho antes de absorver outra — prove $absorbed_by: maestro evidence --record --label order-$((10#$absorbed_by)) -- <suíte>" 1 ;;
     esac
     [[ -n "$abs_tree" && "$abs_tree" != "desconhecida" ]] || die validation "ordem $absorbed_by não tem árvore provada legível" "" 1
   else
-    die validation "--absorbed-by exige 'main' ou o id numérico (1-3 dígitos) de uma ordem" "" 1
+    die validation "--absorbed-by exige 'main'/'master' (branch padrão) ou o id numérico (1-3 dígitos) de uma ordem" "" 1
   fi
+  ts=$(date -Iseconds)
   stamp=$(printf 'absorbed_by: %s\nabsorbed_tree: %s\nabsorbed_at: %s\nabsorbed_session: %s' \
-    "$absorbed_by" "$abs_tree" "$(date -Iseconds)" "${sid:-desconhecido}")
+    "$absorbed_by" "$abs_tree" "$ts" "${sid:-desconhecido}")
   awk -v ins="$stamp" '!done && $0 == "-->" { print ins; done=1 } { print }' "$of" > "$of.tmp.$$" \
     && mv -f "$of.tmp.$$" "$of" || { rm -f "$of.tmp.$$" 2>/dev/null; die env "falha ao gravar $of" "" 2; }
+  # ordem 021: registro é a FONTE; falha aqui não degrada — die e retry.
+  _order_state_write "$proj" "$of" absorvida \
+    "absorbed_by=$absorbed_by" "absorbed_tree=$abs_tree" "absorbed_at=$ts" "absorbed_session=${sid:-desconhecido}" \
+    || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
   log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
   log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
   printf 'ordem %s ABSORVIDA por %s — árvore %s; estado terminal, DISTINTO de aceita (esta ordem não provou o próprio trabalho)\n' \
     "$oid" "$absorbed_by" "${abs_tree:0:12}"
 }
 _order_accept_own() { # <proj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
-  local proj="$1" of="$2" oid="$3" sid="$4" reviewed="$5" st ptree _mv
+  local proj="$1" of="$2" oid="$3" sid="$4" reviewed="$5" st ptree _mv ts
   st=$(_order_status "$proj" "$of")
   if [[ "$st" == "aceita" ]]; then
     _mv=$(_order_moved_since_accept "$proj" "$of")   # S-1806: reaceite é no-op se nada andou
@@ -281,8 +293,12 @@ _order_accept_own() { # <proj> <arquivo> <id> <sid> <intent_reviewed> — aceita
     [[ -n "$ptree" ]] || die validation "ordem $oid andou depois do aceite e não tem prova do conteúdo atual" \
       "mudou fora do bookkeeping: ${_mv}— re-rode e regrave: maestro evidence --record --label order-$((10#$oid)) -- <suíte>" 1
     _order_verif_gate "$proj" "$of" "$oid"
+    ts=$(date -Iseconds)
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
-      "$(date -Iseconds)" "${sid:-desconhecido}" "$ptree" >> "$of"
+      "$ts" "${sid:-desconhecido}" "$ptree" >> "$of"
+    _order_state_write "$proj" "$of" aceita \
+      "accepted_at=$ts" "accepted_session=${sid:-desconhecido}" "accepted_tree=$ptree" \
+      || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
     _order_stamp_intent "$proj" "$of"
     log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
     log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
@@ -294,8 +310,12 @@ _order_accept_own() { # <proj> <arquivo> <id> <sid> <intent_reviewed> — aceita
   _order_intent_gate "$proj" "$of" "$oid" "$reviewed"
   _order_verif_gate "$proj" "$of" "$oid"   # S-1803: grava a árvore que a prova cobriu, fato histórico
   ptree=$(_order_proof_tree "$proj" "$of")
+  ts=$(date -Iseconds)
   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
-    "$(date -Iseconds)" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
+    "$ts" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
+  _order_state_write "$proj" "$of" aceita \
+    "accepted_at=$ts" "accepted_session=${sid:-desconhecido}" "accepted_tree=${ptree:-desconhecida}" \
+    || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
   _order_stamp_intent "$proj" "$of"
   log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
   log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
