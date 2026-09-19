@@ -6,6 +6,50 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.17.0] — 2026-09-19
+
+### Added
+- **O gerente pergunta ao Diretor em TODA rodada, não só quando há gate** (ordem 025).
+  A ordem 020 entregou o mecanismo e ele nunca disparou: o gatilho estava 135 linhas
+  DEPOIS do `exit 0` que roda quando não há gate pendente, e `gate` só é preenchido por
+  `feature`/`refactor` com `approach: pendente` ou `ship` sem desfecho — a maioria das
+  rodadas (`fix`, `custom`, `audit`, `verify`, `codereview`) nunca abre gate. O gatilho
+  subiu para antes do `exit 0`; o caminho de gate ficou intacto por cima. Não-laço por
+  **duas redes independentes**: `stop_hook_active` do payload e um marcador com TTL, agora
+  com sufixo `aviso` e o prune ensinado a reconhecê-lo. **Provado ao vivo**: esta pergunta
+  saiu por `director.ask`, acordou a pane do Diretor com `kind=question`, e a resposta
+  voltou por `director.wait` — sem uma tecla digitada.
+- **`papercuts.md` compartilhado por todos os gerentes** (ordem 026): falha de FERRAMENTA
+  com conserto conhecido, consultada antes de investigar. Escritor único
+  (`maestro papercut --add`) com `flock -w 5` cobrindo leitura+escrita — deliberadamente
+  diferente do `log_event`, onde contenção descarta a linha porque telemetria é barata;
+  aqui não se descarta nada. **A injeção sai MENOR do que entrou**: −28 B em máquina com
+  registros, −83 B em máquina vazia. O corte de 163 B da tipografia paga a linha cheia
+  (135 B) e o bootstrap (80 B) e ainda sobra. Ratchet 7400 → **7317**.
+- **Suíte de evals do plugin** (ordem 023): 6 casos, 11 graders, mocks do Ponte. Ablação
+  medida, não estimada — uplift real de **+1.0** (gatilho MCP) e **+0.67** (NFR por delta);
+  três eixos sem uplift, registrados com o motivo em vez de escondidos. Controle negativo
+  com o número feio reportado: 3/3 isolado, 2/3 com três amostras, e a run oficial calhou
+  na amostra que cede. O achado vale mais que o caso — **doutrina em texto reduz mas não
+  garante a recusa; só o CLI reprova de forma mecânica sempre**. Custo US$ 5,37.
+
+### Fixed
+- **Quantificador `{1,N}` grande em regex bash é ~O(N²)** (issue #42): `{1,1024}` no
+  fallback sem `jq` do `post-edit-habits.sh` media **197 ms** contra o NFR de 50 ms; vira
+  `+` com corte por substring — **27 ms**. Caminho acima do teto passa a ser **rejeitado**,
+  nunca truncado, com o comprimento (metadado) em stderr e sem vazar o caminho.
+- **Incoerência entre id, branch e rótulo do recibo fica VISÍVEL** (ordem 018). Uma ordem
+  tem três identificadores e nada os reconciliava — `_order_evidence_candidates` deriva o
+  rótulo só do id. Caso real no `vulcan`: `id: 002` com `branch: order/006-lab-prova`, e os
+  dois recibos no ledger, ambos os lados calados. O aviso entra no `--status`, no
+  `--status --json` (campo `identificador_incoerente`, ADITIVO) e no `doctor` (+1 checagem,
+  `warn`, nunca `fail`). **Diagnóstico, nunca reparo** — nenhum dos três é corrigido
+  automaticamente, porque escolher um vencedor seria inventar verdade. Branch sem número
+  extraível dá "não sei dizer", nunca falso positivo. Emenda **v1.20**.
+
+### Changed
+- Emenda do `DATA_MODEL`: **v1.20** (coerência de identificadores).
+
 ## [1.16.0] — 2026-09-18
 
 ### Added
