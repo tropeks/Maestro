@@ -14,10 +14,18 @@
 #
 # Lição da ordem 003 (contrato desta ordem): o teste NÃO exige o patch já
 # aplicado. Ele detecta o MECANISMO (a função/predicado que o patch introduz)
-# no arquivo alvo: ausente → PENDENTE, sem reprovar (bin/ e hooks/ estão na
-# denylist de autoproteção do gate — ADR-003 v1.2 — e quem aplica o patch em
-# docs/patches/ é o Capitão); presente → cobra de verdade e REPROVA se o
-# mecanismo estiver lá e não funcionar.
+# em ALGUM módulo do plugin: ausente → PENDENTE, sem reprovar (bin/, lib/ e
+# hooks/ estão na denylist de autoproteção do gate — ADR-003 v1.2 — e quem
+# aplica o patch em docs/patches/ é o Capitão); presente → cobra de verdade e
+# REPROVA se o mecanismo estiver lá e não funcionar.
+#
+# Guard por MECANISMO, nunca por ENDEREÇO (lição da ordem 019, paga aqui): o
+# E24 moveu `_order_valid_stamp` e a acusação de id duplicado de bin/maestro
+# para lib/core-order-state.sh e lib/cmd-order.sh — um guard que só olhasse
+# bin/maestro diria PENDENTE para sempre, com o patch já aplicado. Os dois
+# guards do CLI abaixo perguntam se o mecanismo existe em ALGUM módulo do
+# plugin — nunca em tests/, que casaria com este próprio arquivo e tornaria o
+# guard sempre-verdadeiro.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,9 +53,13 @@ grep -qF '_maestro_order_stamp_ok' "$SS" 2>/dev/null && HOOK_PATCHED=1
 # listar (nem deixar fingir duplicata de id) um .md que não é ordem, e a
 # detecção de id duplicado entre ordens de verdade.
 CLI_STAMP_PATCHED=0
-grep -qF '_order_valid_stamp' "$BIN" 2>/dev/null && CLI_STAMP_PATCHED=1
+if grep -rqF '_order_valid_stamp' "$REPO/lib" "$REPO/bin" "$REPO/hooks" 2>/dev/null; then
+  CLI_STAMP_PATCHED=1
+fi
 CLI_DUPE_PATCHED=0
-grep -qF 'id de ordem duplicado' "$BIN" 2>/dev/null && CLI_DUPE_PATCHED=1
+if grep -rqF 'id de ordem duplicado' "$REPO/lib" "$REPO/bin" "$REPO/hooks" 2>/dev/null; then
+  CLI_DUPE_PATCHED=1
+fi
 
 P="$tmp/proj"; mkdir -p "$P/core/auth"
 git -C "$P" init -q

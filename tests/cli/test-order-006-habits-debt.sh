@@ -6,9 +6,16 @@
 # única forma de o prazo ser mecânico. `maestro doctor` avisa a partir de
 # D-14. Epoch é INTEIRO (CLAUDE.md proíbe float em métrica de custo).
 #
-# Teste NÃO exige o patch já aplicado (bin/ está na denylist do gate).
+# Teste NÃO exige o patch já aplicado (bin/ e lib/ estão na denylist do gate).
 # Ausente → PENDENTE; presente → cobra os 5 casos do plano + prova o TERCEIRO
 # ESTADO (sabota a comparação de prazo e mostra que a MESMA asserção reprova).
+#
+# Guard por MECANISMO, nunca por ENDEREÇO (lição da ordem 019, paga aqui): o
+# E24 moveu as colunas 3/4 de bin/maestro para lib/cmd-habits.sh — um guard
+# que só olhasse bin/maestro diria PENDENTE para sempre, com o patch já
+# aplicado. Pergunta se o mecanismo existe em ALGUM módulo do plugin — nunca
+# em tests/, que casaria com este próprio arquivo e tornaria o guard
+# sempre-verdadeiro.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -22,7 +29,9 @@ bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 pending() { printf 'PENDENTE  %s\n' "$1"; }
 
 PATCHED=0
-grep -qF 'base_vence' "$BIN" 2>/dev/null && PATCHED=1
+if grep -rqF 'base_vence' "$REPO/lib" "$REPO/bin" "$REPO/hooks" 2>/dev/null; then
+  PATCHED=1
+fi
 if (( PATCHED == 0 )); then
   pending "ordem 006/0.3: bin/maestro ainda sem colunas 3/4 (vence_epoch/alvo) — aplicar docs/patches/006-lote0-shebang-cli.patch e 006-lote0-debt-tsv-cli.patch (nessa ordem)"
   exit 0
@@ -73,17 +82,24 @@ DOC2=$(printf 'oversized-file\t5\t%d\t0\n' "$PAST" > "$P/.maestro-habits.tsv"; r
 # terceiro estado: sabota a comparação (now > vence) numa CÓPIA e mostra que
 # a mesma asserção (caso 2 acima) reprova a sabotagem.
 # ---------------------------------------------------------------------------
-SABROOT="$T/sabotado"; mkdir -p "$SABROOT/bin"
+# Ordem 027: a ordem 016 (36419c6, E24) moveu a comparação de bin/maestro
+# para lib/cmd-habits.sh (cmd_habits) — sabotar $SAB não pega mais nada,
+# porque o trecho não mora mais lá. _habits_lib_load exige só
+# lib/cmd-habits.sh; a sandbox agora COPIA (nunca symlinka) esse arquivo — o
+# mínimo pra rodar — e sabota a CÓPIA, não o binário. Symlink em lib/
+# sabotaria o repo real.
+SABROOT="$T/sabotado"; mkdir -p "$SABROOT/bin" "$SABROOT/lib"
 ln -s "$REPO/hooks" "$SABROOT/hooks"
 ln -s "$REPO/agents" "$SABROOT/agents" 2>/dev/null || :
 ln -s "$REPO/config" "$SABROOT/config" 2>/dev/null || :
 ln -s "$REPO/bin/maestro-wtree" "$SABROOT/bin/maestro-wtree"
-SAB="$SABROOT/bin/maestro"; cp "$BIN" "$SAB"
-sed -i 's/now_epoch > vence \&\& cur > alvo/now_epoch < vence \&\& cur > alvo/' "$SAB"
-if ! grep -q 'now_epoch < vence && cur > alvo' "$SAB"; then
+cp "$REPO/lib/cmd-habits.sh" "$SABROOT/lib/cmd-habits.sh"
+SAB="$SABROOT/bin/maestro"; cp "$BIN" "$SAB"; chmod +x "$SAB"
+SABLIB="$SABROOT/lib/cmd-habits.sh"
+sed -i 's/now_epoch > vence \&\& cur > alvo/now_epoch < vence \&\& cur > alvo/' "$SABLIB"
+if ! grep -q 'now_epoch < vence && cur > alvo' "$SABLIB"; then
   bad "sabotagem não pegou (padrão do sed não bateu — mecanismo mudou de forma?)"
 else
-  chmod +x "$SAB"
   printf '# c\noversized-file\t5\t%d\t0\n' "$PAST" > "$P/.maestro-habits.tsv"
   MAESTRO_HOME="$T/home-sab" "$SAB" habits --all --project "$P" >/dev/null 2>&1
   RC_SAB=$?

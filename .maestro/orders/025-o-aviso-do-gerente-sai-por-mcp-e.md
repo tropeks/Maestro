@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+absorbed_by: main
+absorbed_tree: 349c2e7293784c4d6e70c583a5737b89a6e04818
+absorbed_at: 2026-09-19T10:40:55-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 025 — o aviso do gerente sai por MCP em toda rodada, nao so quando ha gate
 

@@ -12,11 +12,18 @@
 # tests/cli/test-order-issue6.sh: não estourar o teto da catraca `oversized-file`.
 #
 # Lição das ordens 003/004: o teste NÃO exige o patch já aplicado. Ele detecta
-# o MECANISMO em bin/maestro: ausente → PENDENTE, sem reprovar (bin/ está na
-# denylist de autoproteção do gate, ADR-003 v1.2; quem aplica
-# docs/patches/005-issue11-recibo-com-carga.patch é o Capitão); presente →
-# cobra de verdade e prova o TERCEIRO ESTADO — sabota o mecanismo (aplicado
+# o MECANISMO em ALGUM módulo do plugin: ausente → PENDENTE, sem reprovar
+# (bin/ e lib/ estão na denylist de autoproteção do gate, ADR-003 v1.2; quem
+# aplica docs/patches/005-issue11-recibo-com-carga.patch é o Capitão); presente
+# → cobra de verdade e prova o TERCEIRO ESTADO — sabota o mecanismo (aplicado
 # numa CÓPIA) e mostra que a MESMA asserção reprova.
+#
+# Guard por MECANISMO, nunca por ENDEREÇO (lição da ordem 019, paga aqui): o
+# E24 moveu esta gravação de bin/maestro para lib/core-evidence.sh — um guard
+# que só olhasse bin/maestro diria PENDENTE para sempre, com o patch já
+# aplicado. Pergunta se o mecanismo existe em ALGUM módulo do plugin — nunca
+# em tests/, que casaria com este próprio arquivo e tornaria o guard
+# sempre-verdadeiro.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -42,7 +49,9 @@ echo base > "$P/f"; git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.na
 # Mecanismo: os 3 campos novos no `--record` + a qualificação na leitura.
 # ---------------------------------------------------------------------------
 PATCHED=0
-grep -qF 'load1m_x100=%s\nncpu=%s\ninconclusive=%s' "$BIN" 2>/dev/null && PATCHED=1
+if grep -rqF 'load1m_x100=%s\nncpu=%s\ninconclusive=%s' "$REPO/lib" "$REPO/bin" "$REPO/hooks" 2>/dev/null; then
+  PATCHED=1
+fi
 
 if (( PATCHED == 0 )); then
   pending "issue #11: bin/maestro ainda sem load1m_x100/ncpu/inconclusive — aplicar $PATCH"
@@ -98,22 +107,37 @@ else
   # mostra que a MESMA asserção de cima reprova.
   # ---------------------------------------------------------------------------
   # bin/maestro resolve REPO_DIR a partir do PRÓPRIO caminho (dirname/..) —
-  # a cópia sabotada precisa morar em bin/ com um hooks/ irmão (symlink),
-  # senão "quebra" por motivo errado (source de hooks/lib/common.sh falhando)
-  # em vez do motivo que este teste quer provar.
-  SABROOT="$tmp/sabotado"; mkdir -p "$SABROOT/bin"
+  # a cópia sabotada precisa morar em bin/ com hooks/ e bin/maestro-wtree
+  # irmãos (symlink), senão "quebra" por motivo errado (source de
+  # hooks/lib/common.sh falhando) em vez do motivo que este teste quer provar.
+  #
+  # Ordem 027: a ordem 016 (36419c6, E24) moveu a QUALIFICAÇÃO de
+  # bin/maestro para lib/cmd-evidence.sh (_ev_cmd_qualifiers) — sabotar $SAB
+  # não pega mais nada, porque o trecho não mora mais lá. _ev_lib_load exige
+  # lib/core-evidence.sh + lib/cmd-evidence.sh; a sandbox agora COPIA (nunca
+  # symlinka) só esses dois — o mínimo pra rodar — e sabota a CÓPIA de
+  # lib/cmd-evidence.sh, não o binário. Symlink em lib/ sabotaria o repo real.
+  # _ev_cmd_verdict chama _verif_lib_load (lib/cmd-verify.sh) antes de medir —
+  # sem ele o comando morre em "lib/cmd-verify.sh não encontrado" ANTES de
+  # chegar à qualificação sabotada, e o teste passaria por acidente (achado
+  # ao rodar com bash -x, ver docs/patches/027-NOTAS.md).
+  SABROOT="$tmp/sabotado"; mkdir -p "$SABROOT/bin" "$SABROOT/lib"
   ln -s "$REPO/hooks" "$SABROOT/hooks"
   ln -s "$REPO/agents" "$SABROOT/agents" 2>/dev/null || :
   ln -s "$REPO/bin/maestro-wtree" "$SABROOT/bin/maestro-wtree"
+  cp "$REPO/lib/core-evidence.sh" "$SABROOT/lib/core-evidence.sh"
+  cp "$REPO/lib/cmd-evidence.sh" "$SABROOT/lib/cmd-evidence.sh"
+  cp "$REPO/lib/cmd-verify.sh" "$SABROOT/lib/cmd-verify.sh"
   SAB="$SABROOT/bin/maestro"
   cp "$BIN" "$SAB"
+  chmod +x "$SAB"
+  SABLIB="$SABROOT/lib/cmd-evidence.sh"
   # inverte o sentido do limiar: "acima do limiar" passa a imprimir como se
   # estivesse dentro — a mensagem de qualificação mente.
-  sed -i 's/if (( e_load > load_limiar )); then/if (( e_load <= load_limiar )); then/' "$SAB"
-  if ! grep -q 'if (( e_load <= load_limiar )); then' "$SAB"; then
+  sed -i 's/if (( e_load > load_limiar )); then/if (( e_load <= load_limiar )); then/' "$SABLIB"
+  if ! grep -q 'if (( e_load <= load_limiar )); then' "$SABLIB"; then
     bad "sabotagem não pegou (padrão do sed não bateu — mecanismo mudou de forma?)"
   else
-    chmod +x "$SAB"
     OUT_SAB=$(MAESTRO_EVIDENCE_LOAD1M_LIMIAR_X100=200 "$SAB" evidence --label carga --project "$P" 2>&1)
     if grep -q 'VÁLIDA, mas fora do limiar de medição (load 12.12)' <<<"$OUT_SAB"; then
       bad "sabotagem não quebrou nada — a asserção passaria mesmo com o mecanismo invertido"

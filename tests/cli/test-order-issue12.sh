@@ -18,14 +18,21 @@
 # Este arquivo cobre as duas portas E a recusa (a parte que mais importa).
 #
 # Lição da ordem 003/004A, contrato desta ordem: o teste NÃO exige o patch já
-# aplicado. Detecta o MECANISMO em bin/maestro e hooks/session-start.sh:
-# ausente → PENDENTE (nunca reprova — bin/ e hooks/ estão na denylist de
-# autoproteção do gate, ADR-003 v1.2; quem aplica em docs/patches/ é o
-# Capitão); presente → cobra de verdade e REPROVA se o mecanismo não
-# funcionar. O patch desta ordem (docs/patches/004-issue12-absorvida-e-
-# terminal.patch) assume o patch da rodada A (docs/patches/004-issue13-
-# carimbo-de-ordem.patch) JÁ aplicado — os dois tocam as mesmas linhas de
-# hooks/session-start.sh; aplique 13 antes de 12.
+# aplicado. Detecta o MECANISMO em ALGUM módulo do plugin e em
+# hooks/session-start.sh: ausente → PENDENTE (nunca reprova — bin/, lib/ e
+# hooks/ estão na denylist de autoproteção do gate, ADR-003 v1.2; quem aplica
+# em docs/patches/ é o Capitão); presente → cobra de verdade e REPROVA se o
+# mecanismo não funcionar. O patch desta ordem (docs/patches/004-issue12-
+# absorvida-e-terminal.patch) assume o patch da rodada A (docs/patches/004-
+# issue13-carimbo-de-ordem.patch) JÁ aplicado — os dois tocam as mesmas linhas
+# de hooks/session-start.sh; aplique 13 antes de 12.
+#
+# Guard por MECANISMO, nunca por ENDEREÇO (lição da ordem 019, paga aqui): o
+# E24 moveu `--absorbed-by` de bin/maestro para lib/cmd-order.sh (e a ação
+# para lib/cmd-order-accept.sh) — um guard que só olhasse bin/maestro diria
+# PENDENTE para sempre, com o patch já aplicado. Pergunta se o mecanismo
+# existe em ALGUM módulo do plugin — nunca em tests/, que casaria com este
+# próprio arquivo e tornaria o guard sempre-verdadeiro.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,9 +52,12 @@ bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 pending() { printf 'PENDENTE  %s\n' "$1"; }
 
 # Mecanismo do CLI: a flag e o caminho de derivação/aceite que esta ordem
-# introduz em bin/maestro.
+# introduz — hoje em lib/cmd-order.sh + lib/cmd-order-accept.sh (E24), nunca
+# em tests/ (casaria com este próprio arquivo).
 CLI_PATCHED=0
-grep -qF -- '--absorbed-by' "$BIN" 2>/dev/null && CLI_PATCHED=1
+if grep -rqF -- '--absorbed-by' "$REPO/lib" "$REPO/bin" "$REPO/hooks" 2>/dev/null; then
+  CLI_PATCHED=1
+fi
 
 # Mecanismo do hook: absorbed_by no MESMO teste de exclusão de accepted_at,
 # nos dois laços de hooks/session-start.sh (frozen zones e contagem de
