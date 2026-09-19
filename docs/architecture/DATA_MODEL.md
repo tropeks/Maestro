@@ -1336,6 +1336,67 @@ inalterado byte a byte — nos dois desfechos (`absorvida`/`aceita`) e no caso
 de campo ausente no carimbo legado (v1.11).
 `# classification: public` (a ordem é conteúdo do repo do usuário)
 
+#### Emenda v1.21 (ordem 024 fatia 1) — `fronts`/`measures`: o eixo RECURSO do `mode: multi`
+
+Causa medida (não hipótese): H6 ("frentes independentes que não se bloqueiam →
+mode: multi") só exigia disjunção em ARQUIVOS. Seis frentes despachadas juntas
+mediram load 17,4 em 8 CPUs, suíte de 8m41s para 9m52s, uma ordem presa 47min
+em fila e recibos consecutivos "fora do limiar de medição" — duas frentes
+podiam não tocar o mesmo arquivo e ainda assim se destruírem na CPU. Faltava o
+eixo RECURSO: **frentes que DECIDEM paralelizam; frentes que MEDEM correm
+sozinhas.**
+
+Dois campos novos no decision record, ambos opcionais, ambos escritos por
+`maestro decide` (`src/cli.ts`, nunca em bash — mesmo dono de sempre do
+record):
+
+```json
+{
+  "fronts": [["a/", "b/"], ["c/"]],
+  "measures": true
+}
+```
+
+| campo | tipo | validação |
+|---|---|---|
+| `fronts` | array de arrays de string | só existe com `--fronts` em `mode: multi`; ≥2 frentes, cada frente ≥1 caminho, caminho ≤200 chars. Eixo ARQUIVO: o `decide` RECUSA (decide-time, exit 1) sobreposição de PREFIXO de diretório entre DUAS frentes — duas frentes que disputam o mesmo diretório se destroem na CPU mesmo sem tocar o mesmo arquivo, e é esse buraco que o campo fecha |
+| `measures` | `true` (booleano) | marca esta frente como MEDIDORA (roda suíte/benchmark). Só existe `true`; ausência é "não mede" — nunca `false` gravado |
+
+`fronts` é a declaração de UMA decisão orquestradora (`--fronts "a/ b/;c/"`,
+frentes separadas por `;`, caminhos por espaço) — não agrega frentes de
+sessões diferentes; quem lista todas as frentes de um swarm é quem as
+despacha. `measures` é independente de `mode`: uma frente medidora pode ser
+`direct`, `subagent` ou `multi` — o que importa é que ela vai rodar algo
+sensível a contenção de CPU, não que ela orquestre outras frentes.
+
+**Eixo RECURSO é aviso, nunca recusa (INTENT Prioridades §1).** Com
+`--measures`, o `decide` verifica `~/.maestro/sessions/*.json` (mesma fonte
+que o E26 já escopa) por outra sessão VIVA e não expirada (`expires_at` no
+futuro, fonte de verdade já usada por `record_expired`/`doctor`) — havendo
+uma, **avisa** ("frentes que MEDEM correm sozinhas") e segue gravando o
+record normalmente; nunca bloqueia. A guarda degrada em SILÊNCIO: sem
+`~/.maestro/sessions/`, JSON corrompido ou arquivo ilegível, ela simplesmente
+não encontra nada e não avisa — falha de leitura nunca derruba o `decide`.
+
+Os dois campos são ADITIVOS: um record gravado antes desta emenda (sem
+`fronts` nem `measures`) continua válido — `record_schema_ok`
+(`lib/core-record.sh`) só valida o formato QUANDO o campo existe, mesmo
+molde de `depth`/`profile`/`budget`/`flags`. `fronts`/`measures` vivem só no
+record, nunca no `~/.maestro/logs/routing.jsonl` (§4 intocado) — nenhum dos
+dois é vocabulário fechado de evento, e caminho de diretório do projeto do
+usuário não é metadado de roteamento.
+
+Consumidor do eixo RECURSO na leitura ANTES de medir: `maestro evidence
+--record` reaproveita a MESMA sonda de carga da issue #11/ordem 005
+(`load1m_x100`, `ncpu`, o `load_limiar` de `_ev_cmd_qualifiers`) para avisar,
+ANTES de rodar o comando sob prova, quando a carga já está fora do limiar —
+API_SPEC §2 (`maestro evidence`). Nenhuma sonda nova; o formato do recibo
+(§8) não ganha campo novo por esta emenda.
+
+Prova: `tests/hooks/test-order-024-swarm.sh`.
+`# classification: confidential` (mesma classificação do resto do record — os
+caminhos de `fronts` revelam estrutura do repo do usuário).
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o

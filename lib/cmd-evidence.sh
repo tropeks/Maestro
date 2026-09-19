@@ -120,8 +120,24 @@ _ev_cmd_run() { # <proj> -- <comando...> → roda em $proj; grava EV_RUN_RC/EV_R
   return 0
 }
 
-_ev_cmd_record() { # <proj> <label> <arquivo do recibo> -- <comando...> → grava; rc = exit do comando
-  local proj="$1" label="$2" ef="$3"; shift 3
+_ev_cmd_preload_warn() { # <load1m_x100> <load_limiar> → imprime aviso (stdout) se JÁ fora do limiar ANTES de medir; sempre rc 0
+  # ordem 024 fatia 1: reaproveita a MESMA sonda/limiar de _ev_cmd_qualifiers
+  # (load1m_x100, ncpu, load_limiar da issue #11/ordem 005) — nenhuma sonda
+  # nova. Antes desta ordem, "fora do limiar" só aparecia no recibo, DEPOIS de
+  # a suíte inteira (minutos) já ter sido gasta; isto avisa ANTES de rodar.
+  local load="$1" limiar="$2"
+  [[ "$load" =~ ^[0-9]+$ && "$limiar" =~ ^[0-9]+$ ]] || return 0
+  if (( load > limiar )); then
+    local load_str="$(( load / 100 )).$(printf '%02d' $(( load % 100 )))"
+    local limiar_str="$(( limiar / 100 )).$(printf '%02d' $(( limiar % 100 )))"
+    printf 'ATENÇÃO: carga já fora do limiar de medição ANTES de medir (load %s > limiar %s) — este recibo tende a sair inconclusivo; considere esperar a carga cair\n' \
+      "$load_str" "$limiar_str"
+  fi
+  return 0
+}
+
+_ev_cmd_record() { # <proj> <label> <arquivo do recibo> <load_limiar> -- <comando...> → grava; rc = exit do comando
+  local proj="$1" label="$2" ef="$3" load_limiar="$4"; shift 4
   [[ "${1:-}" == "--" ]] && shift
   [[ $# -gt 0 ]] || die validation "comando ausente" \
     "maestro evidence --record -- bash tests/run-all.sh" 1
@@ -133,6 +149,9 @@ _ev_cmd_record() { # <proj> <label> <arquivo do recibo> -- <comando...> → grav
   local decl cmd_match load1m_x100 ncpu probe_ms
   IFS=$'\x1f' read -r decl cmd_match <<<"$(_ev_cmd_match "$proj" "$label" "$cmd_str")"
   IFS=$'\x1f' read -r load1m_x100 ncpu <<<"$(_ev_cmd_measure_load)"
+  # ordem 024 fatia 1: aviso ANTES de medir — a mesma carga que _ev_write vai
+  # gravar no recibo, só que dita ANTES do comando rodar, não depois.
+  _ev_cmd_preload_warn "$load1m_x100" "$load_limiar"
   # ordem 016 PR1: sonda medida no INÍCIO da corrida, antes do comando sob
   # prova rodar — mede a capacidade da máquina, não o efeito do comando nela.
   probe_ms=$(_ev_cmd_measure_probe)
@@ -263,7 +282,7 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
   local ef; ef=$(maestro_evidence_file "$proj" "$label")
 
   if [[ "$mode" == "record" ]]; then
-    _ev_cmd_record "$proj" "$label" "$ef" -- "${cmd_args[@]}"
+    _ev_cmd_record "$proj" "$label" "$ef" "$load_limiar" -- "${cmd_args[@]}"
     return $?
   fi
   _ev_cmd_verdict "$proj" "$label" "$maxage" "$load_limiar" "$check"

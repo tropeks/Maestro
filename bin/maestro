@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd Stop SubagentStop)   # S-1811 SessionEnd · S-2101 Stop · S-2301 SubagentStop
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications kill_reason'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications kill_reason fronts measures'
 
 usage() {
   cat <<'U'

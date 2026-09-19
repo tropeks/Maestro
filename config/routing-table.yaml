@@ -131,16 +131,33 @@ routes:
 # PRECEDÊNCIA (H1 > H2 > H6 > H5 > H3 > H4). Sem ela, H1×H2 e H3×H5 se contradiziam
 # em silêncio e o modelo desempatava por conta própria (ROUTING_EVAL R5, R6).
 execution_heuristics:
-  - "H1 DELEGUE POR PADRÃO. mode: direct é EXCEÇÃO — só quando delegar não faz sentido: meta-trabalho na própria sessão, tarefa que depende do contexto já acumulado na conversa, ou pergunta/leitura sem edição. Tarefa PEQUENA não é motivo para direct: delegar um bugfix de uma linha a um especialista sonnet custa menos que fazê-lo no contexto principal (ADR-004). Em direct NÃO existe agente — o campo agents não vai no record"
+  # ordem 024 fatia 1: as duas últimas cláusulas saíram daqui (-77B) para pagar
+  # H8 (coluna model, abaixo) no MESMO changeset — RATCHET do injection-budget
+  # desce junto (tests/hooks/test-injection-budget.sh). Nenhuma perda de
+  # conteúdo: a citação de ADR-004 sobrevive em H3/H8, e "em direct não existe
+  # agente" já é FATO mecânico que o `decide` recusa sozinho (--agents não se
+  # aplica a mode=direct) — repetir aqui era pagar byte por algo que o CLI já
+  # garante sem depender do texto da heurística.
+  - "H1 DELEGUE POR PADRÃO. mode: direct é EXCEÇÃO — só quando delegar não faz sentido: meta-trabalho na própria sessão, tarefa que depende do contexto já acumulado na conversa, ou pergunta/leitura sem edição. Tarefa PEQUENA não é motivo para direct: delegar um bugfix de uma linha a um especialista sonnet custa menos que fazê-lo no contexto principal."
   - "H2 pedido que descreve comportamento novo, ou que cita duas ou mais áreas do sistema → mode: subagent com plano"
   - "H6 mais de uma stack envolvida, ou frentes independentes que não se bloqueiam → mode: multi"
-  - "H3 tarefa mecânica, repetitiva e de critério objetivo → dev-junior (haiku). VENCE H5: o tiering de custo é a razão de existir do roster, e mecânico em haiku é mais barato que mecânico em especialista sonnet (ADR-004)"
+  # ordem 024 fatia 1: "VENCE H5" comprimido (-65B, mesmo corte compensatório
+  # de H1/H4 acima) — o argumento (tiering de custo é a razão de existir do
+  # roster) sobrevive por inteiro no ADR-004 citado; a heurística guarda só a
+  # DECISÃO (haiku vence sonnet em mecânico), não a justificativa completa.
+  - "H3 tarefa mecânica, repetitiva e de critério objetivo → dev-junior (haiku). VENCE H5 (ADR-004): mecânico em haiku é mais barato que em especialista sonnet"
   - "H5 fora de tarefa mecânica, a linguagem do ALVO (do .maestro.yaml do projeto ou do arquivo citado, não da palavra usada no pedido) escolhe o especialista; H5 sobrepõe o binding de implement, e só se aplica quando mode ≠ direct"
   # H4 e H5 COMPÕEM, não competem. A description do próprio engenheiro diz que ele
   # "entrega plano e trade-offs, não o código final" — rotear um refactor só para ele
   # deixaria a implementação sem dono. Foi a única divergência que os dois juízes
   # cegos apontaram em todas as rodadas de avaliação.
-  - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 (ou dev-pleno) para implementar — engenheiro + especialista em mode: multi. Decisão ESTRUTURAL CRÍTICA (cross-sistema, migração de dados, concorrência, segurança, cara de reverter) → quem planeja é o arquiteto (opus): tier caro, raro; plano comum segue no engenheiro"
+  - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 (ou dev-pleno) para implementar — engenheiro + especialista em mode: multi. Decisão ESTRUTURAL CRÍTICA (cross-sistema, migração de dados, concorrência, segurança, cara de reverter) → arquiteto (opus) planeja; comum fica no engenheiro"
   # Limite conhecido: não há agente de infra/homelab no roster (ADR-004), então
   # tarefa de infra cai em dev-pleno ou custom. Registrado em ROUTING_EVAL R8.
-  - "H7 a PROFUNDIDADE do plano é decisão sua e vai no record (--depth): standard por padrão; deep quando a mudança toca contrato ou fronteira de doc canônico (cite doc+seção); day-zero NUNCA automático — só por decide explícito com --profile (prototipo|piloto|produto) quando um projeto está nascendo"
+  - "H7 a PROFUNDIDADE do plano é decisão sua e vai no record (--depth): standard por padrão; deep quando a mudança toca contrato ou fronteira de doc canônico; day-zero NUNCA automático — só por decide explícito com --profile (prototipo|piloto|produto) quando um projeto está nascendo"
+  # ordem 024 fatia 1 (item 4 do escopo): binding e heurística são eixos
+  # diferentes (comentário de bindings, acima) — o binding fixa O QUE roda, a
+  # heurística de MODELO escolhe o TIER de custo quando o papel não fixa um
+  # `model` só (ADR-004: dev-junior=haiku fixo, especialistas=sonnet fixo,
+  # engenheiro/seguranca/ux variam). H8 é o que resolve essa variação.
+  - "H8 modelo por PERFIL da tarefa (ADR-004): mecânica e estreita → haiku; implementação com contrato/TDD → sonnet (padrão); desenho, revisão final, migração, segurança → opus"

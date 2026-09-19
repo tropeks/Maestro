@@ -197,6 +197,7 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
                [--agents a,b,c] [--reason "..."]
                [--depth standard|deep|day-zero] [--profile prototipo|piloto|produto]
                [--brief "essencia: ...\nimpacto: ...\napproach: ..."]
+               [--fronts "a/ b/;c/"] [--measures]
 ```
 - Valida contra `routing-table.yaml` (workflow precisa existir; `mode≠direct` exige `--agents`; agentes precisam existir no roster). `--reason` truncado em **120 caracteres** com aviso (mitigação de vazamento de prompt).
 - **E17/S-1701 — regência:** `--depth` default `standard`; `--profile` **obrigatório
@@ -218,6 +219,25 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   $ maestro-decide --session abc123 --workflow feature --mode subagent --agents dev-pleno \
       --depth deep --brief $'essencia: gate de regência no decide\nimpacto: aprovador le 3 linhas, nao o diff\napproach: pendente'
   ok: record gravado (depth=deep, brief=3/3 marcadores, approach=pendente)
+  ```
+- **ordem 024 fatia 1 — H6, eixo ARQUIVO + eixo RECURSO (DATA_MODEL §3 v1.21):**
+  `--fronts "a/ b/;c/"` só se aplica a `--mode multi` (frentes separadas por `;`,
+  caminhos de cada frente separados por espaço; mínimo 2 frentes). **Recusa
+  decide-time (exit 1):** sobreposição de PREFIXO de diretório entre DUAS
+  frentes — a mensagem cita os dois caminhos e a frente de cada um. `--measures`
+  marca esta frente como MEDIDORA (roda suíte/benchmark); com outra sessão VIVA
+  e não expirada em `~/.maestro/sessions/*.json` (mesma fonte que o E26 já
+  escopa), **avisa** (nunca recusa — Prioridades §1) que "frentes que MEDEM
+  correm sozinhas" e segue gravando o record normalmente. A guarda do eixo
+  RECURSO degrada em silêncio: sem `~/.maestro/sessions/`, JSON corrompido ou
+  arquivo ilegível, ela não encontra nada e não avisa.
+  ```
+  $ maestro-decide --session s1 --workflow custom --mode multi --agents dev-pleno,qa \
+      --fronts "a/ b/;a/sub/"
+  maestro: validation: --fronts: 'a/' (frente 1) sobrepõe 'a/sub/' (frente 2) (fix: frentes paralelas exigem caminhos DISJUNTOS — duas frentes que tocam o mesmo diretório se destroem na CPU mesmo sem tocar o mesmo arquivo; separe os caminhos ou junte tudo numa frente só)
+  $ maestro-decide --session s2 --workflow custom --mode direct --measures
+  maestro: aviso: --measures: já existe outra sessão viva (não expirada) em ~/.maestro/sessions — frentes que MEDEM correm sozinhas; considere esperar a outra sessão encerrar ou tirar --measures desta frente
+  decisão registrada: sessão=s2 workflow=custom mode=direct
   ```
 - Grava decision record (com `expires_at` = ts+4h) + linha `decision` no JSONL via `JSON.stringify` (nunca concatenação manual). Idempotente por sessão — o re-decide preserva o `flags[]` existente do record anterior, fazendo merge mesmo quando workflow/mode mudam (S-1708).
 - **Exit codes:** 0 ok · 1 validação (mensagem clara no stderr, inclui a recusa de brief plan-gated) · 2 ambiente quebrado (instrui `maestro doctor`).
@@ -465,6 +485,16 @@ maestro conduct --session <session_id>
   diferente do declarado em .maestro.yaml") e `cmd_hash` divergente do sha16 do comando
   declarado hoje; com declaração, a linha de VENCIDA traz o comando exato para regravar.
   Recibo anterior ao E23b (sem a linha) é lido como `free`.
+- **ordem 024 fatia 1 — aviso ANTES de medir.** `--record` mede `load1m_x100`/
+  `ncpu` (mesma sonda da issue #11/ordem 005, `lib/cmd-evidence.sh`) ANTES de
+  rodar o comando; se a carga já está fora do `load_limiar`
+  (`MAESTRO_EVIDENCE_LOAD1M_LIMIAR_X100`, default 200 = load 2,0), imprime
+  `ATENÇÃO: carga já fora do limiar de medição ANTES de medir` na hora,
+  citando load medido e limiar. Sem isto, "fora do limiar" só aparecia DEPOIS
+  do recibo gravado — minutos de suíte gastos para um resultado que já se
+  sabia inconclusivo antes de começar. Nenhuma sonda nova; nenhum campo novo
+  no recibo (§8 intocado) — é só a MESMA leitura, dita mais cedo. O exit do
+  CLI continua sendo o do comando medido; o aviso nunca muda o veredito.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último

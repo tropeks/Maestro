@@ -480,6 +480,13 @@ interface DecisionRecord {
   // E17/S-1708 — dissenso é trilha, sobrevive ao re-decide da mesma sessão;
   // schema autoritativo em `bin/maestro record_schema_ok`.
   flags?: Array<Record<string, string>>;
+  // ordem 024 fatia 1 (H6) — eixo arquivo: frentes paralelas de mode=multi,
+  // cada uma sua lista de prefixos de caminho. Schema autoritativo em
+  // `lib/core-record.sh record_schema_ok`.
+  fronts?: string[][];
+  // ordem 024 fatia 1 (H6) — eixo recurso: marca esta frente como MEDIDORA
+  // (roda suíte/benchmark). Só existe `true` — ausência é "não mede".
+  measures?: true;
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -493,6 +500,52 @@ function readRecord(sessionId: string): DecisionRecord | null {
   }
 }
 
+// ---------------------------------------------------- ordem 024 fatia 1 (H6)
+
+/** Normaliza um prefixo de caminho para comparação de diretório (trailing `/`). */
+function normFrontPath(p: string): string {
+  const t = p.trim();
+  return t.endsWith("/") ? t : `${t}/`;
+}
+
+/** Duas frentes sobrepõem se um prefixo é igual ao outro, ou um contém o outro. */
+function pathsOverlap(a: string, b: string): boolean {
+  const na = normFrontPath(a);
+  const nb = normFrontPath(b);
+  return na === nb || na.startsWith(nb) || nb.startsWith(na);
+}
+
+/**
+ * Eixo RECURSO (H6): existe outra sessão viva (record com `expires_at` no
+ * futuro) além de `currentSession`? Degrada em SILÊNCIO — sem diretório de
+ * sessões, JSON corrompido ou arquivo ilegível nunca lança: a guarda CALA e
+ * o `decide` segue (Prioridades §1, "nunca bloquear trabalho por estar
+ * quebrado"). Nenhuma dependência de `jq`: TS já lê JSON nativo.
+ */
+function otherLiveSessionExists(currentSession: string): boolean {
+  let files: string[];
+  try {
+    files = readdirSync(sessionsDir()).filter((f) => f.endsWith(".json"));
+  } catch {
+    return false;
+  }
+  const now = Date.now();
+  for (const f of files) {
+    if (f === `${currentSession}.json`) continue;
+    try {
+      const rec = JSON.parse(
+        readFileSync(join(sessionsDir(), f), "utf8"),
+      ) as { expires_at?: unknown };
+      if (typeof rec.expires_at !== "string") continue;
+      const exp = Date.parse(rec.expires_at);
+      if (Number.isFinite(exp) && exp > now) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------- comando: decide
 
 function cmdDecide(args: Args): number {
@@ -500,6 +553,7 @@ function cmdDecide(args: Args): number {
     "session", "workflow", "mode", "agents", "reason",
     "max-steps", "max-min", "max-cents", // E14: orçamento declarado
     "depth", "profile", "brief", // E17/S-1701: compilador de intenção
+    "fronts", "measures", // ordem 024 fatia 1 — H6, eixo arquivo + eixo recurso
   ]);
 
   // --session (obrigatório)
@@ -612,6 +666,78 @@ function cmdDecide(args: Args): number {
         );
       }
     }
+  }
+
+  // ---- ordem 024 fatia 1 (H6) — eixo ARQUIVO: --fronts só faz sentido em
+  // mode=multi (é a decisão que declara "estas N frentes correm juntas").
+  // Frentes separadas por ';', caminhos de cada frente separados por espaço.
+  // Sobreposição de PREFIXO de diretório entre DUAS frentes é recusada aqui —
+  // hard-fail de validação (não é falha de guarda de ambiente): duas frentes
+  // que disputam o mesmo diretório se destroem na CPU mesmo sem tocar o
+  // mesmo arquivo, e é exatamente esse buraco que o eixo arquivo fecha.
+  let fronts: string[][] | undefined;
+  const frontsRaw = requireValue(args, "fronts");
+  if (frontsRaw !== null) {
+    if (mode !== "multi") {
+      throw invalid(
+        "--fronts só se aplica a --mode multi",
+        "use --mode multi ou remova --fronts",
+      );
+    }
+    const rawFronts = frontsRaw
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (rawFronts.length < 2) {
+      throw invalid(
+        "--fronts exige pelo menos 2 frentes separadas por ';'",
+        'use --fronts "a/ b/;c/" (frentes separadas por ; caminhos por espaço)',
+      );
+    }
+    fronts = rawFronts.map((f) =>
+      f
+        .split(/\s+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0),
+    );
+    const emptyIdx = fronts.findIndex((f) => f.length === 0);
+    if (emptyIdx >= 0) {
+      throw invalid(
+        `--fronts: frente ${emptyIdx + 1} não tem nenhum caminho`,
+        'cada frente precisa de ao menos um caminho: "a/ b/;c/"',
+      );
+    }
+    for (let i = 0; i < fronts.length; i++) {
+      for (let j = i + 1; j < fronts.length; j++) {
+        for (const pa of fronts[i]!) {
+          for (const pb of fronts[j]!) {
+            if (pathsOverlap(pa, pb)) {
+              throw invalid(
+                `--fronts: '${pa}' (frente ${i + 1}) sobrepõe '${pb}' (frente ${j + 1})`,
+                "frentes paralelas exigem caminhos DISJUNTOS — duas frentes que " +
+                  "tocam o mesmo diretório se destroem na CPU mesmo sem tocar o " +
+                  "mesmo arquivo; separe os caminhos ou junte tudo numa frente só",
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ---- ordem 024 fatia 1 (H6) — eixo RECURSO: --measures marca esta frente
+  // como MEDIDORA (roda suíte/benchmark). Regra: "frentes que DECIDEM
+  // paralelizam; frentes que MEDEM correm sozinhas" — mas o INTENT Prioridades
+  // §1 proíbe bloquear trabalho, então isto é SÓ aviso, nunca recusa. A guarda
+  // (otherLiveSessionExists) já degrada em silêncio sozinha; nada aqui pode
+  // derrubar o decide.
+  const measures = args.flags.has("measures");
+  if (measures && otherLiveSessionExists(session)) {
+    warn(
+      "--measures: já existe outra sessão viva (não expirada) em " +
+        "~/.maestro/sessions — frentes que MEDEM correm sozinhas; considere " +
+        "esperar a outra sessão encerrar ou tirar --measures desta frente",
+    );
   }
 
   // --reason (único texto livre permitido; ≤120 chars — mitigação de vazamento de prompt)
@@ -779,6 +905,8 @@ function cmdDecide(args: Args): number {
     ...(prev?.flags && Array.isArray(prev.flags) && prev.flags.length
       ? { flags: prev.flags }
       : {}),
+    ...(fronts ? { fronts } : {}),
+    ...(measures ? { measures: true } : {}),
   };
 
   const target = recordPath(session);

@@ -9,7 +9,40 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=7317   # DESCIDA deliberada 7400→7317 em 2026-09-18 (ordem 026): o session-start
+RATCHET=7310   # DESCIDA deliberada 7317→7310 em 2026-09-19 (ordem 024 fatia 1): a
+               # heurística H8 (coluna model, config/routing-table.yaml) sobe na
+               # injeção — mapeia PERFIL da tarefa → haiku|sonnet|opus (ADR-004),
+               # o eixo que faltava para o `decide` escolher modelo sem depender só
+               # do agente do roster. Conta, em bytes medidos nesta forge (cenário
+               # HERMÉTICO, igual ao do doctor):
+               #   +188B  H8 inteira (nova)
+               #    -77B  H1: cortada a cláusula final ("em direct não existe
+               #          agente — o campo agents não vai no record") e a citação
+               #          "(ADR-004)" que a acompanhava — FATO mecânico que o
+               #          `decide` já recusa sozinho (--agents não se aplica a
+               #          mode=direct); repetir na heurística era pagar byte por
+               #          algo que o CLI garante sem depender do texto
+               #    -34B  H4: "→ quem planeja é o arquiteto (opus): tier caro,
+               #          raro; plano comum segue no engenheiro" virou "→
+               #          arquiteto (opus) planeja; comum fica no engenheiro" —
+               #          mesma decisão, sem a reafirmação de que opus é caro/raro
+               #          (já dito por "opus" ser exceção em todo o resto do arquivo)
+               #    -65B  H3: "VENCE H5: o tiering de custo é a razão de existir
+               #          do roster, e mecânico em haiku é mais barato que
+               #          mecânico em especialista sonnet (ADR-004)" virou "VENCE
+               #          H5 (ADR-004): mecânico em haiku é mais barato que em
+               #          especialista sonnet" — a heurística guarda a DECISÃO,
+               #          o argumento completo mora no ADR-004 citado
+               #    -19B  H7: removido o parêntese "(cite doc+seção)" — instrução
+               #          de formato, não de roteamento; a AC de brief/depth
+               #          (DATA_MODEL §3 v1.7) já cobre o que "deep" exige citar
+               #     =-7B líquido no cenário HERMÉTICO (o que este ratchet mede):
+               #          7317B → 7310B. Quatro cortes pagam um H8 inteiro e ainda
+               #          sobra — mesma moeda do bump de ordem 026 (regra de
+               #          COMPORTAMENTO/decisão vale mais que reafirmação do que
+               #          já é mecânico ou já está citado em outro lugar).
+               #
+               # (bump anterior: 7400→7317 em 2026-09-18, ordem 026): o session-start
                # ganhou a linha de papercuts (contagem + ponteiro para
                # $MAESTRO_HOME/papercuts.md), e ela foi paga ANTES de nascer. A conta,
                # em bytes medidos nesta forge:

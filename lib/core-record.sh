@@ -70,6 +70,10 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
         and (all(.[]; type == "string" and length <= 120))
         and (if has("sev") then (.sev as $s | ["critical","high","medium","low"] | index($s) != null) else true end)))
       else true end)
+    and (if has("fronts") then (.fronts as $fr | ($fr | type == "array") and (($fr | length) >= 2)
+      and all($fr[]; type == "array" and (length >= 1)
+        and all(.[]; type == "string" and length > 0 and length <= 200))) else true end)
+    and (if has("measures") then (.measures == true) else true end)
   ' "$f" >/dev/null 2>&1
 }
 
