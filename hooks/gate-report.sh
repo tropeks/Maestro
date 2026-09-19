@@ -106,6 +106,149 @@ ASK_TTL=2400   # 40min = 30min do teto do director_wait + folga
 MCP_ASKED_DIR="$MAESTRO_HOME/herdr/mcp-asked"
 
 # ---------------------------------------------------------------------------
+# Ordem 025 (INTENT v3, correção de 2026-09-18) — o gatilho da Ponte MCP SOBE
+# para ANTES do `exit 0` de "sem gate" (abaixo) e passa a valer para TODA
+# rodada que termina com `[spock] aguardando:`, não só quando há gate humano
+# pendente. Causa medida na 020: o gatilho vivia 135 linhas depois do
+# `exit 0`, e a maioria dos workflows (fix, custom, audit, verify,
+# codereview) NUNCA abre gate (só feature/refactor com approach pendente, ou
+# ship sem desfecho — ver o `case "$wf"` abaixo) — o hook sempre saía antes
+# de olhar a linha. Decisão do diretor: o volume que chega à pane não muda (a
+# linha já chega hoje pelo eco do bridge); muda o canal — decisão no daemon,
+# com id, em vez de texto solto. O caminho de gate pendente fica EXATAMENTE
+# como estava, por cima — só reaproveita o cálculo de mcp_ask/reentry, que
+# agora roda uma vez só, cedo, para os dois caminhos.
+#
+# Duas funções, definidas antes de qualquer `exit 0` que precise delas:
+#
+#   _maestro_mcp_prune_stale  — poda marcadores vencidos em $MCP_ASKED_DIR.
+#     Chamada de DOIS lugares agora: (a) sempre que há gate pendente (posição
+#     e comportamento inalterados desde a 020 — ver a chamada logo antes de
+#     "Há gate pendente?" mais abaixo), e (b) no caminho novo sem gate, só
+#     quando uma pergunta nova vai mesmo escrever um marcador `_aviso` —
+#     nunca em rodada que não escreveria nada de qualquer forma (mesma regra
+#     de sempre: nunca introduz um caminho de escrita que não existiria já).
+#     Sem o item (b), um projeto que só roda workflows sem gate (só
+#     fix/custom/…) nunca teria uma rodada "gate pendente" para acionar a
+#     poda, e os marcadores `_aviso` acumulariam para sempre — a ARMADILHA 1
+#     da ordem 025.
+#
+#   _maestro_mcp_ask_gate <sufixo> — escreve o JSON de bloqueio (uma vez por
+#     sid+sufixo dentro do TTL) e o marcador correspondente. Sufixo é
+#     `plan`/`ship` (gate humano, comportamento de sempre) OU `aviso` (sem
+#     gate — sufixo NOVO da 025). O prune (acima) reconhece as três chaves.
+#     `f && return 0; return 1` não se aplica aqui: a função nunca devolve
+#     erro, sempre termina em `return 0` explícito — chamada nua seria letal
+#     sob `set -e` se o corpo pudesse devolver 1 em algum ponto.
+# ---------------------------------------------------------------------------
+
+_maestro_mcp_prune_stale() {
+  # Ordem 020 (histórico completo dos três achados de custo: docs/patches/
+  # 020-NOTAS.md) + Ordem 025 (sufixo `aviso` somado a plan|ship: docs/
+  # patches/025-NOTAS.md). Poda marcadores de $MCP_ASKED_DIR vencidos (mtime
+  # +40min), só por chave exata `<sid>_<plan|ship|aviso>` — nunca
+  # `find -delete` nem glob livre (ver pre-bash-guard.sh); `rm` em lote, um
+  # fork só; regex com `+`, nunca `{1,N}` (glibc ~O(N²) pra quantificador
+  # limitado, mesmo bug do `tpath` abaixo). Ainda não cabe em 50ms na escala
+  # medida; autorização do diretor: amostragem 1 em 10 via contador
+  # determinístico em arquivo (não `$RANDOM` — não seedável entre
+  # processos). `MCP_PRUNE_SAMPLE_RATE` overridável (testes usam `=1`).
+  local _rate _do_prune=1 _prune_counter _count _approved _stale _base
+  _rate="${MCP_PRUNE_SAMPLE_RATE:-10}"
+  [[ "$_rate" =~ ^[0-9]+$ && "$_rate" -ge 1 ]] || _rate=10
+  if (( _rate > 1 )); then
+    _do_prune=0
+    _prune_counter="$MAESTRO_HOME/herdr/mcp-asked-prune-counter"
+    _count=0
+    if [[ -f "$_prune_counter" ]]; then
+      IFS= read -r _count < "$_prune_counter" 2>/dev/null || :
+      [[ "$_count" =~ ^[0-9]+$ ]] || _count=0
+    fi
+    _count=$(( (_count + 1) % _rate ))
+    [[ -d "$MAESTRO_HOME/herdr" ]] || mkdir -p "$MAESTRO_HOME/herdr" 2>/dev/null || :
+    printf '%s' "$_count" > "$_prune_counter.tmp.$$" 2>/dev/null \
+      && mv -f "$_prune_counter.tmp.$$" "$_prune_counter" 2>/dev/null || rm -f -- "$_prune_counter.tmp.$$" 2>/dev/null || :
+    (( _count == 0 )) && _do_prune=1
+  fi
+
+  if (( _do_prune == 1 )) && [[ -d "$MCP_ASKED_DIR" ]]; then
+    _approved=()
+    while IFS= read -r -d '' _stale; do
+      _base="${_stale##*/}"
+      if [[ "$_base" =~ ^[A-Za-z0-9_-]+_(plan|ship|aviso)$ ]] && (( ${#_base} <= 70 )); then
+        _approved+=("$_stale")
+      fi
+    done < <(find "$MCP_ASKED_DIR" -maxdepth 1 -type f -mmin +40 -print0 2>/dev/null)
+    # `if` explícito, não `(( n>0 )) && cmd`: sob set -e, a aritmética
+    # SOZINHA devolvendo 1 (array vazio) mataria o script aqui — mesma
+    # armadilha já paga na ordem 015. `if` é isento de errexit por natureza.
+    if (( ${#_approved[@]} > 0 )); then
+      rm -f -- "${_approved[@]}" 2>/dev/null || :
+    fi
+  fi
+  return 0
+}
+
+_maestro_mcp_ask_gate() {
+  local _suffix="$1" _marker _prev _recent=0
+  _marker="$MCP_ASKED_DIR/${sid}_${_suffix}"
+  if [[ -f "$_marker" ]]; then
+    _prev=""
+    IFS= read -r _prev < "$_marker" 2>/dev/null || :
+    if [[ "$_prev" =~ ^[0-9]+$ ]] && (( now_epoch - _prev < ASK_TTL )); then
+      _recent=1
+    fi
+  fi
+  if (( _recent == 0 )); then
+    [[ -d "$MCP_ASKED_DIR" ]] || mkdir -p "$MCP_ASKED_DIR" 2>/dev/null || :
+    printf '%s' "$now_epoch" > "$_marker.tmp.$$" 2>/dev/null \
+      && mv -f "$_marker.tmp.$$" "$_marker" 2>/dev/null || rm -f -- "$_marker.tmp.$$" 2>/dev/null || :
+    printf '%s' "$MCP_ASK_REASON_JSON" >&3 2>/dev/null || :
+  fi
+  return 0
+}
+
+# Reason única para os dois caminhos (com gate e sem gate): texto fixo,
+# nunca cita `message`/`essencia` do gate (E25/S-2501 já cobrava isso; ordem
+# 025 generaliza o texto para não mencionar "gate" — a maioria das rodadas
+# que passam por aqui agora não tem gate nenhum).
+MCP_ASK_REASON_JSON='{"decision":"block","reason":"maestro: a rodada terminou com uma pergunta pendente ([spock] aguardando) e a Ponte MCP esta disponivel nesta pane. Em vez de esperar resposta digitada, chame a tool MCP do servidor ponte: director.ask uma vez, e depois director.wait em laco (ate 5 min por chamada), com teto de 30 min no total. Se expirar sem resposta, diga isso como o desfecho da rodada e nao repita a linha [spock] aguardando: para esta mesma pergunta."}'
+
+# ---------------------------------------------------------------------------
+# Ordem 020, gatilho da VOLTA por MCP — Ordem 025: SOBE para cá, antes do
+# `exit 0` de "sem gate" logo abaixo, e passa a rodar sempre (não só com gate
+# pendente). Socket da Ponte presente E a linha `[spock] aguardando:` na
+# última rodada. Checa primeiro em `$raw` (o próprio payload do Stop — cobre
+# `last_assistant_message`, se o build do Claude Code tiver o campo); sem
+# achar ali, cai para o transcript (`tail -c`, bounded, sem parser). Escrito
+# com `+` no regex, nunca `{1,N}` grande: `{1,4096}` mediu ~2,7s nesta forge
+# (glibc é ~O(N²) para compilar/casar quantificador limitado) contra ~7ms de
+# `+`.
+# ---------------------------------------------------------------------------
+mcp_ask=0
+ponte_sock="${PONTE_MCP_SOCKET:-$HOME/.ponte/mcp.sock}"
+if [[ -e "$ponte_sock" ]]; then
+  if [[ "$raw" =~ \[spock\][[:space:]]aguardando: ]]; then
+    mcp_ask=1
+  else
+    tpath=""
+    if [[ "$raw" =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+      tpath="${BASH_REMATCH[1]:0:4096}"
+    fi
+    if [[ -n "$tpath" && -f "$tpath" && -r "$tpath" ]]; then
+      tail_txt=$(tail -c 8192 -- "$tpath" 2>/dev/null) || tail_txt=""
+      [[ "$tail_txt" =~ \[spock\][[:space:]]aguardando: ]] && mcp_ask=1
+    fi
+  fi
+fi
+
+# NÃO-LAÇO, rede 1: `stop_hook_active=true` = este Stop já é reentrada de um
+# `block` anterior. Suprime sempre — mesmo que a linha ainda apareça. Regex
+# sobre `$raw` já lido: zero custo extra.
+reentry=0
+[[ "$raw" =~ \"stop_hook_active\"[[:space:]]*:[[:space:]]*true ]] && reentry=1
+
+# ---------------------------------------------------------------------------
 # Há gate pendente? Leitura por regex do record (presença + enums), como no
 # session-end.sh — nada de parser.
 # ---------------------------------------------------------------------------
@@ -142,95 +285,37 @@ if [[ -z "$gate" ]]; then
   # Ordem 020: gate resolvido — limpa os marcadores de "já bloqueei por isto"
   # das duas chaves possíveis (nunca sabemos aqui qual delas foi usada).
   rm -f -- "$MCP_ASKED_DIR/${sid}_plan" "$MCP_ASKED_DIR/${sid}_ship" 2>/dev/null || :
+
+  # Ordem 025, ARMADILHA 1 (sufixo do marcador sem gate): sem gate não há
+  # `${gate}` para nomear a chave — sufixo novo `aviso`, ensinado ao prune
+  # acima (regex `plan|ship|aviso`).
+  #
+  # ARMADILHA 2 (limpeza sem evento de resolução): o caminho COM gate limpa
+  # o marcador quando o RECORD muda de estado (approach deixa de ser
+  # pendente, ship ganha desfecho) — um evento observável fora deste hook.
+  # Sem gate não existe esse evento; a única coisa que este hook pode
+  # observar, rodada a rodada, é se a linha `[spock] aguardando:` ainda está
+  # lá. DECISÃO (registrada aqui, não é hipótese): se esta rodada NÃO tem a
+  # linha (ou não tem como perguntar — sem socket, ou reentrada confirmada),
+  # tratamos como resolvida e limpamos o marcador de aviso — a MESMA sessão
+  # pode perguntar de novo na rodada seguinte sem esperar o TTL de 40min. Só
+  # quando a MESMA pergunta se repete rodada após rodada (sem resposta
+  # ainda) é que o TTL/marcador seguram — exatamente o papel que já tinham
+  # no caminho com gate: proteção contra laço numa pergunta ainda aberta,
+  # não um período de silêncio imposto entre perguntas distintas. Na
+  # prática, como o gerente resolve a pergunta por MCP no mesmo turno
+  # (director.ask/director.wait), a rodada SEGUINTE quase sempre já não
+  # repete a linha — o TTL de 40min raramente chega a valer de verdade.
+  if (( mcp_ask == 1 && reentry == 0 )); then
+    _maestro_mcp_prune_stale
+    _maestro_mcp_ask_gate aviso
+  else
+    rm -f -- "$MCP_ASKED_DIR/${sid}_aviso" 2>/dev/null || :
+  fi
   exit 0
 fi
 
-# ---------------------------------------------------------------------------
-# Ordem 020 (correção do diretor, terceira rodada) — PRUNE dos marcadores
-# vencidos, a cada execução COM GATE PENDENTE (não antes: um teste
-# pré-existente prova "payload de lixo/pane inválido não escreve nada" —
-# achado da quarta rodada, colocar o prune antes de saber se há gate
-# quebrava essa garantia, porque o `mkdir` do contador de amostragem é efeito
-# colateral por si só. "Gate pendente" já é a MESMA condição que o
-# `mkdir -p "$GATES_DIR"` de sempre usa — nunca introduz um caminho de escrita
-# novo, só reaproveita o que já ia escrever de qualquer forma): o mesmo hook
-# que cria o marcador apaga os que já passaram do TTL. Sem isto, TTL vencido
-# só faz o CÓDIGO ignorar o arquivo — o arquivo em si fica para sempre, e com
-# N sessões × gates isso acumula sem limite (sessão abandonada nunca mais
-# roda o Stop dela para se autolimpar; é OUTRA sessão, nesta mesma execução,
-# que varre por todas).
-#
-# Delimitação (apagar por padrão de nome errado é como se apaga a coisa
-# errada — ver o aviso sobre `find -delete` em pre-bash-guard.sh): o `find`
-# só ENCONTRA candidatos por diretório exato + idade; quem decide apagar é
-# este loop, que revalida CADA nome contra o padrão exato `<sid>_<gate>`
-# (mesmo charset de sid validado acima, gate travado em plan|ship). Nunca
-# `-delete` do find sozinho, nunca glob livre.
-#
-# Custo medido (achado da rodada anterior): não é o prune, é um `rm` por
-# arquivo — 18 forks para 18 arquivos, ~5-6ms cada. Correção do diretor:
-# acumula os nomes APROVADOS num array e apaga tudo num `rm -f --` só. Um
-# fork, não N. `"${_approved[@]}"` vazio não vira erro nem apaga nada
-# (bash expande para zero argumentos, `rm -f --` sem alvo é no-op); o `--`
-# protege nome de marcador que por algum motivo comece com `-`.
-#
-# Segundo achado, medindo a versão com o rm batelado: o que sobrava caro era
-# o PRÓPRIO regex `{1,64}` repetido por candidato — mesma família do bug de
-# `{1,N}` já corrigido no `tpath` (glibc é ~O(N²) para compilar/casar
-# quantificador limitado), só que agora por REPETIÇÃO em vez de por N grande
-# numa string só: 100 candidatos ~77ms com `{1,64}`, ~15ms com `+` (medido).
-# `+` sem limite no regex; o teto de tamanho vira aritmética (`${#_base}`,
-# builtin, sem regex) — mesma técnica de sempre neste arquivo.
-#
-# TERCEIRO achado, com as duas correções acima já aplicadas: ainda não cabe
-# em 50ms na escala pedida pelo diretor (18 arquivos ~75-80ms mediana, 100
-# ~99-110ms, interleaved contra baseline, mínimo já acima de 50ms nos dois —
-# ver docs/patches/020-NOTAS.md para a tabela completa). O que resta é o
-# `find` + o loop em si, que já não têm gordura óbvia para cortar sem trocar
-# de mecanismo. Autorização do diretor para esta saída (decisão já dada, não
-# pergunte de novo): AMOSTRAGEM 1 em 10 — o prune só roda a cada 10ª
-# execução (com gate pendente) do hook dentro do herdr. Contador
-# determinístico em arquivo (`$MAESTRO_HOME/herdr/mcp-asked-prune-counter`),
-# não `$RANDOM`: `$RANDOM` não é seedável de fora do processo bash (testado —
-# `RANDOM=N bash -c '...'` não reproduz), então um teste de "isto amostra
-# mesmo" ficaria probabilístico; o contador é 100% determinístico e
-# testável. Custo do contador em si: um `read`/`printf` builtin + um `mv`
-# (mesmo padrão do `GATE_FILE`), muito mais barato que o próprio `find` que
-# ele evita rodar na maioria das vezes. `MCP_PRUNE_SAMPLE_RATE` overridável
-# (testes usam `=1` para tornar o prune determinístico de novo).
-MCP_PRUNE_SAMPLE_RATE="${MCP_PRUNE_SAMPLE_RATE:-10}"
-[[ "$MCP_PRUNE_SAMPLE_RATE" =~ ^[0-9]+$ && "$MCP_PRUNE_SAMPLE_RATE" -ge 1 ]] || MCP_PRUNE_SAMPLE_RATE=10
-_do_prune=1
-if (( MCP_PRUNE_SAMPLE_RATE > 1 )); then
-  _do_prune=0
-  _prune_counter="$MAESTRO_HOME/herdr/mcp-asked-prune-counter"
-  _count=0
-  if [[ -f "$_prune_counter" ]]; then
-    IFS= read -r _count < "$_prune_counter" 2>/dev/null || :
-    [[ "$_count" =~ ^[0-9]+$ ]] || _count=0
-  fi
-  _count=$(( (_count + 1) % MCP_PRUNE_SAMPLE_RATE ))
-  [[ -d "$MAESTRO_HOME/herdr" ]] || mkdir -p "$MAESTRO_HOME/herdr" 2>/dev/null || :
-  printf '%s' "$_count" > "$_prune_counter.tmp.$$" 2>/dev/null \
-    && mv -f "$_prune_counter.tmp.$$" "$_prune_counter" 2>/dev/null || rm -f -- "$_prune_counter.tmp.$$" 2>/dev/null || :
-  (( _count == 0 )) && _do_prune=1
-fi
-
-if (( _do_prune == 1 )) && [[ -d "$MCP_ASKED_DIR" ]]; then
-  _approved=()
-  while IFS= read -r -d '' _stale; do
-    _base="${_stale##*/}"
-    if [[ "$_base" =~ ^[A-Za-z0-9_-]+_(plan|ship)$ ]] && (( ${#_base} <= 70 )); then
-      _approved+=("$_stale")
-    fi
-  done < <(find "$MCP_ASKED_DIR" -maxdepth 1 -type f -mmin +40 -print0 2>/dev/null)
-  # `if` explícito, não `(( n>0 )) && cmd`: sob set -e, a aritmética SOZINHA
-  # devolvendo 1 (array vazio) mataria o script aqui — a mesma armadilha já
-  # paga na ordem 015. `if` é isento de errexit por natureza.
-  if (( ${#_approved[@]} > 0 )); then
-    rm -f -- "${_approved[@]}" 2>/dev/null || :
-  fi
-fi
+_maestro_mcp_prune_stale
 
 project="${CLAUDE_PROJECT_DIR:-$PWD}"; project="${project##*/}"
 [[ "$project" =~ ^[A-Za-z0-9._-]{1,48}$ ]] || project="projeto"
@@ -263,60 +348,11 @@ if command -v "$bin" >/dev/null 2>&1 || [[ -x "$bin" ]]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Ordem 020 — gatilho da VOLTA por MCP: socket da Ponte presente E a linha
-# `[spock] aguardando:` na última rodada. Checa primeiro em `$raw` (o próprio
-# payload do Stop — cobre `last_assistant_message`, se o build do Claude Code
-# tiver o campo); sem achar ali, cai para o transcript (`tail -c`, bounded,
-# sem parser — mesmo padrão do resto do arquivo). Escrito com `+` no regex,
-# nunca `{1,N}` grande: `{1,4096}` mediu ~2,7s nesta forge (glibc é ~O(N²)
-# para compilar/casar quantificador limitado) contra ~7ms de `+`.
-# ---------------------------------------------------------------------------
-mcp_ask=0
-ponte_sock="${PONTE_MCP_SOCKET:-$HOME/.ponte/mcp.sock}"
-if [[ -e "$ponte_sock" ]]; then
-  if [[ "$raw" =~ \[spock\][[:space:]]aguardando: ]]; then
-    mcp_ask=1
-  else
-    tpath=""
-    if [[ "$raw" =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
-      tpath="${BASH_REMATCH[1]:0:4096}"
-    fi
-    if [[ -n "$tpath" && -f "$tpath" && -r "$tpath" ]]; then
-      tail_txt=$(tail -c 8192 -- "$tpath" 2>/dev/null) || tail_txt=""
-      [[ "$tail_txt" =~ \[spock\][[:space:]]aguardando: ]] && mcp_ask=1
-    fi
-  fi
-fi
-
-# NÃO-LAÇO, rede 1: `stop_hook_active=true` = este Stop já é reentrada de um
-# `block` anterior. Suprime sempre — mesmo que a linha ainda apareça. Regex
-# sobre `$raw` já lido: zero custo extra.
-reentry=0
-[[ "$raw" =~ \"stop_hook_active\"[[:space:]]*:[[:space:]]*true ]] && reentry=1
-
-# NÃO-LAÇO, rede 2 (independente da rede 1): marcador com TTL por sessão+gate.
-# Não depende de `stop_hook_active` existir no payload — é o que segura o
-# caso do campo ausente/renomeado/truncado, onde a rede 1 sozinha deixaria
-# `reentry=0` para sempre e bloquearia a cada Stop. Só toca o disco quando as
-# duas condições de cima já valem — no caminho comum (mcp_ask=0, a maioria
-# dos gates pendentes) isto custa zero além do prune acima, que já rodou.
-if (( mcp_ask == 1 && reentry == 0 )); then
-  asked_marker="$MCP_ASKED_DIR/${sid}_${gate}"
-  asked_recent=0
-  if [[ -f "$asked_marker" ]]; then
-    prev=""
-    IFS= read -r prev < "$asked_marker" 2>/dev/null || :
-    if [[ "$prev" =~ ^[0-9]+$ ]] && (( now_epoch - prev < ASK_TTL )); then
-      asked_recent=1
-    fi
-  fi
-
-  if (( asked_recent == 0 )); then
-    [[ -d "$MCP_ASKED_DIR" ]] || mkdir -p "$MCP_ASKED_DIR" 2>/dev/null || :
-    printf '%s' "$now_epoch" > "$asked_marker.tmp.$$" 2>/dev/null \
-      && mv -f "$asked_marker.tmp.$$" "$asked_marker" 2>/dev/null || rm -f -- "$asked_marker.tmp.$$" 2>/dev/null || :
-    printf '{"decision":"block","reason":"maestro: gate pendente e a Ponte MCP esta disponivel nesta pane. Em vez de esperar resposta digitada, chame a tool MCP do servidor ponte: director.ask uma vez, e depois director.wait em laco (ate 5 min por chamada), com teto de 30 min no total. Se expirar sem resposta, diga isso como o desfecho da rodada e nao repita a linha [spock] aguardando: para esta mesma pergunta."}' >&3 2>/dev/null || :
-  fi
-fi
+# NÃO-LAÇO: mcp_ask/reentry já calculados lá em cima (Ordem 025 — mesmo
+# cálculo serve os dois caminhos). Rede 1 (stop_hook_active) já aplicada na
+# condição; rede 2 (marcador com TTL por sessão+chave) é _maestro_mcp_ask_gate,
+# aqui com a chave de sempre (plan|ship) — comportamento inalterado desde a
+# 020, só a implementação foi extraída para função e reaproveitada pelo
+# caminho novo sem gate (chave `aviso`, tratado mais acima).
+(( mcp_ask == 1 && reentry == 0 )) && _maestro_mcp_ask_gate "$gate"
 exit 0
