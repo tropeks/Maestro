@@ -775,6 +775,54 @@ build_and_emit() {
     shopt -u nullglob
   fi
   (( _on > 0 )) && sec_project+="ordens: $_on pendente(s) neste projeto → maestro order --list (contrato, branch e prova exigida em cada uma)"$'\n'
+  # ordem 026 — papercuts da MÁQUINA (falha de FERRAMENTA com conserto
+  # conhecido). Vai CONTAGEM + ponteiro; NUNCA o conteúdo. Três razões, nesta
+  # ordem: (a) o arquivo cresce a cada papercut e a injeção tem teto de 8000B
+  # que o INTENT v3 declara intocável — cinquenta papercuts não cabem, e uma
+  # linha que cresce com o arquivo mata o orçamento sozinha; (b) a contagem tem
+  # tamanho O(1) em DÍGITOS, então o papercut nº 50 custa o mesmo que o nº 5 e a
+  # injeção nunca mais precisa ser renegociada por causa desta seção; (c)
+  # ponteiro sozinho não puxa ninguém — "5" é o que diz que o arquivo está VIVO
+  # e vale a leitura. Mesmo princípio do brief (E8/S-802) e do INTENT (E22): a
+  # injeção carrega a GARANTIA de que o estado existe, e o gerente lê sob
+  # demanda, que aqui é exatamente quando a ferramenta falha.
+  # BOOTSTRAP de máquina vazia (decisão do diretor, 2026-09-18, revendo a recusa
+  # por preço da primeira rodada): registro vazio NÃO fica mudo. A recusa
+  # original valia contra "papercuts: 0" como custo puro; o diretor decidiu que
+  # máquina nova é justamente onde o gerente mais precisa saber que o mecanismo
+  # existe — e onde hoje ele não descobre por caminho nenhum, porque o único
+  # anúncio é a própria linha que só nasce depois do primeiro registro. Então a
+  # linha vazia carrega SÓ o que serve a quem não tem o que ler: o nome, o
+  # GATILHO e o verbo. Sem ponteiro (não há o que ler) e sem o "leia ANTES de
+  # investigar" (não há o que consultar) — 80B contra os 135B da linha cheia.
+  # A gramática é a MESMA nos dois estados ("papercuts: <n> → …"): quando o
+  # número sair de 0 para 7, o gerente já sabe o que ele conta.
+  # Ilegível é o único caso que segue MUDO: dizer "0" para um arquivo que existe
+  # e não se consegue ler seria mentir a contagem, e o Maestro não finge estado
+  # (mesma regra do `direção: nenhuma` no E22 e do `no-stable` no E19).
+  maestro_set_papercuts_file || :
+  local _pcf="$_maestro_papercuts_file" _pcn=0 _pci=0 _pcl="" _pcp="" _pcmute=0
+  [[ -f "$_pcf" && ! -r "$_pcf" ]] && _pcmute=1
+  if [[ -f "$_pcf" && -r "$_pcf" ]]; then
+    # Laço builtin, zero fork (grep -c custaria um), com teto de linhas para que
+    # um arquivo patológico não entre no caminho quente do session-start.
+    while IFS= read -r _pcl && (( _pci < 2000 )); do
+      _pci=$(( _pci + 1 ))
+      # Glob, não regex: `{1,N}` em bash é ~O(N²) (issue #42) e aqui roda por linha.
+      if [[ "$_pcl" == [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]" · "* ]]; then
+        _pcn=$(( _pcn + 1 ))
+      fi
+    done < "$_pcf"
+  fi
+  if (( _pcn > 0 )); then
+    # `~/` em vez do home literal: mais curto (o orçamento é em bytes) E não
+    # imprime a topologia da máquina. MAESTRO_HOME fora do padrão sai inteiro.
+    _pcp="$_pcf"
+    [[ -n "${HOME:-}" && "$_pcp" == "$HOME/"* ]] && _pcp="~/${_pcp#"$HOME/"}"
+    sec_project+="papercuts: $_pcn ($_pcp) → ferramenta falhou estranho: leia ANTES de investigar; conserto novo: maestro papercut --add"$'\n'
+  elif (( _pcmute == 0 )); then
+    sec_project+="papercuts: 0 → consertou falha estranha de FERRAMENTA? maestro papercut --add"$'\n'
+  fi
   [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
   sec_project+="Ao fechar trabalho, atualize o brief: maestro brief --write --session $SESSION_ID (em curso · decisões abertas · próximo passo)"$'\n' 
 

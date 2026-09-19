@@ -95,3 +95,35 @@ maestro_order_state_file() { # <raiz-do-projeto> <id-da-ordem> → caminho no st
   local base="${bf##*/}"; base="${base%.md}"
   printf '%s/order-state/%s-%03d' "${MAESTRO_HOME:-$HOME/.maestro}" "$base" "$((10#${2:-0}))"
 }
+
+# ---------------------------------------------------------------------------
+# ordem 026 — papercuts: falha de FERRAMENTA com conserto conhecido, registrada
+# por um gerente e lida por nove. É a PRIMEIRA derivação deste módulo que NÃO é
+# chaveada por projeto, e o contraste é a documentação: brief, evidência e
+# order-state respondem "onde este PROJETO está" e por isso carregam
+# `<slug>-<hash8>`; um papercut responde "o que esta MÁQUINA faz de errado"
+# (versão de ferramenta instalada, código de saída, bug de harness) e a chave
+# por projeto faria os nove gerentes pagarem a MESMA investigação nove vezes —
+# exatamente a falha que a ordem existe para fechar. Logo: arquivo único em
+# $MAESTRO_HOME, e a procedência ("em que projeto eu bati nisto") vira CAMPO da
+# linha, não nome de arquivo.
+#
+# $MAESTRO_HOME já é o endereço de tudo que é da máquina (logs, sessions,
+# config.yaml, update-state) e já tem override por ambiente — que é o que torna
+# a suíte hermética sem inventar env nova: teste isola MAESTRO_HOME e pronto.
+#
+# Duas formas, UMA derivação: `maestro_set_papercuts_file` publica em variável
+# (zero fork — roda dentro do session-start, caminho quente, mesmo idioma de
+# `_maestro_ts`/`_maestro_re` no common.sh); `maestro_papercuts_file` escreve no
+# stdout para o CLI, onde um fork não custa nada.
+# ---------------------------------------------------------------------------
+_maestro_papercuts_file=""
+maestro_set_papercuts_file() { # → $_maestro_papercuts_file
+  _maestro_papercuts_file="${MAESTRO_HOME:-$HOME/.maestro}/papercuts.md"
+  return 0
+}
+
+maestro_papercuts_file() { # → caminho no stdout
+  maestro_set_papercuts_file
+  printf '%s\n' "$_maestro_papercuts_file"
+}

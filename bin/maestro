@@ -105,6 +105,13 @@ maestro <comando>
                   telemetry-state · --push publica agora (--force implícito) · --pull
                   atualiza o clone local (para o retro --all) · --remote <url> liga
                   nesta máquina (opt-in) · --off desliga — nada sai sem telemetry_remote
+  papercut        registro de papercuts da MÁQUINA (ordem 026): falha de FERRAMENTA com
+                  conserto conhecido, uma linha `data · sintoma · conserto · projeto` em
+                  $MAESTRO_HOME/papercuts.md — compartilhado por todos os projetos desta
+                  máquina. sem flag lista · --add "<sintoma>" --fix "<conserto>" registra
+                  (valida, deduplica por sintoma e apende sob lock) · --path · --count
+                  bug do projeto é issue; lição de método é brief; armadilha de código é
+                  comentário no código — e sintoma sem conserto não entra
   brief           brief de projeto (E8): estado situacional carimbado (ts, HEAD, wtree, sessão)
                   sem flag lê com veredito de freshness · --write grava (narrativa via stdin
                   ou --file) · --auto gera esqueleto do git · --path só o caminho — bash puro, sem Bun
@@ -2220,6 +2227,24 @@ _telemetry_lib_load() { # carrega lib/cmd-telemetry.sh — uma vez, degradando p
   die env "lib/cmd-telemetry.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
 }
 
+# ------------------------------------------------------------- papercuts (ordem 026)
+#
+# `maestro papercut` é a metade CLI de hooks/lib/papercuts.sh. O módulo mora em
+# hooks/lib/ e não em lib/ de propósito, pelo precedente do `upgrade` (que
+# sourceia hooks/lib/update-check.sh, ~linha 2160): o arquivo de papercuts é
+# estado de MÁQUINA sob $MAESTRO_HOME, a mesma família de hooks/lib/common.sh —
+# e o session-start, que é quem lê a contagem, já carrega essa família inteira.
+# Nada aqui é caminho quente: o hook NÃO sourceia este módulo.
+
+_papercut_lib_load() { # carrega hooks/lib/papercuts.sh — uma vez, degradando por comando (I-2)
+  declare -f cmd_papercut >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/hooks/lib/papercuts.sh" ]]; then
+    # shellcheck source=hooks/lib/papercuts.sh
+    source "$REPO_DIR/hooks/lib/papercuts.sh" && return 0
+  fi
+  die env "hooks/lib/papercuts.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+}
+
 # ----------------------------------------------------------------------- dispatch
 
 delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
@@ -2250,6 +2275,7 @@ case "$cmd" in
   doctor) shift; doctor "$@" ;;
   decide|status|log) shift; delegate "$cmd" "$@" ;;
   brief) shift; _brief_lib_load; cmd_brief "$@" ;;
+  papercut) shift; _papercut_lib_load; cmd_papercut "$@" ;;   # ordem 026
   habits) shift; _habits_lib_load; cmd_habits "$@" ;;
   consent) shift; cmd_consent "$@" ;;
   outcome) shift; _outcome_lib_load; cmd_outcome "$@" ;;

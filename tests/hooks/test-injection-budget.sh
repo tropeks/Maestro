@@ -9,7 +9,43 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=7400   # bump deliberado 7230→7430 em 2026-09-10 (E26/S-2602): o Capitão pediu a
+RATCHET=7317   # DESCIDA deliberada 7400→7317 em 2026-09-18 (ordem 026): o session-start
+               # ganhou a linha de papercuts (contagem + ponteiro para
+               # $MAESTRO_HOME/papercuts.md), e ela foi paga ANTES de nascer. A conta,
+               # em bytes medidos nesta forge:
+               #   +135B  linha de papercuts — SÓ em máquina que tem papercuts; o
+               #          tamanho é O(1) em dígitos, então o papercut nº 50 custa o
+               #          mesmo que o nº 5 (é por isso que vai CONTAGEM e não conteúdo)
+               #   -163B  regra de TIPOGRAFIA do config/communication-style.md ("Formato
+               #          serve ao conteúdo: lista numerada… `código`… negrito…"). O corte
+               #          não perde a regra: a linha que ficou já diz "Base: Google
+               #          developer documentation style guide", e é lá que a tipografia
+               #          mora inteira — a injeção estava pagando bytes para repetir, por
+               #          extenso, o que a referência nomeada já entrega. Mesma moeda com
+               #          que o bump anterior se pagou ("quatro linhas de tipografia
+               #          viraram uma só, -172B"): regra de COMPORTAMENTO vale mais que
+               #          regra de FORMATAÇÃO, e o corte é a forma de dizer isso com o byte.
+               #    +80B  linha de BOOTSTRAP na máquina de registro VAZIO (segunda rodada,
+               #          decisão do diretor revendo a recusa por preço): registro vazio não
+               #          fica mudo, porque máquina nova é onde o gerente mais precisa saber
+               #          que o mecanismo existe e é onde ele não descobre por caminho
+               #          nenhum — o único anúncio seria a linha que só nasce DEPOIS do
+               #          primeiro registro. Leva só nome + gatilho + verbo: sem ponteiro e
+               #          sem "leia ANTES", que não servem a quem não tem o que ler.
+               #          É ESTE o cenário que o ratchet mede — daí 7237→7317.
+               #   =-28B  líquido na máquina COM papercuts (7400→7372) e -83B na máquina de
+               #          registro vazio (7400→7317, que é o que este ratchet mede). Os dois
+               #          cenários ficam ABAIXO do baseline: o corte de 163B paga a linha
+               #          cheia e o bootstrap, e ainda sobra.
+               #
+               # ATENÇÃO — este ratchet mede o cenário HERMÉTICO (MAESTRO_HOME em mktemp,
+               # sem papercuts), igual ao do doctor. A linha de papercuts é a PRIMEIRA
+               # coisa da injeção que depende do estado de $MAESTRO_HOME, e por isso nem
+               # este número nem o do doctor a enxergam. O teto do cenário COM papercuts
+               # é cobrado em tests/hooks/test-order-026-papercuts.sh, com fixture — sem
+               # ele, 135B reais entrariam em produção invisíveis para os dois medidores.
+               #
+               # (bump anterior: 7230→7430/7400 em 2026-09-10, E26/S-2602): o Capitão pediu a
                # regra de RELATÓRIO no estilo — relatório é estado, não jornada; obstáculo
                # vencido não é notícia; erro pego antes de entregar não se relata. +186B
                # medidos, e já DEPOIS de pagar parte: quatro linhas de tipografia viraram
