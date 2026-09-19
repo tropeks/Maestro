@@ -11,3 +11,6 @@ docs/research/
 
 # Marcador interno do Claude Code (marketplace orfao) — nunca versionar
 .orphaned_at
+
+# Saída de `claude plugin eval` (ordem 023) — regenerável, não é fonte
+evals/results/

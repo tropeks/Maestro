@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "name": "director_ask",
+      "description": "Pergunta ao Diretor humano e retorna imediatamente (não bloqueia). Parâmetros: o estado corrente do gerente e a pergunta. Retorno: { decision_id, status: \"open\" }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string" },
+          "state": { "type": "string" }
+        },
+        "required": ["question"]
+      }
+    },
+    {
+      "name": "director_wait",
+      "description": "Espera (até max_s, teto de 5min por chamada) a resposta de uma pergunta aberta por director_ask. Sem resposta ainda, retorna status \"open\" (normal, não é erro). Persiste a restart do daemon; expira em 30min.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "max_s": { "type": "number" }
+        },
+        "required": ["id"]
+      }
+    }
+  ]
+}
