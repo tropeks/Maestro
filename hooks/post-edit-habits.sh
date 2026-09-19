@@ -50,8 +50,16 @@ TOOL=""; FILE=""; SID="desconhecido"
 if command -v jq >/dev/null 2>&1; then
   FILE=$(printf '%s' "$RAW" | jq -r '.tool_input.file_path // empty' 2>/dev/null) || FILE=""
 fi
-if [[ -z "$FILE" && "$RAW" =~ \"file_path\"[[:space:]]*:[[:space:]]*\"([^\"]{1,1024})\" ]]; then
+if [[ -z "$FILE" && "$RAW" =~ \"file_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
   FILE="${BASH_REMATCH[1]}"
+  if (( ${#FILE} > 1024 )); then
+    # issue #42: caminho acima do teto e REJEITADO, nunca truncado -- truncar
+    # esconderia um prefixo de caminho real atras de um FILE que parece
+    # valido. Visivel sem bloquear (PostToolUse sempre sai 0 aqui embaixo) e
+    # sem vazar o caminho: só o comprimento capturado, que e metadado.
+    printf 'maestro: post-edit-habits -- file_path do PostToolUse com %d bytes (teto 1024); rejeitado, sensores nao rodam nesta edicao\n' "${#FILE}" >&2
+    FILE=""
+  fi
   [[ "$FILE" == *'\'* ]] && FILE=""   # escape no caminho: só o jq decodifica com segurança
 fi
 

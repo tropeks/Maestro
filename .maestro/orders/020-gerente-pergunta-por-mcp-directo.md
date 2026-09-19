@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+absorbed_by: main
+absorbed_tree: 72b82b01afcf6d088722bf5900e9def503cb8842
+absorbed_at: 2026-09-18T21:29:26-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 020 — gerente pergunta por MCP: director_ask no Stop, espera no turno do gerente
 
