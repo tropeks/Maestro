@@ -1388,6 +1388,36 @@ check_habits_debt() { # E24 Lote 0/0.3: dívida declarada com prazo — avisa a
   fi
 }
 
+check_order_identifiers() { # ordem 018: id do cabeçalho vs número embutido no branch declarado — AVISO, nunca falha
+  # Diagnóstico, não reparo: NÃO escolhe qual dos três identificadores (id,
+  # branch, rótulo do recibo) está certo, só torna a divergência VISÍVEL.
+  # Por isso sempre `report warn` — nunca fail_env/fail_val: incoerência de
+  # identificador não é falha de ambiente nem de schema, é um aviso ao lado
+  # da ordem (o veredito saudável/não do doctor não muda por causa dela).
+  local proj="${CLAUDE_PROJECT_DIR:-$PWD}"
+  local odir="$proj/.maestro/orders" f any=0
+  local bad=() id mis
+  [[ -d "$odir" ]] || { report ok "ordens: sem .maestro/orders (nada a conferir)"; return 0; }
+  _order_lib_load
+  shopt -s nullglob
+  for f in "$odir"/*.md; do
+    _order_valid_stamp "$f" || continue
+    any=1
+    mis=$(_order_identifier_mismatch "$f") || mis=""
+    [[ -n "$mis" ]] || continue
+    id=$(_order_field "$f" id)
+    bad+=("ordem $((10#$id)): $mis")
+  done
+  shopt -u nullglob
+  if (( any == 0 )); then
+    report ok "ordens: nenhuma em $odir"
+  elif (( ${#bad[@]} == 0 )); then
+    report ok "ordens: id e branch coerentes em todas"
+  else
+    report warn "ordens: id e branch DIVERGEM em ${#bad[@]} ordem(ns)" "$(join_semi "${bad[@]}")"
+  fi
+}
+
 # ------------------------------------------------------------------ decision records
 
 now_epoch() { date +%s 2>/dev/null || printf '0\n'; }
@@ -1484,6 +1514,7 @@ doctor() {
   check_project_profiles
   check_release_diagram
   check_habits_debt
+  check_order_identifiers
 
   # --- estado ----------------------------------------------------------------
   if [[ "$MAESTRO_HOME" != "$MAESTRO_HOME_DEFAULT" ]]; then

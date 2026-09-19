@@ -190,13 +190,17 @@ _order_show_next() { # <proj> <arquivo> <id> <status> <branch> → bloco final (
   esac
 }
 _order_action_status() { # <proj> <arquivo> <id> — imprime o boletim completo de uma ordem
-  local proj="$1" of="$2" oid="$3" st br _ptree=""
+  local proj="$1" of="$2" oid="$3" st br _ptree="" _idmis
   st=$(_order_status "$proj" "$of"); br=$(_order_field "$of" branch)
   printf 'ordem %s: %s\n' "$oid" "$st"
   printf '  arquivo : %s\n  branch  : %s' "$of" "${br:-?}"
   git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 \
     && printf ' (existe, tip %s)\n' "$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)" \
     || printf ' (não existe)\n'
+  # ordem 018: id/branch DIVERGEM — diagnóstico, não reparo; silêncio quando
+  # coerente ou quando não dá pra extrair número do branch com confiança.
+  _idmis=$(_order_identifier_mismatch "$of")
+  [[ -n "$_idmis" ]] && printf '  ATENÇÃO: %s\n' "$_idmis"
   printf '  prova   : '
   # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
   [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true

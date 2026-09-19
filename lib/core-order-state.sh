@@ -39,6 +39,42 @@ _order_intent_stale() { # <arquivo> <versão atual> → rc 0 se a direção ando
   [[ "$ov" =~ ^[0-9]{1,9}$ && "${2:-}" =~ ^[0-9]{1,9}$ ]] || return 1
   (( 10#$2 > 10#$ov ))
 }
+_order_branch_number() { # <branch> → número de ordem embutido no branch, ou vazio se não extraível com confiança (ordem 018)
+  # Três identificadores (id do cabeçalho, branch declarado, rótulo do
+  # recibo) e nada os reconciliava — _order_evidence_candidates (abaixo)
+  # deriva o rótulo SÓ do id; o branch nunca entrava na conta. O padrão de
+  # prefixo varia por projeto e não é contrato (Maestro: refactor/015-…,
+  # fix/016-…; vulcan: order/001-…; ponte-daemon: order/NNN-slug) — o que É
+  # verificável é o NÚMERO: a corrida de dígitos que abre o ÚLTIMO segmento
+  # do path (depois da última '/', ou o branch inteiro se não houver '/').
+  # Cap de 3 dígitos — MESMO teto de `_order_valid_stamp` (`^[0-9]{1,3}$`) —
+  # de propósito: exclui ano/hash (ex.: "2026-09-17-fix" não vira id 2026).
+  # Fora do cap ou sem dígito líder: devolve vazio — "não sei dizer", NUNCA
+  # "incoerente" (falso positivo aqui é ruído que ninguém lê, issue #9).
+  local br="${1:-}" tail num
+  [[ -n "$br" ]] || return 0
+  tail="${br##*/}"
+  [[ "$tail" =~ ^([0-9]+) ]] || return 0
+  num="${BASH_REMATCH[1]}"
+  (( ${#num} <= 3 )) || return 0
+  printf '%s' "$((10#$num))"
+}
+_order_identifier_mismatch() { # <arquivo> → detalhe do aviso se branch:/id: DIVERGEM; vazio se coerentes OU se "não sei dizer" (ordem 018, DATA_MODEL §9 v1.20)
+  # FAZ tornar a incoerência VISÍVEL; NÃO FAZ escolher qual dos três
+  # identificadores está certo — id, branch e recibo são escritos por mãos
+  # diferentes em momentos diferentes, e um vencedor automático inventaria
+  # verdade. Puro: só os DOIS campos DECLARADOS no cabeçalho, nunca git nem
+  # ledger — não é sobre o branch EXISTIR (isso é _order_status), é sobre o
+  # NÚMERO que ele embute bater com o id do arquivo que o declara.
+  local f="$1" id br bn
+  id=$(_order_field "$f" id); [[ -n "$id" ]] || return 0
+  br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
+  bn=$(_order_branch_number "$br"); [[ -n "$bn" ]] || return 0
+  (( 10#$id == 10#$bn )) && return 0
+  printf 'branch declarado "%s" embute o número %s — id desta ordem é %s; id, branch e recibo podem apontar para ordens diferentes, nenhum foi corrigido automaticamente' \
+    "$br" "$bn" "$((10#$id))"
+  return 0
+}
 _order_evidence_candidates() { # <id> → as 2 variantes de rótulo (S-1802: canônica e acolchoada), uma por linha
   printf 'order-%s\n' "$((10#$1))"
   printf 'order-%03d\n' "$((10#$1))"

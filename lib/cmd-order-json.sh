@@ -144,6 +144,10 @@ _order_action_status_json() { # <proj> <arquivo> <id> — o boletim de _order_ac
   out+=",$(_order_json_field branch "$br")"
   out+=",$(_order_json_bool branch_existe "$br_existe")"
   out+=",$(_order_json_field branch_tip "$br_tip")"
+  # ordem 018: id/branch DIVERGEM — null quando coerentes ou "não sei dizer"
+  # (_order_json_field já converte string vazia em null), MESMO predicado do
+  # texto (_order_identifier_mismatch) — nunca uma segunda derivação.
+  out+=",$(_order_json_field identificador_incoerente "$(_order_identifier_mismatch "$of")")"
   out+=",$(_order_json_field arquivo "$of")"
   out+=",$(_order_json_acao_frag "$proj" "$of" "$st")"
   out+=",\"direcao\":$(_order_json_direcao_frag "$proj" "$of")"
