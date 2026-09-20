@@ -2,7 +2,7 @@
 # base_rate (corpus) = 0.7857142857142857
 # acuracia_geral (CV) = 0.8076923076923077 · IC 95% [0.7443122037240222, 0.8583515701565299]
 # recall_rework (n=36) = 0.1111111111111111
-# Brier = 0.13696947116514502 · ECE = 0.112 (15 faixas iguais) · AUC = 0.7626822157434402
+# Brier = 0.13696947116514502 · ECE = 0.11198726416918393 (15 faixas de largura igual, ponderadas pelo n) · AUC = 0.7634596695821185 (empate = 0,5)
 # L2 = 0.1 (fixo, declarado antes de qualquer medição).
 # Colunas: id	true_label	predicted	p_pred	correct	fold
 id	true_label	predicted	p_pred	correct	fold

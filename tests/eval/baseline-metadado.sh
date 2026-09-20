@@ -11,6 +11,19 @@ LOG="${LAYA_LOG:-$HOME/.maestro/logs/routing.jsonl}"
 
 command -v jq >/dev/null 2>&1 || die "jq não encontrado"
 
+# Prioridade 1: dependencia de terceiro ausente PULA com honestidade (exit 0),
+# nunca reprova. numpy vive na venv; sem ela, nao ha o que medir aqui.
+skip_sem_numpy() {
+  command -v "$PY" >/dev/null 2>&1 || {
+    printf 'baseline-metadado: PULADO — interpretador "%s" ausente (aponte LAYA_PYTHON para a venv)\n' "$PY"
+    exit 0
+  }
+  "$PY" -c 'import numpy' >/dev/null 2>&1 || {
+    printf 'baseline-metadado: PULADO — numpy ausente em "%s" (aponte LAYA_PYTHON para a venv)\n' "$PY"
+    exit 0
+  }
+}
+
 m1_pairs_json() {
   local log="$1"
   [[ -f "$log" ]] || { printf '[]'; return 0; }
@@ -18,6 +31,7 @@ m1_pairs_json() {
 }
 
 measure() {
+  skip_sem_numpy
   local pairs; pairs=$(m1_pairs_json "$LOG")
   local n; n=$(printf '%s' "$pairs" | jq 'length')
   [[ "$n" -eq 182 ]] || die "Esperava 182 pares, achei $n"
@@ -54,7 +68,7 @@ measure() {
 # base_rate (corpus) = 0.7857142857142857
 # acuracia_geral (CV) = $acc · IC 95% [$ci_lower, $ci_upper]
 # recall_rework (n=$n_rework) = $recall_rework
-# Brier = $brier · ECE = $ece · AUC = $auc
+# Brier = $brier · ECE = $ece (15 faixas de largura igual, ponderadas pelo n) · AUC = $auc (empate = 0,5)
 # L2 = 0.1 (fixo, declarado antes de qualquer medição).
 # Colunas: id	true_label	predicted	p_pred	correct	fold
 id	true_label	predicted	p_pred	correct	fold
@@ -67,6 +81,7 @@ EOF
 
 selftest() {
   printf '## baseline-metadado --selftest\n'
+  skip_sem_numpy
   local work; work=$(mktemp -d) || die "mktemp"
   trap "rm -rf '$work'" RETURN
   

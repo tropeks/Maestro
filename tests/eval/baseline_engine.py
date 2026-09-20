@@ -45,12 +45,11 @@ def vectorize(pair, feature_names):
     return vec
 
 class LogisticRegression:
-    def __init__(self, classes, l2=0.1, max_iter=500, learning_rate=0.01, n_features=0):
+    def __init__(self, classes, l2=0.1, max_iter=500, learning_rate=0.01):
         self.classes = sorted(classes)
         self.l2 = l2
         self.max_iter = max_iter
         self.learning_rate = learning_rate
-        self.n_features = n_features
         self.W = None
         self.b = None
     
@@ -139,7 +138,7 @@ def main():
         X_train = np.array([vectorize(p, feature_names) for p in train_pairs], dtype=np.float64)
         y_train = [p['outcome'] for p in train_pairs]
         
-        model = LogisticRegression(all_classes, l2=0.1, n_features=len(feature_names))
+        model = LogisticRegression(all_classes, l2=0.1)
         model.fit(X_train, y_train)
         
         X_test = np.array([vectorize(p, feature_names) for _, p in test_indices_pairs], dtype=np.float64)
