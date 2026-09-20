@@ -1,0 +1,54 @@
+# tests/eval/laya-m2.tsv — M2 (roteamento), ordem 034/028. n=15 casos x 3 eixos.
+# n=15: calibração por faixa é INDICATIVA, não conclusiva (regra 028) — leia junto com o n.
+# concordância workflow = 0.26666666666666666 (n=15)
+# concordância mode     = 0.26666666666666666 (n=15)
+# concordância agents   = 0.06666666666666667 (n=15) — single-choice: conta certo se acertar QUALQUER agente esperado (limite do desenho, ver laya-spike.sh)
+# casos ambiguous:true  = infra-pve-restart, pg-campo-cnpj, pg-query-lenta, ts-console-logger  — bloco à parte abaixo, confiança alta aqui é excesso de confiança (o sinal mais informativo do experimento)
+# Colunas: case_id	axis	ambiguous	expected	predicted	confidence	correct
+case_id	axis	ambiguous	expected	predicted	confidence	correct
+go-nil-worker	workflow	false	fix	fix	0.2296	1
+go-nil-worker	mode	false	subagent	multi	0.0226	0
+go-nil-worker	agents	false	golang-pro	dev-junior	0.6029	0
+ts-login-quebrado	workflow	false	fix	ship	0.5354	0
+ts-login-quebrado	mode	false	subagent	subagent	0.3362	1
+ts-login-quebrado	agents	false	typescript-pro	nenhum	0.7195	0
+py-export-csv	workflow	false	feature	custom	0.1252	0
+py-export-csv	mode	false	multi	multi	0.031	1
+py-export-csv	agents	false	python-pro,typescript-pro	dev-junior	0.728	0
+go-endpoint-health	workflow	false	feature	custom	0.5307	0
+go-endpoint-health	mode	false	subagent	multi	0.1916	0
+go-endpoint-health	agents	false	golang-pro	nenhum	0.875	0
+py-refactor-auth	workflow	false	refactor	fix	0.1538	0
+py-refactor-auth	mode	false	multi	direct	0.0371	0
+py-refactor-auth	agents	false	engenheiro,python-pro	dev-junior	0.6489	0
+audit-legatus	workflow	false	audit	custom	0.0996	0
+audit-legatus	mode	false	direct	subagent	0.2781	0
+audit-legatus	agents	false	nenhum	seguranca	1.0	0
+ship-smartquotation	workflow	false	ship	ship	0.3726	1
+ship-smartquotation	mode	false	direct	multi	0.0345	0
+ship-smartquotation	agents	false	nenhum	golang-pro	0.665	0
+resumo-semana	workflow	false	custom	custom	0.2571	1
+resumo-semana	mode	false	direct	subagent	0.1864	0
+resumo-semana	agents	false	nenhum	nenhum	0.6555	1
+react-tela-config	workflow	false	feature	custom	0.2316	0
+react-tela-config	mode	false	subagent	multi	0.0375	0
+react-tela-config	agents	false	typescript-pro	golang-pro	0.7234	0
+qa-fluxo-orcamento	workflow	false	verify	verify	0.4165	1
+qa-fluxo-orcamento	mode	false	subagent	multi	0.0093	0
+qa-fluxo-orcamento	agents	false	qa	dev-junior	0.693	0
+review-pr	workflow	false	codereview	refactor	0.4406	0
+review-pr	mode	false	subagent	subagent	0.3506	1
+review-pr	agents	false	revisor	nenhum	0.8013	0
+# --- ambiguous:true (bloco à parte) ---
+pg-query-lenta	workflow	true	fix	custom	0.3036	0
+pg-query-lenta	mode	true	subagent	multi	0.6398	0
+pg-query-lenta	agents	true	postgres-pro	nenhum	0.743	0
+pg-campo-cnpj	workflow	true	feature	refactor	0.1731	0
+pg-campo-cnpj	mode	true	subagent	multi	0.0713	0
+pg-campo-cnpj	agents	true	postgres-pro	golang-pro	0.9201	0
+infra-pve-restart	workflow	true	fix	verify	0.0493	0
+infra-pve-restart	mode	true	direct	multi	0.0125	0
+infra-pve-restart	agents	true	nenhum	postgres-pro	0.9964	0
+ts-console-logger	workflow	true	refactor	custom	0.651	0
+ts-console-logger	mode	true	subagent	subagent	0.3461	1
+ts-console-logger	agents	true	dev-junior	nenhum	0.9098	0
