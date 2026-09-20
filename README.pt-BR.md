@@ -22,7 +22,10 @@ contexto mais caro da casa. Um bugfix mecânico de uma linha custa o mesmo racio
 premium que uma decisão de arquitetura. O Maestro inverte o padrão: **delegar é a
 regra, executar direto é a exceção**, e a tarefa desce para o modelo mais barato que
 dá conta dela — medido em eval cego, essa inversão levou o acerto de roteamento de
-73% para 100% (15/15, dois juízes independentes).
+73% (11/15, melhor juiz, rodada 2) para 100% (15/15, dois juízes independentes,
+rodada 6) — melhor de seis rodadas contra os MESMOS 15 casos, com sobreajuste
+declarado como ressalva. O número de CAMPO, medido em 479 decisões reais, é outra
+métrica e tem ressalva própria: veja `docs/ROUTING_EVAL.md`.
 
 ## Como funciona
 

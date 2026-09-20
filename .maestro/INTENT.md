@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 3
-ts: 2026-09-17T09:16:35-03:00
-head: aa91b8f123465b6809bb25fb84bdc7071db42df3
+version: 4
+ts: 2026-09-19T23:50:34-03:00
+head: 9b336cfbfafa4e670d153034f197cc78fa8057b9
 author_session: desconhecido
-hash: 64b18664
+hash: 580bb30a
 -->
 # Direção — Maestro
 

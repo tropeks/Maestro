@@ -15,7 +15,8 @@ número tenha método declarado, seja reexecutável, e seja **contestável caso 
 **Resultado, em uma linha:** com a tabela `v2` (sha256 `afdc5fa05529`) e 15 casos,
 um juiz LLM cego acerta **11/15 (73%)** — abaixo da AC de 80%, com **8 dos 9 erros
 concentrados na coluna `mode`**, e uma causa raiz identificada (achado R11). O log de
-dogfood, que é a fonte que a AC cita, ainda está vazio.
+dogfood, que é a fonte que a AC cita, **não está mais vazio** (ordem 031,
+2026-09-19): 479 decisões reais em 16 projetos, medidas na seção "Rodada de campo".
 
 ---
 
