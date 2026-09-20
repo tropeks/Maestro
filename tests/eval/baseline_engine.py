@@ -1,22 +1,18 @@
 #!/usr/bin/env python3.13
 """
-Regressão logística multinomial com L2 fixo sobre metadado M1.
-NumPy puro, determinístico, sem seed aleatória.
-L2 = 0.1 (fixo, declarado antes de qualquer medição).
+Regressão logística multinomial com validação cruzada 5-fold sobre metadado M1.
 """
 import json
 import sys
 import numpy as np
 
 def softmax(logits):
-    """Softmax numericamente estável."""
     logits = np.asarray(logits, dtype=np.float64)
     logits = logits - np.max(logits, axis=-1, keepdims=True)
     exps = np.exp(logits)
     return exps / np.sum(exps, axis=-1, keepdims=True)
 
 def one_hot_features(pair):
-    """One-hot encode categoriais."""
     features = {}
     for field in ['project', 'workflow', 'mode', 'tool', 'file_ext']:
         val = pair.get(field)
@@ -30,43 +26,39 @@ def one_hot_features(pair):
     return features
 
 def build_feature_space(pairs_list):
-    """Coleta todos os feature names."""
-    all_features = {}
+    all_features = set()
     for pair in pairs_list:
         for field in ['project', 'workflow', 'mode', 'tool', 'file_ext']:
             val = pair.get(field)
             if val is None or (isinstance(val, list) and len(val) == 0):
-                key = f"{field}=__null__"
-                all_features[key] = True
+                all_features.add(f"{field}=__null__")
             elif isinstance(val, list):
                 for item in val:
-                    key = f"{field}={item}"
-                    all_features[key] = True
+                    all_features.add(f"{field}={item}")
             else:
-                key = f"{field}={val}"
-                all_features[key] = True
-    return sorted(all_features.keys())
+                all_features.add(f"{field}={val}")
+    return sorted(all_features)
 
 def vectorize(pair, feature_names):
-    """Converte pair em vetor binário."""
     features = one_hot_features(pair)
     vec = np.array([1.0 if feat in features else 0.0 for feat in feature_names], dtype=np.float64)
     return vec
 
 class LogisticRegression:
-    """Multinomial logistic com SGD e L2 fixo."""
-    
-    def __init__(self, classes, l2=0.1, max_iter=500, learning_rate=0.01):
+    def __init__(self, classes, l2=0.1, max_iter=500, learning_rate=0.01, n_features=0):
         self.classes = sorted(classes)
         self.l2 = l2
         self.max_iter = max_iter
         self.learning_rate = learning_rate
+        self.n_features = n_features
         self.W = None
         self.b = None
     
     def fit(self, X, y):
-        """SGD simples."""
         X = np.asarray(X, dtype=np.float64)
+        if X.shape[0] == 0:
+            return
+        
         n_samples, n_features = X.shape
         n_classes = len(self.classes)
         
@@ -92,46 +84,81 @@ class LogisticRegression:
                 self.W -= self.learning_rate * self.l2 * self.W
     
     def predict(self, X):
-        """Prediz classes e probabilidades."""
         X = np.asarray(X, dtype=np.float64)
+        if self.W is None or X.shape[0] == 0:
+            return np.array([]), np.array([]), np.array([])
+        
         logits = X @ self.W.T + self.b
         probs = softmax(logits)
         pred_idx = np.argmax(probs, axis=1)
         pred_classes = np.array([self.classes[i] for i in pred_idx])
         pred_probs = np.array([probs[i, pred_idx[i]] for i in range(len(pred_idx))])
-        return pred_classes, pred_probs
+        return pred_classes, pred_probs, probs
+
+def stratified_kfold_split(pairs, k=5):
+    """Estratificado por outcome."""
+    pairs = list(pairs)
+    by_outcome = {}
+    for i, p in enumerate(pairs):
+        outcome = p['outcome']
+        if outcome not in by_outcome:
+            by_outcome[outcome] = []
+        by_outcome[outcome].append((i, p))
+    
+    folds = [[] for _ in range(k)]
+    for outcome, indices_pairs in by_outcome.items():
+        for fold_idx, (orig_idx, pair) in enumerate(indices_pairs):
+            fold = fold_idx % k
+            folds[fold].append((orig_idx, pair))
+    
+    return folds
 
 def main():
     data = json.loads(sys.stdin.read())
-    adjust = data['ajuste']
-    teste = data['teste']
+    pairs = data
     
-    all_pairs = adjust + teste
-    feature_names = build_feature_space(all_pairs)
+    if not pairs:
+        return
     
-    X_adjust = np.array([vectorize(p, feature_names) for p in adjust], dtype=np.float64)
-    y_adjust = [p['outcome'] for p in adjust]
+    all_classes = sorted(set(p['outcome'] for p in pairs))
+    feature_names = build_feature_space(pairs)
     
-    X_test = np.array([vectorize(p, feature_names) for p in teste], dtype=np.float64)
-    y_test = [p['outcome'] for p in teste]
-    test_ids = [p.get('id', f'test-{i}') for i, p in enumerate(teste)]
+    # 5-fold CV
+    folds = stratified_kfold_split(pairs, k=5)
     
-    classes = sorted(set(y_adjust + y_test))
-    model = LogisticRegression(classes, l2=0.1, max_iter=500, learning_rate=0.01)
-    model.fit(X_adjust, y_adjust)
-    
-    pred_classes, pred_probs = model.predict(X_test)
-    
-    for test_id, true_label, pred_class, p_pred in zip(test_ids, y_test, pred_classes, pred_probs):
-        correct = 1 if pred_class == true_label else 0
-        record = {
-            'id': test_id,
-            'true_label': true_label,
-            'predicted': pred_class,
-            'p_pred': float(p_pred),
-            'correct': correct
-        }
-        print(json.dumps(record))
+    for fold_idx in range(5):
+        test_indices_pairs = folds[fold_idx]
+        train_pairs = []
+        for f_idx in range(5):
+            if f_idx != fold_idx:
+                train_pairs.extend([p for _, p in folds[f_idx]])
+        
+        if not train_pairs or not test_indices_pairs:
+            continue
+        
+        X_train = np.array([vectorize(p, feature_names) for p in train_pairs], dtype=np.float64)
+        y_train = [p['outcome'] for p in train_pairs]
+        
+        model = LogisticRegression(all_classes, l2=0.1, n_features=len(feature_names))
+        model.fit(X_train, y_train)
+        
+        X_test = np.array([vectorize(p, feature_names) for _, p in test_indices_pairs], dtype=np.float64)
+        y_test = [p['outcome'] for _, p in test_indices_pairs]
+        test_ids = [p['id'] for _, p in test_indices_pairs]
+        
+        pred_classes, pred_probs, all_probs = model.predict(X_test)
+        
+        for test_id, true_label, pred_class, p_pred in zip(test_ids, y_test, pred_classes, pred_probs):
+            correct = 1 if pred_class == true_label else 0
+            record = {
+                'id': test_id,
+                'true_label': true_label,
+                'predicted': pred_class,
+                'p_pred': float(p_pred),
+                'correct': correct,
+                'fold': fold_idx
+            }
+            print(json.dumps(record))
 
 if __name__ == '__main__':
     main()
