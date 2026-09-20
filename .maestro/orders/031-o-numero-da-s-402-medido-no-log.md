@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml hooks/ bin/ src/ lib/
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+absorbed_by: main
+absorbed_tree: b28960041c29867ab815781a46d37fa40a27762d
+absorbed_at: 2026-09-20T01:02:34-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 031 — o numero da S-402 medido no LOG real: o eval cego sai de prescrito para observado
 

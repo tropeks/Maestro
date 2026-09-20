@@ -371,7 +371,7 @@ O brief:
 - guarda o que estava em curso, decisões abertas e próximo passo;
 - tem cabeçalho com timestamp, epoch, HEAD, wtree e sessão;
 - é gravado atomicamente em `$MAESTRO_HOME/briefs/`;
-- aceita narrativa de até 16KB;
+- aceita narrativa de até 64 KiB, e acima disso recusa em vez de cortar;
 - é validado pelo `doctor`;
 - é classificado como estado de trabalho, não como log nem memória durável.
 

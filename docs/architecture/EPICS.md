@@ -159,8 +159,9 @@ GARANTIA de que o estado existe e está fresco, nunca o estado em si** — trilh
 verificam; a IA escreve a narrativa. Brief é estado local de trabalho: não é memória
 (ADR-007 intocado) e não é log (§4 intocado).
 - **S-801:** `maestro brief` — CLI bash puro (sem Bun): leitura com veredito de freshness
-  em duas camadas (HEAD barato + wtree/S-701 por conteúdo), `--write` (stdin/--file, cap
-  16KB, atômico), `--auto` (esqueleto determinístico do git), `--path`; carimbos
+  em duas camadas (HEAD barato + wtree/S-701 por conteúdo), `--write` (stdin/--file, teto
+  de 64 KiB, atômico, recusa explícita acima do teto em vez de truncar — ordem 032),
+  `--auto` (esqueleto determinístico do git), `--path`; carimbos
   ts/epoch/HEAD/wtree/session; chave derivada por `maestro_brief_file()` no common.sh —
   definição única para CLI e hook (paridade testada). *AC: FRESCO/STALE contando commits;
   wtree acusa working tree mudado com HEAD igual; fora de git degrada honesto; corrompido

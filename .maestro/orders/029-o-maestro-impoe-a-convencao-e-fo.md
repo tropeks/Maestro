@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+absorbed_by: main
+absorbed_tree: b28960041c29867ab815781a46d37fa40a27762d
+absorbed_at: 2026-09-20T01:02:33-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 029 — o Maestro impoe a convencao e forca a chamada por MCP: tres caminhos no Stop
 

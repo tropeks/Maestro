@@ -252,7 +252,8 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 - Bash puro (sem Bun — o antídoto do cold start não pode depender de runtime).
 - Sem flag: lê com veredito de freshness (`FRESCO`/`STALE — N commit(s)`/fora de
   git) e imprime a narrativa. Brief ausente é informativo, exit 0.
-- `--write` (narrativa via stdin ou `--file`, cap 16KB) e `--auto` (esqueleto
+- `--write` (narrativa via stdin ou `--file`, teto de 64 KiB/65536 bytes — acima
+  dele recusa com os três números e não grava nada, ordem 032) e `--auto` (esqueleto
   determinístico do git) carimbam ts/epoch/HEAD/wtree(S-701)/session e gravam
   atômico em `$MAESTRO_HOME/briefs/` (DATA_MODEL §7). `--path` só o caminho.
 - Exit: 0 ok · 1 validação (narrativa vazia, flag/session malformada) · 2 ambiente.

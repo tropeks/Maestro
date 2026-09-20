@@ -623,7 +623,7 @@ head: <sha40 | none>
 wtree: <hash40 (S-701) | none>
 session: <id | desconhecido>
 -->
-<narrativa markdown, escrita pela IA; cap de 16KB no write>
+<narrativa markdown, escrita pela IA; teto de 64 KiB no write — nunca truncada>
 ```
 
 Escrito por `maestro brief --write|--auto` (bash puro, atômico tmp+mv). Freshness

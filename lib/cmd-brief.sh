@@ -36,16 +36,44 @@ _brief_action_read() { # <brief> <proj> — modo leitura: veredito de freshness 
 }
 
 _brief_action_write() { # <modo:write|auto> <arquivo> <proj> <sid> <brief> — grava narrativa carimbada por conteúdo
-  local mode="$1" file="$2" proj="$3" sid="$4" bf="$5" narrative=""
+  local mode="$1" file="$2" proj="$3" sid="$4" bf="$5" narrative="" max_bytes=65536
+  # cria o diretório do brief já aqui: o caminho de stdin precisa de um
+  # arquivo temporário na mesma árvore ANTES de saber se a entrada cabe no
+  # teto (sem depender de mktemp — mesma convenção do "$bf.tmp.$$" abaixo).
+  mkdir -p "${bf%/*}" 2>/dev/null \
+    || die env "não consigo criar ${bf%/*}" "cheque permissões ou MAESTRO_HOME" 2
   if [[ "$mode" == "auto" ]]; then
     narrative=$(brief_auto_skeleton "$proj")
   elif [[ -n "$file" ]]; then
     [[ -f "$file" && -r "$file" ]] || die validation "arquivo '$file' ilegível" "--file <narrativa.md>" 1
-    narrative=$(head -c 16384 -- "$file")
+    # ordem 032: mede com `wc -c` (nunca $(cat)) para decidir SEM carregar o
+    # arquivo inteiro antes de saber se cabe — teto de 64 KiB (65536 bytes),
+    # nos dois caminhos. Truncar deixou de ser um desfecho possível: acima do
+    # teto é recusa explícita, com os três números, e nada é gravado.
+    local n_bytes
+    n_bytes=$(wc -c < "$file" | tr -d ' ')
+    (( n_bytes > max_bytes )) && die validation \
+      "narrativa de $n_bytes bytes excede o teto de $max_bytes bytes (excedeu por $(( n_bytes - max_bytes )) bytes)" \
+      "reduza a narrativa para até $max_bytes bytes (64 KiB) ou divida em partes" 1
+    narrative=$(head -c "$max_bytes" -- "$file")
   else
     [[ -t 0 ]] && die validation "narrativa ausente" \
       "passe a narrativa via stdin (heredoc), --file, ou use --auto" 1
-    narrative=$(head -c 16384)
+    # stdin não é seekável: grava num temporário para medir com `wc -c` sem
+    # reter o conteúdo numa variável antes de saber se cabe no teto.
+    local stdin_tmp="$bf.stdin.$$"
+    cat > "$stdin_tmp" 2>/dev/null \
+      || { rm -f "$stdin_tmp" 2>/dev/null; die env "falha ao ler stdin" "cheque permissões ou espaço em disco" 2; }
+    local n_bytes
+    n_bytes=$(wc -c < "$stdin_tmp" | tr -d ' ')
+    if (( n_bytes > max_bytes )); then
+      rm -f "$stdin_tmp"
+      die validation \
+        "narrativa de $n_bytes bytes excede o teto de $max_bytes bytes (excedeu por $(( n_bytes - max_bytes )) bytes)" \
+        "reduza a narrativa para até $max_bytes bytes (64 KiB) ou divida em partes" 1
+    fi
+    narrative=$(head -c "$max_bytes" -- "$stdin_tmp")
+    rm -f "$stdin_tmp"
   fi
   [[ -n "${narrative//[[:space:]]/}" ]] || die validation "narrativa vazia" \
     "o brief sem conteúdo não poupa varredura nenhuma" 1
@@ -58,8 +86,6 @@ _brief_action_write() { # <modo:write|auto> <arquivo> <proj> <sid> <brief> — g
   [[ "$wtree" =~ ^[0-9a-f]{40}$ ]] || wtree="none"
   ts=$(date -Iseconds); epoch=$(date +%s)
 
-  mkdir -p "${bf%/*}" 2>/dev/null \
-    || die env "não consigo criar ${bf%/*}" "cheque permissões ou MAESTRO_HOME" 2
   local tmp="$bf.tmp.$$"
   {
     printf '<!-- maestro-brief v1\n'

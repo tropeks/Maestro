@@ -115,16 +115,21 @@ chk "narrativa vazia → exit 1 (validação)" "$rc" "1"
 chk "flag desconhecida → exit 1" "$rc" "1"
 "$BIN" brief --write --session 'id inválido!' --project "$PROJ" >/dev/null 2>&1 </dev/null; rc=$?
 chk "session malformada → exit 1" "$rc" "1"
+# ordem 032: teto subiu para 64 KiB (65536 bytes) e truncar deixou de ser um
+# desfecho possível — 40KB (abaixo do teto novo, acima do teto antigo de
+# 16KiB) tem de gravar INTEIRO, não capado.
 head -c 40000 /dev/zero | tr '\0' 'x' | "$BIN" brief --write --project "$PROJ" >/dev/null 2>&1
 sz=$(wc -c < "$("$BIN" brief --path --project "$PROJ")")
-(( sz < 17000 )) && ok "narrativa gigante é capada (~16KB; ficou ${sz}B)" \
-                 || bad "narrativa gigante é capada (ficou ${sz}B)"
+(( sz > 40000 )) && ok "narrativa de 40KB grava inteira sob o teto de 64KiB (ficou ${sz}B)" \
+                 || bad "narrativa de 40KB grava inteira sob o teto de 64KiB (ficou ${sz}B)"
+head -c 70000 /dev/zero | tr '\0' 'y' | "$BIN" brief --write --project "$PROJ" >/dev/null 2>&1; rc=$?
+chk "narrativa acima de 64KiB → exit 1 (validação, sem corte silencioso)" "$rc" "1"
 
 # ---------------------------------------------------------------------------
 echo "-- sem Bun no PATH: brief continua inteiro"
 # ---------------------------------------------------------------------------
 SHIM="$tmp/shim"; mkdir -p "$SHIM"
-for c in bash env readlink dirname basename date git awk grep sed head tr mkdir mv rm wc ls cksum; do
+for c in bash env readlink dirname basename date git awk grep sed head tr mkdir mv rm wc ls cksum cat; do
   q="$(command -v "$c" 2>/dev/null)" || continue; ln -sf "$q" "$SHIM/$c"
 done
 printf 'sem bun\n' | PATH="$SHIM" "$BIN" brief --write --project "$PROJ" >/dev/null 2>&1; rc=$?
