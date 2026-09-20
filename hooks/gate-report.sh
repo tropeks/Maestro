@@ -212,7 +212,10 @@ _maestro_mcp_ask_gate() {
 # nunca cita `message`/`essencia` do gate (E25/S-2501 já cobrava isso; ordem
 # 025 generaliza o texto para não mencionar "gate" — a maioria das rodadas
 # que passam por aqui agora não tem gate nenhum).
-MCP_ASK_REASON_JSON='{"decision":"block","reason":"maestro: a rodada terminou com uma pergunta pendente ([spock] aguardando) e a Ponte MCP esta disponivel nesta pane. Em vez de esperar resposta digitada, chame a tool MCP do servidor ponte: director.ask uma vez, e depois director.wait em laco (ate 5 min por chamada), com teto de 30 min no total. Se expirar sem resposta, diga isso como o desfecho da rodada e nao repita a linha [spock] aguardando: para esta mesma pergunta."}'
+# Ordem 029 — a razão NUNCA transcreve o marcador: ia para o transcript e o `tail -c`
+# da rodada SEGUINTE a re-disparava (3 falsos positivos medidos). Descreva, não cite.
+MCP_ASK_REASON_JSON='{"decision":"block","reason":"maestro: a rodada terminou com uma pergunta pendente (linha canonica de aguardo) e a Ponte MCP esta disponivel nesta pane. Em vez de esperar resposta digitada, chame a tool MCP do servidor ponte: director.ask uma vez, e depois director.wait em laco (ate 5 min por chamada), com teto de 30 min no total. Se expirar sem resposta, diga isso como o desfecho da rodada e nao repita a linha canonica de aguardo para esta mesma pergunta."}'
+MCP_NUDGE_REASON_JSON='{"decision":"block","reason":"maestro: esta rodada termina pedindo decisao ao Diretor, mas SEM a linha canonica. Reescreva o fecho da rodada com a linha exata: colchete-s-p-o-c-k-colchete espaco aguardando: <sua pergunta> — e so essa forma aciona a Ponte; parafrase nao aciona. Depois de reescrever, chame a tool MCP director.ask uma vez e director.wait em laco. Se nao ha decisao pendente de verdade, encerre a rodada sem pedir nada."}'
 
 # ---------------------------------------------------------------------------
 # Ordem 020, gatilho da VOLTA por MCP — Ordem 025: SOBE para cá, antes do
@@ -225,21 +228,48 @@ MCP_ASK_REASON_JSON='{"decision":"block","reason":"maestro: a rodada terminou co
 # (glibc é ~O(N²) para compilar/casar quantificador limitado) contra ~7ms de
 # `+`.
 # ---------------------------------------------------------------------------
-mcp_ask=0
+# ---------------------------------------------------------------------------
+# Ordem 029 (decisão do Capitão): o Stop deixa de liberar por TEXTO. Três
+# caminhos — (1) paráfrase sem a canônica → REPROVA; (2) canônica → SEGURA até haver
+# EVIDÊNCIA de director.ask (marcador do pre-director-ask.sh, PreToolUse); (3) sem
+# socket → passa e REGISTRA (Prioridade 1). O desenho inteiro está na ordem 029.
+# Canônica estreita (contrato, ENSINADO na injeção) × paráfrase larga (é o que
+# se quer PEGAR). Sem `{1,N}` grande (#42): `[^:]{0,24}` custou ~640µs em 8KB.
+# ---------------------------------------------------------------------------
+MAESTRO_ASK_CANON='\[[Ss]pock\][[:space:]]*[Aa]guardando[[:space:]]*:'
+MAESTRO_ASK_LOOSE='[Aa]guard(o|ando)[^:]{0,24}:'
+
+mcp_ask=0        # (2) canônica presente → segurar até a evidência
+mcp_nudge=0      # (1) paráfrase sem canônica → reprovar e mandar reescrever
 ponte_sock="${PONTE_MCP_SOCKET:-$HOME/.ponte/mcp.sock}"
 if [[ -e "$ponte_sock" ]]; then
-  if [[ "$raw" =~ \[spock\][[:space:]]aguardando: ]]; then
-    mcp_ask=1
-  else
+  ask_txt="$raw"
+  if [[ ! "$ask_txt" =~ $MAESTRO_ASK_CANON && ! "$ask_txt" =~ $MAESTRO_ASK_LOOSE ]]; then
     tpath=""
     if [[ "$raw" =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
       tpath="${BASH_REMATCH[1]:0:4096}"
     fi
     if [[ -n "$tpath" && -f "$tpath" && -r "$tpath" ]]; then
       tail_txt=$(tail -c 8192 -- "$tpath" 2>/dev/null) || tail_txt=""
-      [[ "$tail_txt" =~ \[spock\][[:space:]]aguardando: ]] && mcp_ask=1
+      [[ -n "$tail_txt" ]] && ask_txt="$tail_txt"
     fi
   fi
+  if [[ "$ask_txt" =~ $MAESTRO_ASK_CANON ]]; then
+    mcp_ask=1
+  elif [[ "$ask_txt" =~ $MAESTRO_ASK_LOOSE ]]; then
+    mcp_nudge=1
+  fi
+else
+  # (3) registrado: "passou sem Ponte" é fato no log, não silêncio.
+  if [[ "$raw" =~ $MAESTRO_ASK_CANON || "$raw" =~ $MAESTRO_ASK_LOOSE ]]; then
+    log_event director_ask session_id="$sid" phase=sem_socket
+  fi
+fi
+
+# (2) a EVIDÊNCIA: marcador por sessão, escrito no PreToolUse da tool.
+DIRECTOR_ASKED_DIR="$MAESTRO_HOME/herdr/director-asked"
+if (( mcp_ask == 1 )) && [[ -n "$sid" && -e "$DIRECTOR_ASKED_DIR/$sid" ]]; then
+  mcp_ask=0
 fi
 
 # NÃO-LAÇO, rede 1: `stop_hook_active=true` = este Stop já é reentrada de um
@@ -309,6 +339,12 @@ if [[ -z "$gate" ]]; then
   if (( mcp_ask == 1 && reentry == 0 )); then
     _maestro_mcp_prune_stale
     _maestro_mcp_ask_gate aviso
+  elif (( mcp_nudge == 1 && reentry == 0 )); then
+    # 029 (1): a reentrada já é a rede de não-laço; TTL aqui deixaria a rodada
+    # seguinte escapar com a paráfrase, que é o que esta ordem impede.
+    log_event gate_block session_id="$sid" gate_mode=parafrase
+    printf '%s' "$MCP_NUDGE_REASON_JSON" >&3 2>/dev/null || :
+    exit 0
   else
     rm -f -- "$MCP_ASKED_DIR/${sid}_aviso" 2>/dev/null || :
   fi
@@ -355,4 +391,10 @@ fi
 # 020, só a implementação foi extraída para função e reaproveitada pelo
 # caminho novo sem gate (chave `aviso`, tratado mais acima).
 (( mcp_ask == 1 && reentry == 0 )) && _maestro_mcp_ask_gate "$gate"
+# 029 (1) vale também com gate pendente: a convenção é de toda rodada.
+if (( mcp_nudge == 1 && reentry == 0 )); then
+  log_event gate_block session_id="$sid" gate_mode=parafrase
+  printf '%s' "$MCP_NUDGE_REASON_JSON" >&3 2>/dev/null || :
+  exit 0
+fi
 exit 0

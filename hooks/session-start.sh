@@ -648,6 +648,18 @@ build_and_emit() {
     # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
     # catastrófico/quase irreversível; RAD privado verificado flui sem pergunta.
     sec_gate+="- Diretriz Spock: os gates valem para risco catastrófico/quase irreversível (produção real com usuários/dados, billing, auth/secrets, migração destrutiva, apagar dados/volumes, force push, decisão jurídica/produto externa). Em RAD privado com a onda VERIFICADA (testes/evidência), commit, push em branch, PR/draft e deploy de teste fluem sem pergunta — registre a decisão e siga."$'\n'
+    # Ordem 029 — a linha canônica do gatilho da 025 passa a ser ENSINADA.
+    # Causa raiz medida: `[spock] aguardando:` vivia no INTENT, nas ordens 020/025,
+    # nos testes e nos evals — e NUNCA na injeção. O gerente era cobrado por uma
+    # string que ninguém lhe entregava, e produzia a paráfrase óbvia ("Aguardo de
+    # você:"), que o gate-report não casava. Contrato que não chega a quem deve
+    # cumpri-lo não é contrato: é expectativa.
+    # CONDICIONAL ao socket da Ponte, pelo mesmo motivo do papercuts (ordem 026):
+    # máquina sem Ponte não paga byte por um mecanismo que não tem como disparar.
+    # `-e` num caminho de socket é um stat — o caminho quente não sente.
+    if [[ -e "${PONTE_MCP_SOCKET:-$HOME/.ponte/mcp.sock}" ]]; then
+      sec_gate+="- Perguntar ao Diretor: termine a rodada com \`[spock] aguardando: <pergunta>\` — SÓ essa linha aciona a Ponte, paráfrase não."$'\n'
+    fi
   fi
 
   # S-401 — o step deixa de ser palavra solta.

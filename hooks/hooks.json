@@ -38,6 +38,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*director_ask",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-director-ask.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

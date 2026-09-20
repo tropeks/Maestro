@@ -8,6 +8,10 @@ frozen: vendor/ agents/ config/routing-table.yaml
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+absorbed_by: main
+absorbed_tree: 2456f953ea43f53c14e2762f5b224694aff93299
+absorbed_at: 2026-09-19T22:43:37-03:00
+absorbed_session: desconhecido
 -->
 # Ordem 019 — guard de teste pergunta pelo mecanismo, nao pelo endereco: 5 blocos desligados pelo E24
 

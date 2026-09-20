@@ -131,8 +131,14 @@ h=$(mktemp -d "$tmp/h.XXXXXX"); p=$(mktemp -d "$tmp/p.XXXXXX")
 # flag): sem ele, máquina atrás do origin ou com árvore suja ganha a linha
 # `atualização: …` no cabeçalho (~120B) e o ratchet reprovaria por ambiente, não
 # por conteúdo. Os dois números têm de medir a MESMA coisa.
+# Ordem 029: PONTE_MCP_SOCKET para um caminho inexistente pelo MESMO motivo do
+# MAESTRO_NO_UPDATE_CHECK acima — a linha "Perguntar ao Diretor" é condicional ao
+# socket da Ponte, e numa forge que TEM a Ponte o ratchet mediria +130B de ambiente
+# em vez de conteúdo. O cenário COM Ponte é cobrado em test-order-029-gatilho.sh,
+# com fixture, contra o warn do doctor (7500) e o teto duro (8000).
 bytes=$(printf '{"session_id":"ratchet"}' \
-  | MAESTRO_HOME="$h" CLAUDE_PROJECT_DIR="$p" MAESTRO_NO_UPDATE_CHECK=1 bash "$HOOK" 2>/dev/null | wc -c | tr -d ' ')
+  | MAESTRO_HOME="$h" CLAUDE_PROJECT_DIR="$p" MAESTRO_NO_UPDATE_CHECK=1 \
+    PONTE_MCP_SOCKET="$tmp/sem-ponte.sock" bash "$HOOK" 2>/dev/null | wc -c | tr -d ' ')
 [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -gt 0 ]] \
   && ok "injeção medida: ${bytes}B" || bad "injeção medida (obtido '$bytes')"
 [[ "$bytes" -le 8000 ]] && ok "dentro do teto duro de 8000B" \
