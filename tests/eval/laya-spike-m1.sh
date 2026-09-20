@@ -58,6 +58,10 @@ m1_measure() {
   # NUNCA `jq -s arq1 arq2`: -s concatena os DOIS arquivos num array só (sem
   # separar por origem) — bug já pago aqui mesmo (ver laya-spike-m2.sh). O
   # join certo é --slurpfile (variável separada) + -s só no arquivo principal.
+  # p_pred = probabilities[choice] (o posterior real); entropy_confidence é
+  # o índice de entropia do laya (informativo, NÃO é probabilidade — ver
+  # docstring de laya_engine.py, corrigido depois da 1a rodada publicada
+  # ter medido o índice errado como se fosse confiança de calibração).
   jq -L "$HERE" --slurpfile truth "$work/truth.jsonl" -s '
     import "laya-lib" as lib;
     ($truth | map({(.id): .}) | add) as $truthmap
@@ -69,11 +73,15 @@ m1_measure() {
             id: $id,
             true_label: $t,
             predicted: .answers.outcome.choice,
-            confidence: .answers.outcome.confidence,
+            p_pred: .answers.outcome.p_pred,
+            entropy_confidence: .answers.outcome.entropy_confidence,
             correct: (if .answers.outcome.choice == $t then 1 else 0 end)
           }
       )
   ' "$work/predictions.jsonl" >"$work/joined.json"
+  # rc checado explicitamente — o mesmo join em laya-spike-m2.sh quebrou em
+  # silêncio uma vez (erro de jq descartado); nunca mais sem checar aqui.
+  [[ $? -eq 0 ]] || die "join M1 (truth x predictions) falhou — ver jq acima"
 }
 
 m1_run() {
@@ -114,8 +122,9 @@ _m1_write_tsv() {
       "# acuracia_geral = \($acc)",
       "# recall_rework (n=\($rew_n)) = \($recall_rework)",
       "# killed (n=\($kil_n)): contagem apenas — pequeno demais para derivar recall/precision (regra 028).",
-      "# Colunas: id\ttrue_label\tpredicted\tconfidence\tcorrect",
-      (["id","true_label","predicted","confidence","correct"] | @tsv),
-      ($rows[] | [.id, .true_label, .predicted, .confidence, .correct] | @tsv)
+      "# p_pred = probabilities[predicted] (posterior real, usado no Brier/ECE). entropy_confidence = índice de entropia do laya — informativo, NÃO é probabilidade.",
+      "# Colunas: id\ttrue_label\tpredicted\tp_pred\tentropy_confidence\tcorrect",
+      (["id","true_label","predicted","p_pred","entropy_confidence","correct"] | @tsv),
+      ($rows[] | [.id, .true_label, .predicted, .p_pred, .entropy_confidence, .correct] | @tsv)
   ' "$joined" >"$out"
 }

@@ -15,9 +15,13 @@
 # ---------------------------------------------------------------------------
 calibracao_run() {
   local m1_joined="$1" out="$2"
+  # laya-lib.jq opera sobre `.confidence` — aqui ele recebe `p_pred`
+  # (probabilities[predicted], o posterior real), NUNCA entropy_confidence
+  # (índice de entropia do laya, que não é probabilidade — corrigido depois
+  # da 1a rodada publicada ter medido esse índice como se fosse confiança).
   jq -L "$HERE" -s '
     import "laya-lib" as lib;
-    .[0] as $rows
+    (.[0] | map({id, true_label, correct, confidence: .p_pred})) as $rows
     | (lib::split_stratified($rows | map(select(.true_label != "killed")); "id"; "true_label")) as $split
     | ($rows | map(select(.true_label == "killed"))) as $killed
     | ($split.teste + $killed) as $teste_full
@@ -31,9 +35,11 @@ calibracao_run() {
         depois: { brier: lib::brier($teste_depois), ece: lib::ece_table($teste_depois; 15) }
       }
   ' "$m1_joined" >"$out.json"
+  [[ $? -eq 0 ]] || die "cálculo de calibração falhou — ver jq acima"
 
   jq -r '
     "# tests/eval/laya-calibracao.tsv — ordem 034/028. Split holdout estratificado por classe (M1); temperatura ajustada SÓ no split de ajuste, medida SÓ no split de teste.",
+    "# conf_media/faixas são sobre p_pred = probabilities[predicted] (posterior real) — NÃO o índice de entropia do laya (ver laya_engine.py).",
     "# temperatura ajustada (T) = \(.T) · ajuste_n=\(.ajuste_n) · teste_n=\(.teste_n)",
     "# brier ANTES  = \(.antes.brier) · ece ANTES  = \(.antes.ece.ece)",
     "# brier DEPOIS = \(.depois.brier) · ece DEPOIS = \(.depois.ece.ece)",

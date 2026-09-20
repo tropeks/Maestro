@@ -59,6 +59,44 @@ m2_engine_input() {
     }'
 }
 
+# NUNCA `jq -s arq1 arq2`: -s concatena os DOIS arquivos num array só, sem
+# separar por origem (medido: quebrou o join na primeira tentativa — o fix
+# é --slurpfile para um lado e -s só no arquivo principal).
+#
+# p_pred = probabilities[choice] (posterior real); entropy_confidence é o
+# índice de entropia do laya — informativo, NÃO probabilidade (ver docstring
+# de laya_engine.py). `def axis_row` evita repetir a mesma forma três vezes
+# com só o nome do eixo mudando.
+_m2_join() {
+  local work="$1"
+  jq --slurpfile cases "$work/cases.jsonl" -s '
+    def axis_row($axis; $ans; $expected; $ok):
+      # NUNCA `.ambiguous_ // null`: `//` trata `false` como "sem valor" e
+      # colapsava ambiguous:false para null (medido — a coluna saía em
+      # branco). `.ambiguous_` já está sempre presente; sem fallback.
+      {case_id: .id, axis: $axis, ambiguous: .ambiguous_,
+       expected: $expected, predicted: $ans.choice,
+       p_pred: $ans.p_pred, entropy_confidence: $ans.entropy_confidence,
+       correct: (if $ok then 1 else 0 end)};
+    (($cases | map({(.id): .}) | add)) as $casesmap
+    | (map(select(.error | not))) as $preds
+    | [ $preds[] as $p
+        | $casesmap[$p.id] as $c
+        | ($p + {ambiguous_: $c.ambiguous}) as $pc
+        | ($c.expected.agents // []) as $exp_ag
+        | ($pc | axis_row("workflow"; .answers.workflow; $c.expected.workflow;
+             .answers.workflow.choice == $c.expected.workflow)),
+          ($pc | axis_row("mode"; .answers.mode; $c.expected.mode;
+             .answers.mode.choice == $c.expected.mode)),
+          ($pc | axis_row("agents"; .answers.agents;
+             (if ($exp_ag|length)==0 then "nenhum" else ($exp_ag | join(",")) end);
+             (.answers.agents.choice) as $ag_choice
+             | (($exp_ag|length)==0 and $ag_choice=="nenhum")
+               or ($exp_ag | index($ag_choice) != null)))
+      ]
+  ' "$work/predictions.jsonl" >"$work/joined.json"
+}
+
 m2_run() {
   local out="${1:-$HERE/laya-m2.tsv}"
   local dep; dep=$(check_deps)
@@ -78,33 +116,11 @@ m2_run() {
     die "laya_engine.py --predict falhou em M2 (rc=$rc)"
   fi
 
-  # NUNCA `jq -s arq1 arq2`: -s concatena os DOIS arquivos num array só, sem
-  # separar por origem (medido: quebrou o join na primeira tentativa — o
-  # fix é --slurpfile para um lado e -s só no arquivo principal).
-  jq --slurpfile cases "$work/cases.jsonl" -s '
-    (($cases | map({(.id): .}) | add)) as $casesmap
-    | (map(select(.error | not))) as $preds
-    | [ $preds[] as $p
-        | $casesmap[$p.id] as $c
-        | ("workflow" | . as $axis
-           | {case_id: $p.id, axis: $axis, ambiguous: $c.ambiguous,
-              expected: $c.expected.workflow, predicted: $p.answers.workflow.choice,
-              confidence: $p.answers.workflow.confidence,
-              correct: (if $p.answers.workflow.choice == $c.expected.workflow then 1 else 0 end)}),
-          ("mode" | . as $axis
-           | {case_id: $p.id, axis: $axis, ambiguous: $c.ambiguous,
-              expected: $c.expected.mode, predicted: $p.answers.mode.choice,
-              confidence: $p.answers.mode.confidence,
-              correct: (if $p.answers.mode.choice == $c.expected.mode then 1 else 0 end)}),
-          ("agents" | . as $axis
-           | ($c.expected.agents // []) as $exp_ag
-           | {case_id: $p.id, axis: $axis, ambiguous: $c.ambiguous,
-              expected: (if ($exp_ag|length)==0 then "nenhum" else ($exp_ag | join(",")) end),
-              predicted: $p.answers.agents.choice,
-              confidence: $p.answers.agents.confidence,
-              correct: (if (($exp_ag|length)==0 and $p.answers.agents.choice=="nenhum") or ($exp_ag | index($p.answers.agents.choice) != null) then 1 else 0 end)})
-      ]
-  ' "$work/predictions.jsonl" >"$work/joined.json"
+  _m2_join "$work"
+  # rc checado explicitamente: o join já quebrou em silêncio uma vez (erro
+  # de jq descartado, joined.json saía vazio, "M2: 0 registros" passava
+  # como se fosse sucesso) — nunca mais sem checar.
+  [[ $? -eq 0 ]] || die "join M2 (cases x predictions) falhou — ver jq acima"
 
   _m2_write_tsv "$work/joined.json" "$out"
   printf 'M2: %s registros (3 eixos x 15 casos) -> %s\n' "$(jq length "$work/joined.json")" "$out"
@@ -127,10 +143,11 @@ _m2_write_tsv() {
       "# concordância mode     = \(rate($md)) (n=\($md|length))",
       "# concordância agents   = \(rate($ag)) (n=\($ag|length)) — single-choice: conta certo se acertar QUALQUER agente esperado (limite do desenho, ver laya-spike.sh)",
       "# casos ambiguous:true  = \($amb_ids | join(", "))  — bloco à parte abaixo, confiança alta aqui é excesso de confiança (o sinal mais informativo do experimento)",
-      "# Colunas: case_id\taxis\tambiguous\texpected\tpredicted\tconfidence\tcorrect",
-      (["case_id","axis","ambiguous","expected","predicted","confidence","correct"] | @tsv),
-      ($rows[] | select(.ambiguous != true) | [.case_id,.axis,.ambiguous,.expected,.predicted,.confidence,.correct] | @tsv),
+      "# p_pred = probabilities[predicted] (posterior real). entropy_confidence = índice de entropia do laya — informativo, NÃO é probabilidade.",
+      "# Colunas: case_id\taxis\tambiguous\texpected\tpredicted\tp_pred\tentropy_confidence\tcorrect",
+      (["case_id","axis","ambiguous","expected","predicted","p_pred","entropy_confidence","correct"] | @tsv),
+      ($rows[] | select(.ambiguous != true) | [.case_id,.axis,.ambiguous,.expected,.predicted,.p_pred,.entropy_confidence,.correct] | @tsv),
       "# --- ambiguous:true (bloco à parte) ---",
-      ($rows[] | select(.ambiguous == true) | [.case_id,.axis,.ambiguous,.expected,.predicted,.confidence,.correct] | @tsv)
+      ($rows[] | select(.ambiguous == true) | [.case_id,.axis,.ambiguous,.expected,.predicted,.p_pred,.entropy_confidence,.correct] | @tsv)
   ' "$joined" >"$out"
 }

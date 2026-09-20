@@ -40,7 +40,9 @@ _selftest_engine() {
     | LAYA_ENGINE_STUB=1 "$PY" "$ENGINE" --predict 2>"$tmp/eng.err")
   has "(engine) --predict devolve id" "$eng_out" '"id": "x1"' || fail=1
   has "(engine) --predict devolve choice" "$eng_out" '"choice"' || fail=1
-  has "(engine) --predict devolve confidence" "$eng_out" '"confidence"' || fail=1
+  has "(engine) --predict devolve p_pred (posterior, não entropia)" "$eng_out" '"p_pred"' || fail=1
+  has "(engine) --predict devolve entropy_confidence (separado do p_pred)" "$eng_out" '"entropy_confidence"' || fail=1
+  has "(engine) --predict devolve probabilities" "$eng_out" '"probabilities"' || fail=1
 
   local eng_bad_rc
   printf '{"id":"x2","state":{},"questions":"nao-e-um-dict"}\n' \
@@ -85,11 +87,39 @@ _selftest_deps_and_tsv() {
   local dep_out; dep_out=$(LAYA_PYTHON=/bin/nao-existe check_deps 2>&1) || true
   has "(deps) python ausente vira skip com motivo, não crash" "$dep_out" "skip:" || fail=1
 
-  local fake='[{"id":"m1-0","true_label":"accepted","predicted":"accepted","confidence":0.9,"correct":1},{"id":"m1-1","true_label":"rework","predicted":"accepted","confidence":0.6,"correct":0}]'
+  local fake='[{"id":"m1-0","true_label":"accepted","predicted":"accepted","p_pred":0.9,"entropy_confidence":0.8,"correct":1},{"id":"m1-1","true_label":"rework","predicted":"accepted","p_pred":0.6,"entropy_confidence":0.4,"correct":0}]'
   printf '%s' "$fake" | jq . >"$tmp/joined.json"
   _m1_write_tsv "$tmp/joined.json" "$tmp/out.tsv"
   has "(tsv) header comentado com base_rate" "$(cat "$tmp/out.tsv")" "base_rate" || fail=1
-  t "(tsv) 2 linhas de dado + 7 linhas de header" "9" "$(wc -l <"$tmp/out.tsv" | tr -d ' ')" || fail=1
+  has "(tsv) header explica p_pred vs entropy_confidence" "$(cat "$tmp/out.tsv")" "p_pred = probabilities" || fail=1
+  t "(tsv) 1a linha de dado traz p_pred=0.9, não confidence" "0.9" "$(sed -n '9p' "$tmp/out.tsv" | cut -f4)" || fail=1
+  t "(tsv) 2 linhas de dado + 8 linhas de header" "10" "$(wc -l <"$tmp/out.tsv" | tr -d ' ')" || fail=1
+  return $fail
+}
+
+# Regressão do join M2 real (não só a forma isolada): `$exp_ag | index(.answers.agents.choice)`
+# desviava `.` para o array $exp_ag ANTES de ler `.answers` — "Cannot index
+# array with string answers", descoberto só ao rodar contra o motor de
+# verdade (o stub pegou porque tem `probabilities`/`p_pred` de verdade nos
+# 15 casos × 3 eixos, igual ao motor real). Corrigido com `$ans.choice`
+# ligado a uma variável ANTES do pipe para `$exp_ag`. Cobre também a
+# segunda regressão da mesma sessão: `.ambiguous_ // null` colapsava
+# `ambiguous:false` para `null` (o `//` trata `false` como "sem valor").
+_selftest_m2() {
+  local fail=0 work="$1"
+  m2_engine_input >"$work/cases.jsonl"
+  jq -c '{id, state: .prompt, questions}' "$work/cases.jsonl" \
+    | LAYA_ENGINE_STUB=1 "$PY" "$ENGINE" --predict >"$work/predictions.jsonl" 2>/dev/null
+
+  _m2_join "$work"
+  local join_rc=$?
+  t "(m2 join) rc=0 (a versão com bug dava rc=5, jq error)" "0" "$join_rc" || fail=1
+  [[ $join_rc -eq 0 ]] || return 1
+
+  t "(m2 join) 45 registros (15 casos x 3 eixos)" "45" "$(jq length "$work/joined.json")" || fail=1
+  has "(m2 join) eixo agents presente e sem erro" "$(jq -c '[.[] | select(.axis=="agents")] | length' "$work/joined.json")" "15" || fail=1
+  t "(m2 join) ambiguous:false fica false, não null" "false" \
+    "$(jq -r '[.[] | select(.case_id=="go-nil-worker" and .axis=="workflow")][0].ambiguous' "$work/joined.json")" || fail=1
   return $fail
 }
 
@@ -101,6 +131,7 @@ selftest() {
   _selftest_engine "$tmp"        || fail=1
   _selftest_lib                  || fail=1
   _selftest_deps_and_tsv "$tmp"  || fail=1
+  _selftest_m2 "$tmp"            || fail=1
 
   rm -rf "$tmp"
   return $fail
