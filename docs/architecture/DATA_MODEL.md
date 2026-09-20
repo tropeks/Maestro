@@ -396,12 +396,12 @@ de saves, exatamente o que o E22 proibiu.
 
 Uma linha por evento. Hooks emitem SOMENTE o vocabulário fechado via `log_event` do
 `common.sh`; o CLI serializa com `JSON.stringify` — nunca texto livre concatenado
-(proteção contra JSONL malformado, review Opus). **Vocabulário de eventos (19,
-sincronizado com `common.sh::_maestro_event_valid` em 2026-09-05):** `decision` ·
+(proteção contra JSONL malformado, review Opus). **Vocabulário de eventos (20,
+sincronizado com `common.sh::_maestro_event_valid` em 2026-09-19):** `decision` ·
 `gate_pass` · `gate_warn` · `gate_block` · `override_manual` · `killswitch` ·
 `session_end` · `habit_warn` · `consent_grant` · `consent_revoke` · `outcome` ·
 `conduct` · `budget_warn` · `order_create` · `order_accept` · `upgrade` ·
-`delegation` · `intent` · `verify`. Evento fora da lista é descartado com aviso no
+`delegation` · `intent` · `verify` · `route_fix`. Evento fora da lista é descartado com aviso no
 stderr; incluir um novo exige emenda AQUI, em `common.sh` e em `src/cli.ts`
 (`EVENTS`, senão o summary do `maestro log` joga evento real em `unknownEvent`).
 
@@ -409,8 +409,47 @@ stderr; incluir um novo exige emenda AQUI, em `common.sh` e em `src/cli.ts`
 {"ts":"...","event":"decision","session_id":"abc123","workflow":"fix","mode":"subagent","agents":["golang-pro"],"project":"remedix"}
 {"ts":"...","event":"gate_block","session_id":"def456","tool":"Edit","file_ext":".go"}
 {"ts":"...","event":"override_manual","session_id":"def456","cmd":"review"}
+{"ts":"...","event":"route_fix","session_id":"def456","axis":"mode"}
 ```
 `# classification: confidential` — só metadados; `file_ext` sim, caminho completo NÃO (pode conter nome de cliente).
+
+**Emenda (ordem 030) — `route_fix`: o sensor do bullet invérificável do INTENT v3.**
+O Resultado do INTENT v3 promete "zero correção manual do modo/modelo escolhido",
+mas não existia sensor — a correção em linguagem natural ("não, faz direto", "usa
+haiku nessa") não deixava rastro em nenhum dos eventos existentes (o
+`override_manual` só vê prompt que começa com `/`). `route_fix` fecha essa lacuna,
+em `hooks/user-prompt-submit.sh` (o único hook que vê o prompt), estendendo o MESMO
+programa jq que já isola `cmd` — o prompt continua sem sair dali.
+
+Duas âncoras deliberadas contra falso positivo (**"um sensor que conta demais é
+pior que nenhum"**, por isso o viés aqui é para NÃO emitir):
+1. **Âncora mecânica** — só conta se JÁ existe um decision record válido
+   (`maestro_record_valid`) NESTA sessão. Sem record, nenhum prompt é correção.
+2. **Vocabulário FECHADO, nunca classificador** (ADR-002, INTENT "Fora de
+   escopo" — nada de heurística de texto livre): o jq testa só pertencimento a
+   um dos alfabetos JÁ existentes no log_event — `mode` (`direct|subagent|multi`),
+   `workflow` (os 8 valores de `_maestro_set_key_regex`) e os nomes de
+   `agents/*.md`. O GATILHO é CONTRADIÇÃO: o valor citado no prompt precisa
+   DIFERIR do gravado no record — mencionar o mesmo valor que já está decidido
+   não emite nada. Token ambíguo (≥2 valores distintos do mesmo alfabeto no
+   mesmo prompt) também não emite — "emita o que tiver certeza, ou não emita".
+
+Chave nova: `axis` (`^(mode|agents|workflow)$`) — NUNCA a frase, NUNCA um trecho,
+NUNCA hash que permita reconstruir o prompt. Modelo (`haiku|sonnet|opus`), citado
+no prompt mas sem campo próprio no decision record (§3), é cruzado contra o
+`model:` do frontmatter de cada `agents/*.md` já decidido e reportado sob o MESMO
+eixo `agents` — é dali que o modelo realmente vem; sem correspondência conhecida
+(roster ilegível), o sensor fica mudo em vez de inventar contradição.
+`maestro retro` ganha a linha "-- correção de rota" ao lado de "-- decisões" /
+override, para o bullet passar a ter número na mesma tabela que já se lê.
+
+**Débito declarado, no mesmo padrão da emenda v1.19 (ordem 021):** o `EVENTS` de
+`src/cli.ts` (o `maestro log --summary` do CLI Bun) ainda NÃO lista `route_fix` —
+essa metade fica fora deste changeset (fora do escopo dado à ordem 030, e
+`src/` não é território de bash). Efeito enquanto durar: `route_fix` conta como
+`unknownEvent` nesse summary específico do CLI; o `hooks/lib/common.sh` (fonte de
+verdade do hook) e o `maestro retro` (bash, lote desta ordem) já reconhecem o
+evento por completo.
 
 **Emenda v1.2 (E2):** o exemplo de `override_manual` trazia `note` com texto livre, o que
 contradiz o ADR-008 (*"apenas o nome do comando — vocabulário fechado, nunca o texto do
@@ -486,7 +525,7 @@ não loga. Nunca o título, o hash ou o caminho.
 **Emenda E23b (S-2302):** evento novo `verify`, com `n` = número de verificações
 obrigatórias FALTANTES no changeset. Nunca rótulo, área ou caminho.
 
-#### Chaves tipadas — tabela canônica (24, sincronizada com `common.sh::_maestro_set_key_regex`)
+#### Chaves tipadas — tabela canônica (25, sincronizada com `common.sh::_maestro_set_key_regex`)
 
 Nenhuma regex admite `/`: garantia estrutural contra vazamento de caminho, reforçada
 por uma checagem explícita de `*/*` no `log_event`.
@@ -517,6 +556,7 @@ por uma checagem explícita de `*/*` no `log_event`.
 | `settled` | `^(yes\|no)$` | S-1811 |
 | `phase` | `^(planned\|started\|received\|accepted)$` | E23a |
 | `channel` | `^(stable\|main)$` | E23c |
+| `axis` | `^(mode\|agents\|workflow)$` | ordem 030 |
 
 ### 5. Roster — `agents/*.md` (repo do plugin)
 

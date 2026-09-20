@@ -43,9 +43,8 @@ _maestro_refresh_paths() {
 # Kill-switch (S-102): sai do hook inteiro com exit 0, sem efeito algum.
 # ---------------------------------------------------------------------------
 maestro_killswitch() {
-  if [[ "${MAESTRO_OFF:-0}" == "1" ]]; then
-    exit 0
-  fi
+  [[ "${MAESTRO_OFF:-0}" == "1" ]] && exit 0
+  return 0
 }
 
 maestro_ensure_dirs() {
@@ -134,7 +133,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -153,6 +152,7 @@ _maestro_set_key_regex() {
     file_ext)   _maestro_re='^\.[A-Za-z0-9]{1,12}$' ;;
     cmd)        _maestro_re='^[a-z0-9:_-]{1,48}$' ;;
     project)    _maestro_re='^[A-Za-z0-9._-]{1,48}$' ;;
+    axis)       _maestro_re='^(mode|agents|workflow)$' ;;   # ordem 030: eixo do route_fix
     gate_mode)  _maestro_re='^(warn|block)$' ;;
     smell)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;
     scope)      _maestro_re='^[a-z][a-z-]{2,23}$' ;;

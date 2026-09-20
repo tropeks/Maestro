@@ -156,6 +156,7 @@ _retro_jq_report() { # <cutoff> <routable_json> <degrade> <logs...> → as linha
       "-- decisões: \($ndec) · override roteável: \($m) · não-roteável: \($k) · taxa de override: \($rate)%",
       "-- por modo: \($dec | group_by(.mode) | map("\(.[0].mode // "?"): \(length)") | join(" · "))",
       "-- por workflow: \($dec | group_by(.workflow) | map("\(.[0].workflow // "?"): \(length)") | join(" · "))",
+      "-- correção de rota: \($w | map(select(.event == "route_fix")) | length) (route_fix) · por eixo: \($w | map(select(.event == "route_fix")) | group_by(.axis) | map("\(.[0].axis // "?"): \(length)") | join(" · ") | if . == "" then "nenhuma" else . end)",
       "-- gates: pass \($w | map(select(.event == "gate_pass")) | length) · warn \($w | map(select(.event == "gate_warn")) | length) · block \($w | map(select(.event == "gate_block")) | length)",
       "-- habit_warn: \($w | map(select(.event == "habit_warn")) | group_by(.smell) | sort_by(-length) | map("\(.[0].smell // "?"): \(length)") | join(" · ") | if . == "" then "nenhum" else . end)",
       "-- desfechos: \($w | map(select(.event == "outcome")) | group_by(.outcome) | map("\(.[0].outcome // "?"): \(length)") | join(" · ") | if . == "" then "NENHUM registrado — sem desfecho não há aprendizado (maestro outcome)" else . end)",
