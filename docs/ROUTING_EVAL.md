@@ -236,13 +236,15 @@ tivesse de sobrar deste documento como pauta de calibração, seria este 7/15.
 
 ## Instrumento (C) — o log real (a AC "medido no log")
 
-`~/.maestro/logs/routing.jsonl` **está vazio hoje**: o plugin acabou de ser instalado e
-não houve dogfood. O instrumento existe pronto para o dia em que houver.
+`~/.maestro/logs/routing.jsonl` **não está mais vazio** (ordem 031, 2026-09-19):
+16.771 linhas, **479 decisões em 16 projetos**, janela de 30 dias. O dogfood aconteceu
+e o instrumento rodou. O número está na seção "Rodada de campo" abaixo — e o achado
+dela é sobre a DEFINIÇÃO, não sobre o Maestro.
 
 ```
 $ bash tests/eval/run-eval.sh --log ~/.maestro/logs/routing.jsonl
-log inexistente: /home/rcosta00/.maestro/logs/routing.jsonl
-SEM DADO — o instrumento (C) só produz número depois do dogfood.
+OBSERVADO NO LOG: 3/27 sessões roteadas sem correção manual
+                  (override 1 · re-decisão 24 · edição antes de rotear 4)
 ```
 
 **Por que não dá para casar log com esta matriz:** o log é proibido de conter texto de
@@ -456,10 +458,63 @@ e 15/15 na r6 — com a tabela melhorando monotonicamente. A variância entre ex
 mesmo modelo é da ordem da diferença que estamos medindo. Para afirmar um número com
 intervalo seria preciso repetir cada rodada n≥5 vezes.
 
-**3. O número que vale ainda não existe.** A AC da S-402 diz *"medido no log"*. O
-instrumento (C) lê `~/.maestro/logs/routing.jsonl`, que está **vazio** — o plugin foi
-instalado no mesmo dia. Tudo acima é roteamento **prescrito**, não **observado**. A
-validação de campo é a primeira semana de dogfood.
+**3. O número que vale AINDA não existe — mas por outro motivo (atualizado, ordem 031).**
+A AC da S-402 diz *"medido no log"*. O log agora tem 479 decisões, e (C) rodou: o
+resultado está na "Rodada de campo". O que a rodada mostrou é que **a definição de
+"suja" não sobrevive ao contato com o dado**: o termo "2+ decisões divergentes" domina
+o resultado e não distingue correção de rumo de tarefa nova. Tudo acima continua sendo
+roteamento **prescrito**; o observado existe, mas com a ressalva da seção nova.
+
+## Rodada de campo — o instrumento (C) sobre o log real (ordem 031, 2026-09-19)
+
+**O número, como o instrumento o define hoje: `3/27 = 11%`.**
+Sujas: re-decisão 24 · edição antes de rotear 4 · override 1.
+
+**E o número não deve ser publicado assim,** porque um único termo da definição o
+decide. Medido, decompondo:
+
+| definição | limpas / universo | |
+|---|---|---|
+| **com** o termo "2+ decisões divergentes" (a atual) | **3/27** | **11%** |
+| **sem** esse termo (override + edição antes de rotear) | **22/27** | **81%** |
+
+Um termo faz o resultado variar de 11% a 81%. Nenhum dos dois é "o número".
+
+### Por que o termo da re-decisão não mede o que promete
+
+A definição assume *"re-decisão = correção de rumo"*. Foi uma hipótese razoável quando
+o log estava vazio; o dado a refuta. Medido nas 24 sessões com re-decisão, olhando se
+houve `outcome` registrado ENTRE duas decisões divergentes:
+
+- **101 re-decisões divergentes seguem um desfecho** — trabalho anterior fechado e
+  outro começado. É **tarefa nova**, não correção. São 49% do total.
+- **107 não têm desfecho entre elas.** Isso também não prova correção: o log tem 479
+  decisões para 181 desfechos, então "sem desfecho registrado" é o caso COMUM, não o
+  suspeito.
+
+O TTL do decision record é de 4 h. Uma sessão longa que atravessa várias tarefas
+re-decide por construção — e o padrão de uso real é exatamente esse. O termo conta
+sessão longa como sessão corrigida.
+
+### O que falta para (C) valer
+
+A própria seção do instrumento já dizia: *"correção feita em linguagem natural é
+invisível ao log — não começa com `/` e não gera evento"*. Esse era o buraco real, e a
+**ordem 030** o fecha: o evento `route_fix` passa a registrar contradição de rota
+(eixo `mode`/`agents`/`workflow`) sem registrar o que foi dito.
+
+Com `route_fix` disponível, (C) troca o proxy ruim pelo sinal direto: a sessão suja
+deixa de ser "quem re-decidiu" e passa a ser "quem teve correção registrada". **Até
+acumular janela de `route_fix`, o número honesto de (C) é o limite inferior de 81%**
+(override + edição antes de rotear), e o de 11% fica registrado como o que a definição
+antiga produzia — não como a qualidade do roteamento.
+
+### O que isto NÃO muda
+
+A tabela de roteamento não foi tocada por esta ordem, e não deve ser tocada por causa
+destes números: (C) mede sessão, não caso, e não se liga aos 15 casos da matriz — o log
+é proibido de conter texto de prompt, e não há chave para casar um com o outro. Mudar a
+tabela exige (B), não (C).
 
 ## Achado de produto que a avaliação produziu
 

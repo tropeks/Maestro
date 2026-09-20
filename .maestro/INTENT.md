@@ -29,13 +29,45 @@ hash: 64b18664
 
 - Override manual de roteamento cai de ~100% para <20%; comandos de skill digitados por sessão vão de vários para 0–1; zero correção manual do modo/modelo escolhido (PROJECT_BRIEF §9, meta de 3 meses).
 - Medido de fato: retro de 14 dias com 113 decisões e 10% de override elegeu a promoção warn→block (CHANGELOG v1.3.0); 133 decisões e 13% confirmaram a promoção com E2E ao vivo em modo block (CHANGELOG v1.6.0).
-- Acurácia de roteamento em eval cego: de 73% para 100% (15/15, dois juízes independentes) (README "The problem").
+- Acurácia de roteamento em eval cego: de 73% (11/15, melhor juiz, rodada 2) para 100% (15/15, dois juízes, rodada 6) — melhor de seis rodadas contra os MESMOS 15 casos, com sobreajuste declarado como ressalva (README "The problem"; `docs/ROUTING_EVAL.md`). O número de CAMPO, medido em 479 decisões reais, é outra métrica e tem ressalva própria: a definição de "sessão suja" do instrumento (C) depende de um termo que a faz variar de 11% a 81%, e só fecha com o evento `route_fix` da ordem 030 (ordem 031, 2026-09-19).
 - Delegação deixa de ser palavra e vira funil observável — `maestro delegation` mostra `started` real, não apenas `--agents` declarado (EPICS E23/S-2301).
 - `maestro verify --check` recusa quando falta recibo válido na área declarada (EPICS E23/S-2302).
 - `stable` só se move com CI verde: nenhuma máquina recebe commit que a CI não provou (EPICS E23/S-2303).
 - Toda ordem cita a versão do INTENT que a autorizou, e mudar a direção marca as ordens vivas para revisão de plano (EPICS E22).
 - O descarte aparece: janela madura sem nenhum `killed` é sintoma, não virtude (EPICS E25/S-2501; CHANGELOG v1.15.0).
-- Gatilho da Fase 2: ela abre quando o dogfood medir override <20% numa janela de 30 dias com ≥100 decisões. O gatilho é esse número, não uma data (decisão do Capitão, 2026-09-10; fecha a lacuna de PROJECT_BRIEF §9 × EPICS "Roadmap Fase 2").
+- Gatilho da Fase 2: ela abre quando o dogfood medir override <20% numa janela de 30 dias com ≥100 decisões. O gatilho é esse número, não uma data (decisão do Capitão, 2026-09-10; fecha a lacuna de PROJECT_BRIEF §9 × EPICS "Roadmap Fase 2"). **DISPARADO em 2026-09-19: 0,2% de override (1 não-roteável) em 481 decisões na janela de 30 dias, 16 projetos.** O gatilho abriu a Fase 2 — e a Fase 2 NÃO é do v1 (decisão A do Capitão; ver "Fora de escopo").
+
+### CUMPRIDO — 2026-09-19 (v4)
+
+O Maestro v1 encerra aqui. Cada bullet acima, com o número que o fecha e onde ele foi
+medido. Nada de estimativa: tudo sai do log real, da suíte ou do próprio CLI.
+
+| bullet | número | onde |
+|---|---|---|
+| override <20% | **0%** roteável · 479 decisões / 14d | `maestro retro` |
+| skill/sessão 0–1 | **1** comando / 48 sessões | `maestro retro` |
+| zero correção manual de modo/modelo | sensor `route_fix` **existe** (ordem 030) | `hooks/user-prompt-submit.sh` |
+| retro elegeu warn→block | aplicado, `gate.mode: block` | `maestro retro` |
+| eval cego 73% → 100% | 100% prescrito (r6) · campo com ressalva (ordem 031) | `docs/ROUTING_EVAL.md` |
+| funil com `started` real | planned 153 · **started 255** | `maestro delegation --all` |
+| `verify --check` recusa sem recibo | área tocada → **rc=1** | `maestro verify --check` |
+| `stable` só com CI verde | `stable` = commit do diagrama, job "aprovar" success | `.github/workflows/ci.yml` |
+| ordens citam versão do INTENT | **27/27** | `maestro order --list` |
+| `killed` na janela | **3** em 14d | `maestro retro` |
+| gatilho da Fase 2 | **0,2% em 481 decisões / 30d — DISPARADO** | `maestro retro` |
+
+**Dois bullets fecham por MECANISMO, não por número, e isso está dito por extenso:**
+
+- *"zero correção manual"* era **inverificável** até a ordem 030: nenhum dos 17 tipos de
+  evento registrava correção em linguagem natural. A 030 entrega o sensor; o NÚMERO vem
+  quando houver janela. Encerrar com o sensor de pé e sem o número é honesto; encerrar
+  declarando "zero" sem poder medir seria o oposto do que a Prioridade 4 pede.
+- *"eval cego 100%"* é o melhor de seis rodadas contra os mesmos 15 casos, com
+  sobreajuste declarado. O número de CAMPO existe (ordem 031) e mostrou que a definição
+  do instrumento (C) varia de 11% a 81% conforme um termo — registrado, não maquiado.
+
+**O que fica aberto, e por decisão, não por esquecimento:** a Fase 2, destravada pelo
+gatilho e mantida fora do v1 como projeto próprio (decisão A do Capitão).
 
 ## Prioridades
 
@@ -66,9 +98,9 @@ Ordem de desempate: em qualquer colisão, vence a prioridade mais alta desta lis
 
 ## Fora de escopo
 
-- Multi-usuário e QM — fase 2, e só depois do gatilho de override (<20% em 30 dias, ≥100 decisões) (PROJECT_BRIEF §4; ADR-006).
+- Multi-usuário e QM — fase 2. O gatilho de override DISPAROU em 2026-09-19 (0,2% em 481 decisões), e por **decisão A do Capitão** a Fase 2 sai como PROJETO PRÓPRIO: ela está destravada e continua fora do escopo do Maestro v1, que encerra ao cumprir este Resultado (PROJECT_BRIEF §4; ADR-006).
 - Fork ou reescrita dos packs upstream (superpowers, gstack): vendorizados, customização só na camada Maestro (PROJECT_BRIEF §4; CLAUDE.md).
-- Camada MCP dinâmica `activate(domínio, projeto)` — fase 2, módulo do orchestrator, atrás do mesmo gatilho (PROJECT_BRIEF §4).
+- Camada MCP dinâmica `activate(domínio, projeto)` — fase 2, módulo do orchestrator, atrás do mesmo gatilho, que já disparou; segue fora do v1 pela mesma decisão A (PROJECT_BRIEF §4).
 - Task-observer embutido e auto-evolução de skills em runtime — o aprendizado é sempre em lote (PROJECT_BRIEF §4; README "The learning loop").
 - Suporte a adotante externo: issue, compatibilidade e documentação de terceiro não são obrigação do projeto, mesmo com o repo público sob MIT (decisão do Capitão, 2026-09-10).
 - Classificador de intenção dedicado em Haiku (latência + custo + infra) e roteamento por regex/keywords (é a rigidez que motivou o projeto) — ambos rejeitados (ADR-002).

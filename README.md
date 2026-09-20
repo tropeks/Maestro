@@ -21,8 +21,11 @@ In a long Claude Code session, the main model tends to do everything itself — 
 most expensive context in the house. A mechanical one-line bugfix costs the same
 premium reasoning as an architecture decision. Maestro inverts the default:
 **delegating is the rule, working directly is the exception**, and each task drops to
-the cheapest model that can handle it. Measured in a blind eval, this inversion took
-routing accuracy from 73% to 100% (15/15, two independent judges).
+the cheapest model that can handle it. In a blind eval, this inversion took routing
+accuracy from 73% (11/15, best judge, round 2) to 100% (15/15, two independent judges,
+round 6) — best of six rounds against the same 15 cases, so overfitting is a declared
+caveat. The field number, measured on 479 real decisions, is a different metric and
+comes with its own caveat: see `docs/ROUTING_EVAL.md`.
 
 ## How it works
 

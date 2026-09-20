@@ -6,6 +6,73 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-09-19
+
+Release de ENCERRAMENTO do Maestro v1: o Resultado do INTENT está cumprido e carimbado
+(v4). A Fase 2 foi destravada pelo gatilho e fica FORA do v1, como projeto próprio
+(decisão A do Capitão).
+
+### Added
+- **Swarm como modo de primeira classe** (ordem 024): `maestro decide --mode multi`
+  ganha `--fronts` (eixo ARQUIVO — recusa sobreposição de prefixo entre frentes) e
+  `--measures` (eixo RECURSO — avisa se há outra sessão viva). *Frentes que DECIDEM
+  paralelizam; frentes que MEDEM correm sozinhas.* A conta que motivou: seis frentes
+  em paralelo entregaram seis ordens numa janela em que caberiam duas, com load 17,4
+  em 8 CPUs e **zero medições de latência aproveitáveis**. `evidence --record` passa a
+  avisar ANTES da corrida quando a carga já está fora do limiar — antes o veredito
+  "inconclusivo" só aparecia depois de 10 min de suíte gastos. H8 (modelo por perfil:
+  mecânica→haiku, contrato/TDD→sonnet, desenho/revisão/migração/segurança→opus, ADR-004)
+  entra na routing table com corte compensatório: ratchet **7317 → 7310**.
+  Campos `fronts`/`measures` são ADITIVOS (DATA_MODEL **v1.21**) — record antigo segue válido.
+- **O gerente pergunta ao Diretor por mecanismo, não por boa vontade** (ordem 029). O
+  Stop deixa de liberar a rodada por TEXTO: paráfrase sem a linha canônica é REPROVADA
+  com instrução de reescrever; com a linha, a rodada fica SEGURA até haver **evidência
+  de que `director.ask` foi chamado** — marcador por sessão escrito por
+  `hooks/pre-director-ask.sh` (PreToolUse). Sem socket da Ponte, passa e REGISTRA
+  (Prioridade 1). A evidência não vem do `ponte.db`: lê-lo exigiria `sqlite3` como
+  dependência nova e acoplaria o Maestro ao esquema de outro produto. A injeção passa a
+  ENSINAR a linha canônica, condicional ao socket — ela vivia no INTENT e nos testes, e
+  **nunca no que o gerente recebe**, que era a causa raiz do gatilho inerte.
+- **`route_fix`: correção manual de rota deixa rastro** (ordem 030). O primeiro bullet
+  do Resultado prometia "zero correção manual do modo/modelo" e era **inverificável** —
+  `override_manual` só via prompt começando com `/`. O sensor novo registra o EIXO
+  corrigido (`mode`/`agents`/`workflow`), nunca o que foi dito, ancorado no record da
+  sessão e disparado por CONTRADIÇÃO, não por menção. Custo medido intercalado:
+  baseline 40ms · caminho comum 47ms (+18%) · emissão 98ms, só quando o evento sai.
+
+### Fixed
+- **Guards de teste perguntam pelo mecanismo, não pelo endereço** (ordens 019+027):
+  cinco blocos desligados pelo E24 voltam a valer, e a sandbox de sabotagem passa a
+  copiar o `lib/` junto — sem ele o `source` falhava e o teste mentia na direção
+  OPOSTA, "passando" por acidente.
+- **O hook do Stop escrevia a causa do próprio disparo seguinte** (ordem 029). A razão
+  emitida transcrevia o marcador; o texto ia para o transcript, e o `tail -c` da rodada
+  SEGUINTE o encontrava e re-disparava o hook. **Quatro falsos positivos medidos ao
+  vivo**, sem pergunta pendente nenhuma. As razões passam a DESCREVER o marcador, e uma
+  asserção nova reprova qualquer razão que volte a contê-lo.
+
+### Changed
+- **O número de campo do roteamento existe, e desmente a própria definição** (ordem
+  031). O instrumento (C) rodou sobre 479 decisões reais em 16 projetos: **3/27 = 11%**
+  como a definição atual conta "sessão suja" — e **22/27 = 81%** sem o termo "2+
+  decisões divergentes". Um termo decide o resultado. Medido: **101 das re-decisões
+  divergentes seguem um desfecho registrado** (tarefa nova, não correção), e as outras
+  107 não provam nada porque há 479 decisões para 181 desfechos. O README e o INTENT
+  saem corrigidos: o 100% do eval cego é o melhor de seis rodadas contra os mesmos 15
+  casos, com sobreajuste declarado.
+- Emenda do `DATA_MODEL`: **v1.21** (`fronts`/`measures`), mais `route_fix` e `axis` no
+  vocabulário fechado de eventos (§4).
+- **INTENT v4**: Resultado carimbado como CUMPRIDO com a tabela final medida; gatilho da
+  Fase 2 registrado como **DISPARADO** (0,2% de override em 481 decisões / 30 dias); a
+  Fase 2 declarada destravada e fora do escopo do v1.
+
+### Known
+- `hooks/gate-report.sh` usa `{1,200}` ao extrair `essencia:` do brief: **~11ms por
+  invocação, FLAT** (o custo é de COMPILAR o quantificador, não de casar) — ~22% do NFR
+  de 50ms, mesma família da issue #42 em N menor. Não consertado: ordem própria.
+- `src/cli.ts` não lista `route_fix` em `EVENTS`, então `maestro log --summary` o conta
+  como desconhecido. Débito declarado na emenda do DATA_MODEL, não silencioso.
+
 ## [1.17.0] — 2026-09-19
 
 ### Added
