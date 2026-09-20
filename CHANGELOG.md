@@ -6,6 +6,34 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.18.1] — 2026-09-20
+
+Correção de encerramento: o defeito mordia justamente a passagem de bastão entre
+sessões, e os gerentes rodavam um cache que ainda truncava.
+
+### Fixed
+- **`maestro brief --write` nunca mais corta em silêncio** (ordem 032, issue #43). O teto
+  sai de 16 KiB para **64 KiB (65536 bytes)** nos dois canais (`--file` e stdin), e acima
+  dele o comando **recusa com os três números** — quanto entrou, o teto, quanto excedeu —
+  com rc=1 e **nada gravado**: o brief que já estava em disco fica byte-idêntico
+  (provado por sha256). Truncar deixou de ser um desfecho possível.
+  A causa eram duas linhas de `lib/cmd-brief.sh` (`head -c 16384`): `head -c` corta em
+  BYTES e não compara nada, então o código **não sabia que truncou** e reportava sucesso.
+  Medido antes do conserto: entrada de 34.804 B gravada com 16.384 B, corte no meio da
+  palavra, exit 0. O dano caía sempre no FIM do arquivo — "próximo passo", "issues
+  abertas", "armadilhas" —, e quem descobria era a sessão seguinte, que já tinha perdido
+  o contexto sem saber que ele existiu.
+  A medição passa a ser `wc -c` ANTES de decidir (stdin drena para um temporário na mesma
+  árvore, sem `mktemp` novo). Fronteira provada por asserção exata: **65536 B grava,
+  65537 B recusa**, nos dois canais.
+- Emenda de contrato no MESMO changeset: `API_SPEC` (§ brief), `DATA_MODEL` (§7),
+  `EPICS` (S-801) e `MAESTRO_DESIGN_AND_DEVELOPMENT_FLOW` diziam "cap 16KB" e passam a
+  dizer 64 KiB com recusa explícita.
+
+### Known
+- `lib/cmd-order.sh:42` tem o MESMO padrão (`body=$(head -c 16384)`) no corpo do
+  comentário de ordem. Fora do escopo da 032; fica declarado, não silencioso.
+
 ## [1.18.0] — 2026-09-19
 
 Release de ENCERRAMENTO do Maestro v1: o Resultado do INTENT está cumprido e carimbado
