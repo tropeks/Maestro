@@ -1437,6 +1437,151 @@ Prova: `tests/hooks/test-order-024-swarm.sh`.
 `# classification: confidential` (mesma classificação do resto do record — os
 caminhos de `fronts` revelam estrutura do repo do usuário).
 
+#### Emenda v1.22 (ordem 036) — `work_project`: o trabalho mora em outro repo
+
+**Causa, medida (não hipótese).** `_order_status(proj, arquivo)` usava UM `proj` para
+três papéis distintos que, até a 033, sempre coincidiram: **R1** (repo do git — branch/
+tip/merge-base/áreas tocadas), **R2** (chave do ledger, `maestro_evidence_file`) e **R3**
+(dono da ordem — arquivo, carimbo, `~/.maestro/order-state/`, `.maestro/INTENT.md` E22,
+`doc`). A 033 é o primeiro caso em que o trabalho vive no `ponte-daemon` e o arquivo da
+ordem vive no Maestro (R1/R2 ≠ R3) — medido: `.maestro/evidence/ponte-daemon-dcd791bc-
+order-33` (exit=0, `wtree_after=65e38fc7…`) existe no ledger do daemon; `--status` do
+Maestro procurava `Maestro-abc49550-order-33`, que nunca existiu, e lia `em_execucao` sem
+evidência. **Achado que decidiu contra inferir o repo pelo contexto (M2):** existe um
+branch **HOMÔNIMO** `order/033-director-report-project` nos DOIS repos — no Maestro, tip
+`3aec9d8`/árvore `88dc74a3` (criado só para versionar o `.md`); no daemon, tip `f6cc68f`/
+árvore `65e38fc7` (o trabalho de verdade). Duas árvores diferentes, mesmo nome de branch —
+qualquer heurística de "procure o branch por aí" poderia ancorar a prova na árvore ERRADA.
+**Achado que decidiu o endurecimento da emenda v1.16 (M4):** o daemon já tem ordens
+PRÓPRIAS na faixa 030 (`~/dev/worktrees/pd-main/.maestro/orders/`) — em três ordens, ele
+cria a própria 033 e disputa exatamente o rótulo `order-33` no PRÓPRIO ledger dele. Sem
+namespace, um recibo `order-33` do daemon seria lido como prova da 033 do Maestro (ou
+vice-versa) assim que o branch homônimo do Maestro fosse mergeado/apagado — falso positivo
+de aceite, a "prova que parece prova" que a ordem 005 matou, com outra roupa.
+
+**O campo, no cabeçalho `maestro-order v1`** (dentro da janela de 20 linhas de
+`_order_field`, mesma garantia de E22 contra corpo virar campo por acidente):
+
+```
+work_project: <nome-do-diretório-do-repo-do-trabalho>
+```
+
+Forma: `^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$` — sem `/`, sem `..`, sem ponto inicial.
+**Desvio nomeado da emenda A22-01** (`^[a-z0-9-]{1,40}$`, usada por `director.ask`/
+`director.report`): aquele alfabeto é para um SLUG de projeto do daemon; aqui o valor
+precisa nomear um DIRETÓRIO real desta máquina, e projetos como `Agenda_Studio`/`EduPACS`/
+`Enterprise`/`NetForge` seriam inomináveis sob o alfabeto minúsculo. Registrado para
+ninguém "consertar" essa diferença depois.
+
+**Resolução, determinística e independente do `$PWD`:** (1) `MAESTRO_WORK_ROOT` setado →
+`$MAESTRO_WORK_ROOT/<valor>`; (2) senão → irmão do projeto DONO, `dirname(realpath(proj))/
+<valor>` (casa com o layout real e com a convenção `DEV_ROOT` que o daemon já usa). O env
+existe para dar escape e para a suíte ser hermética — mesma técnica de `MAESTRO_HOME`/
+`MAESTRO_UPDATE_TIMEOUT`. **Nunca** relativo ao `$PWD`: o daemon chama com o `cwd` dele, um
+humano chama de onde estiver, e as duas respostas têm de ser a mesma. Válido = resolve para
+diretório que é repo git (`git rev-parse --show-toplevel` ok).
+
+**A tabela de comportamento** — cinco situações × quatro ações:
+
+| situação | `--status`/`--json` | `--accept` | `--list` | `--create` |
+|---|---|---|---|---|
+| ausente | idêntico a hoje, byte a byte | idêntico | idêntico | idêntico |
+| presente e válido | R1/R2 = repo do trabalho; R3 = dono | idem; carimbo/registro no DONO | estado com R1/R2 corretos | grava o campo |
+| forma inválida | `die validation` (rc 1), nomeando o campo/forma | `die validation` | `[?]` + motivo, NÃO morre | recusa |
+| forma ok, não resolve | `die validation` (rc 1): "não resolve para um repositório git em `<root>`" | `die validation` | `[?]` + motivo, NÃO morre | recusa |
+| resolve pro PRÓPRIO dono | tratado como ausente + nota | idem | idem | recusa (é typo) |
+
+`die` acontece na FRONTEIRA DE DESPACHO (`cmd_order`, depois de resolver o arquivo
+carimbado, ANTES de qualquer emissão) — nunca no meio de um `--status --json`, sob risco de
+stdout meio escrito. `--list` NUNCA morre: uma ordem mal escrita não pode derrubar a
+listagem das outras 36 — `[?]` é texto humano, nenhum consumidor externo faz parsing de
+`--list` (o daemon lê os `.md` direto). **Por que `die` e não um estado novo:** o enum de
+`estado` do `RespostaSchema` do daemon é FECHADO em 6 valores (`z.object` sem `.strict()`,
+mas o enum coage desconhecido para `desconhecido`); morrer antes de emitir qualquer byte
+entrega o MESMO desfecho pelo caminho que o daemon já projeta (`catch` → `pede_aceite:
+false`), sem alargar o contrato externo.
+
+**A separação dos três papéis é NORMATIVA** — nenhuma emenda futura pode fundir R1/R2/R3 de
+volta:
+- **R3 (arquivo, carimbo, `~/.maestro/order-state/`, INTENT E22, `doc`) é SEMPRE o projeto
+  DONO.** `work_project` NUNCA os move. Corolário duro (I1): se o registro terminal fosse
+  chaveado pelo repo do trabalho, a 033 do Maestro e uma futura 033 própria do daemon
+  escreveriam no MESMO arquivo em `~/.maestro/order-state/` — dois aceites, um registro.
+  Proibido. `_order_intent_gate`/`_order_stamp_intent`/`_order_state_write`/
+  `_order_terminal_field_header`/`_order_terminal_field_appended` continuam SÓ sobre o
+  projeto DONO — nunca recebem `wproj`.
+- **R1 (branch/tip/áreas tocadas, E23b) e R2 (`maestro_evidence_file`) são o projeto do
+  TRABALHO quando `work_project` existe.** `_order_status`/`_order_evidence_match`/
+  `_order_evidence_frozen_tree`/`_order_deferred_tree`/`_order_proof_tree`/
+  `_order_evidence_label`/`_order_verif_areas`/`_order_verif_report`/`_order_verif_gate`/
+  `_order_moved_since_accept` passam a receber (ou a ser chamadas com) o projeto do
+  TRABALHO no lugar onde antes só existia um `proj`. Ausência do campo → o `wproj`
+  resolvido é o PRÓPRIO dono → literalmente os mesmos argumentos de antes desta ordem.
+
+**A absorção não muda.** `--accept --absorbed-by main|master|<id>` continua resolvendo o
+branch padrão e a árvore da absorvente contra o projeto DONO — absorção por outra ordem/
+branch é um conceito do MESMO repo dono; o desenho desta ordem cobre um campo, um repo
+(§10: "ordem cujo trabalho vive em DOIS repos" fica fora — se aparecer, é ordem nova).
+
+**O rótulo do recibo ganha um candidato NOVO, e a regra fina que o torna obrigatório, não
+enfeite.** Com `work_project` presente, os candidatos passam a ser, nesta ordem:
+`order-<n>-<dono8>` (canônico novo — `dono8` = os 8 hex djb2 de `maestro_brief_file` do
+DONO, §7) → `order-<n>` (legado) → `order-<0NN>` (legado acolchoado, S-1802). **Por que é
+obrigatório:** o caminho da emenda v1.16 (`_order_evidence_frozen_tree`/`_order_deferred_
+tree`, branch AUSENTE) aceita qualquer recibo com `exit=0` e declara `provada` usando a
+árvore CONGELADA, sem tip para comparar — seguro dentro de um projeto porque o id é único
+ali, mas cross-repo deixa de ser: quando o branch do trabalho for mergeado e apagado, um
+recibo `order-33` de uma ordem 33 de OUTRO dono seria aceito como prova (M4). **A regra
+fina, endurecendo a v1.16:** `_order_evidence_match` (branch existe; o tip ancora) aceita o
+candidato namespeado E os legados — seguro, porque um recibo alheio tem OUTRA árvore, nunca
+casa por acidente. `_order_evidence_frozen_tree`/`_order_deferred_tree` (SEM tip para
+ancorar) — com `work_project` presente, SÓ o candidato namespeado vale; os legados ficam de
+fora exatamente onde não há árvore para desambiguar.
+
+**`--json` só cresce (I4, referência à v1.15) — `estado` NÃO ganha valor novo.** Dois campos
+aditivos, sempre presentes, `null` quando não se aplica:
+
+```json
+{ "work_project": "ponte-daemon", "work_project_dir": "/home/rcosta00/dev/ponte-daemon" }
+```
+
+O `RespostaSchema` do daemon (`z.object` sem `.strict()`) ignora os dois. `prova.estado`
+pode mudar de `vencida` para `valida` para uma ordem `provada` (single-repo OU cross-repo)
+lida de um checkout fora do branch dela — ver a emenda seguinte; nenhum consumidor conhecido
+declara `prova` no schema, então isto fica FORA do gatilho de reversão desta ordem (que só
+cobre `estado`/`pede_aceite`/`terminal`/`suspensa`/`branch`/`direcao`/`verificacao`).
+
+**A linha `prova :` de ordem `provada` passa a sair da PRÓPRIA DERIVAÇÃO, não do `maestro
+evidence`.** Antes desta emenda, `_order_status`/`_order_action_status` decidiam `provada`
+comparando `wtree_after` do recibo contra o TIP do branch (`_order_evidence_match`/
+`_order_evidence_frozen_tree`) — uma pergunta imune ao `cwd` de quem chama. O boletim, no
+entanto, exibia a linha `prova :` perguntando de novo a `maestro evidence --label ... --
+project ...`, que responde uma pergunta DIFERENTE ("a árvore de trabalho DESTE checkout é
+byte-idêntica à provada?") — e essa pergunta VENCE por TTL e por checkout errado
+(`MAESTRO_EVIDENCE_MAX_AGE`, mudança de árvore), produzindo o boletim contraditório
+`ordem N: provada` / `prova: VENCIDA`. A partir desta emenda, ordem `provada` imprime
+`VÁLIDA no tip do branch — árvore <sha>, recibo <rótulo> exit 0`, derivado dos MESMOS
+predicados que decidiram o estado — sem perguntar ao `evidence` de novo. Isto muda a saída
+de ordens **single-repo** também (efeito nomeado, não colateral): uma ordem `provada` lida
+de um checkout que não está no branch dela passa de `VENCIDA` para `VÁLIDA` — mais
+verdadeiro, não mais frouxo (nenhum gate consultava essa linha; `--accept` sempre comparou
+com o tip via `_order_status`/`_order_verif_gate`). **O que NÃO fecha, e por quê:** `maestro
+evidence --label X --project Y` isolado continua exatamente como hoje — a issue **#36
+permanece aberta**. Ele não tem branch a que se ancorar (é um veredito sobre a árvore de
+trabalho do checkout corrente); mudá-lo para "achar o worktree do branch" é outro desenho.
+
+Prova: `tests/cli/test-order-036-t2-t9.sh` (T2/T4/T5/T6/T7/T8/T9), `tests/cli/test-order-
+036-t3-homonimo.sh` (T3, o caso do homônimo), `tests/cli/test-order-036-t10-t13.sh`
+(T10-T13) — mesmo padrão PENDENTE/reprova-de-verdade das ordens 003/004A/013/017/021/022:
+sem os patches em `docs/patches/036-*.patch` aplicados, PENDENTE (nunca falha; `lib/` está
+na denylist de autoproteção do gate); com os patches, cobram de verdade. `tests/fixtures/
+order036-golden-capture.sh`/`order036-golden-compare.sh` são o gatilho de reversão do §9 do
+desenho: snapshot de `--status --json` de TODAS as ordens reais desta máquina (118 ordens,
+8 projetos, ANTES do changeset) comparado byte a byte contra o mesmo snapshot DEPOIS — não
+fazem parte de `tests/run-all.sh` (que isola `MAESTRO_HOME` de propósito; este gatilho lê o
+ledger REAL, só leitura, nunca escreve).
+`# classification: public` (a ordem é conteúdo do repo do usuário).
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o

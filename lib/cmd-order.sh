@@ -15,6 +15,13 @@
 # exceção declarada ao teto de 5 parâmetros: cada uma espelha 1:1 as flags
 # do comando — sacola genérica esconderia o contrato.
 #
+# ordem 036 (DATA_MODEL §9 v1.22): `wproj` (projeto do TRABALHO) entra como
+# SEGUNDO parâmetro posicional, logo depois de `proj`/`dono`, em toda função
+# que precisa dele — resolvido UMA VEZ na fronteira de despacho (`cmd_order`,
+# depois de `_order_resolve_stamped`, antes de qualquer emissão) e passado
+# às ações. `--list` resolve por ORDEM dentro do próprio loop (cada arquivo
+# pode ter um `work_project` diferente) e NUNCA morre — marca `[?]`.
+#
 # `maestro_verif_load` (lib/cmd-verify.sh, ordem 011) NÃO é mais residente:
 # cmd_order chama `_verif_lib_load` antes, fora de `$(...)` — mesma nota já
 # registrada abaixo sobre subshell, mesma técnica de `_order_lib_load`.
@@ -61,8 +68,8 @@ _order_body_from_stdin() { # <teto-em-bytes> → corpo em stdout; recusa em vez 
   cat "$stdin_tmp"; rm -f "$stdin_tmp"
 }
 
-_order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc> <sid> — grava, loga, imprime confirmação
-  local proj="$1" oid="$2" title="$3" branch="$4" frozen="$5" extra="$6" odoc="$7" sid="$8"
+_order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc> <sid> <work_project> — grava, loga, imprime confirmação
+  local proj="$1" oid="$2" title="$3" branch="$4" frozen="$5" extra="$6" odoc="$7" sid="$8" wp="${9:-}"
   local of="$proj/.maestro/orders/$oid-$(_order_slug "$title").md" head_sha
   head_sha=$(git -C "$proj" rev-parse HEAD 2>/dev/null) || head_sha="none"
   local i_ver="" i_hash=""   # E22: ordem nasce citando a direção vigente; sem carimbo, sai avisando
@@ -103,6 +110,13 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
     printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
     [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
     printf -- '- Prove com o ledger: `maestro evidence --record --label order-%s -- <suíte>` no tip do branch.\n' "$((10#$oid))"
+    if [[ -n "$wp" ]]; then
+      # ordem 036 (§7.6): camada 3 fecha por DOCUMENTAÇÃO — o contrato traz os
+      # comandos exatos que o EXECUTOR roda de dentro do repo do trabalho.
+      local dono8; dono8=$(_order_dono8 "$proj")
+      printf -- '- Trabalho vive em `%s` (fora deste repo): de lá, `maestro order --status %s --project %s` mostra o estado; prove com `maestro evidence --record --label order-%s-%s -- <suíte>`.\n' \
+        "$wp" "$((10#$oid))" "$proj" "$((10#$oid))" "$dono8"
+    fi
     [[ -n "$i_ver" ]] && printf -- '- Direção vigente na criação: INTENT v%s (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.\n' "$i_ver"
     [[ -n "$odoc" ]] && printf -- '- Esta ordem é autorizada por `%s` — siga-o; se a entrega mudar o contrato, EMENDE o doc no mesmo changeset (o aceite confere o frescor).\n' "$odoc"
     printf -- '- Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.\n'
@@ -118,8 +132,8 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
       "$([[ -f "$(_intent_file "$proj")" ]] && echo 'INTENT incompleto ou sem carimbo (maestro intent --check)' || echo 'não há .maestro/INTENT.md (maestro intent --init)')"
   fi
 }
-_order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "steps:min:cents"> <doc>
-  local proj="$1" sid="$2" title="$3" branch="$4" frozen="$5" odoc="$7"
+_order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "steps:min:cents"> <doc> <work_project>
+  local proj="$1" sid="$2" title="$3" branch="$4" frozen="$5" odoc="$7" wp="${8:-}"
   local b_steps="" b_min="" b_cents="" v extra="" odir="$proj/.maestro/orders" n next=1 f oid
   IFS=: read -r b_steps b_min b_cents <<<"$6"
   [[ -n "$title" ]] || die validation "--title obrigatório" "o título é o contrato em uma linha" 1
@@ -127,6 +141,21 @@ _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "ste
   for v in "$b_steps" "$b_min" "$b_cents"; do
     [[ -z "$v" || "$v" =~ ^[0-9]{1,6}$ ]] || die validation "orçamento exige inteiros" "E14: passos/min/centavos" 1
   done
+  # ordem 036 (DATA_MODEL §9 v1.22, tabela 5.2): --create valida ANTES de
+  # gravar nada — forma inválida, não-resolve ou o típo "aponta pro próprio
+  # dono" recusam (rc 1), nunca criam ordem com campo quebrado.
+  if [[ -n "$wp" ]]; then
+    local wpprobe wptag wprest
+    wpprobe=$(_order_work_project_probe_value "$proj" "$wp")
+    wptag="${wpprobe%% *}"; wprest="${wpprobe#* }"
+    case "$wptag" in
+      FORMA)     die validation "--work-project \"$wp\" tem forma inválida (esperado ${_order_work_project_re}, sem '/')" "" 1 ;;
+      NORESOLVE) die validation "--work-project \"$wp\" não resolve para um repositório git (root ${wprest#* })" \
+                   "confira MAESTRO_WORK_ROOT ou o layout de diretórios irmãos" 1 ;;
+      PROPRIO)   die validation "--work-project \"$wp\" resolve para o próprio projeto dono — não é cross-repo (typo?)" "" 1 ;;
+    esac
+    extra+="work_project: $wp"$'\n'
+  fi
   mkdir -p "$odir" 2>/dev/null || die env "não consigo criar $odir" "cheque permissões" 2
   shopt -s nullglob
   for f in "$odir"/[0-9][0-9][0-9]-*.md "$odir"/[0-9][0-9][0-9].md; do
@@ -142,7 +171,7 @@ _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "ste
   [[ -n "$b_min" ]]   && extra+="budget_min: $b_min"$'\n'
   [[ -n "$b_cents" ]] && extra+="budget_cents: $b_cents"$'\n'
   [[ -n "$odoc" ]]    && extra+="doc: $odoc"$'\n'
-  _order_create_write "$proj" "$oid" "$title" "$branch" "$frozen" "$extra" "$odoc" "$sid"
+  _order_create_write "$proj" "$oid" "$title" "$branch" "$frozen" "$extra" "$odoc" "$sid" "$wp"
 }
 
 # --------------------------------------------------------------- ação: --list
@@ -165,7 +194,13 @@ _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
       [[ "$_seen" == *" $id "* ]] && _dupe+="${_dupe:+ }$id"
       _seen+="$id "
     fi
-    printf '%s  [%s]%s  %s\n' "$id" "$(_order_status "$proj" "$f")" "$mark" \
+    # ordem 036: cada ordem pode ter o SEU work_project — resolve POR
+    # ARQUIVO, dentro do loop, e NUNCA morre (I5/tabela 5.2: --list marca
+    # `[?]`, não derruba a listagem das outras).
+    local wproj_f wp_mark
+    wproj_f=$(_order_work_project_list_wproj "$proj" "$f")
+    wp_mark=$(_order_work_project_list_mark "$proj" "$f")
+    printf '%s  [%s]%s%s  %s\n' "$id" "$(_order_status "$proj" "$wproj_f" "$f")" "$mark" "${wp_mark:+ $wp_mark}" \
       "$(grep -m1 '^# ' "$f" | sed 's/^# //')"
   done
   shopt -u nullglob
@@ -176,107 +211,18 @@ _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
 }
 
 # ------------------------------------------------------------- ação: --status
-_order_show_context() { # <proj> <arquivo> [status] → blocos direção(E22)/verif(E23b)/doc no boletim (vazio se não citado)
-  local proj="$1" of="$2" st="${3-}" _ov _ivn _ihn _oh _vrep _vl _vareas _od
-  _intent_lib_load   # ordem 015: _intent_* não é mais residente
-  _docs_lib_load     # ordem 015: cmd_docs não é mais residente (bloco `doc` abaixo)
-  _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
-  if [[ -n "$_ov" ]]; then
-    printf '  direção : v%s\n' "$_ov"
-    if _order_intent_stale "$of" "$_ivn"; then
-      printf '  ATENÇÃO: a direção mudou (v%s → v%s) depois desta ordem — revise o plano contra .maestro/INTENT.md\n' "$_ov" "$_ivn"
-    elif [[ "$_ov" == "$_ivn" ]]; then
-      _ihn=$(_intent_body_hash "$(_intent_file "$proj")"); _oh=$(_order_field "$of" intent_hash)
-      [[ -n "$_oh" && -n "$_ihn" && "$_oh" != "$_ihn" ]] && \
-        printf '           a direção foi editada sem bump (ainda v%s, conteúdo outro) — maestro intent --bump\n' "$_ov"
-    fi
+#
+# A renderização em TEXTO mora em MÓDULO PRÓPRIO (lib/cmd-order-status.sh,
+# ordem 036) — ver o cabeçalho de lá para o motivo medido (mesmo corte que já
+# separa texto de JSON, agora separando texto de tudo mais neste arquivo).
+_order_status_lib_load() { # carrega lib/cmd-order-status.sh — uma vez, degradando por comando (I-2)
+  declare -f _order_action_status >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/cmd-order-status.sh" ]]; then
+    # shellcheck source=lib/cmd-order-status.sh
+    source "$REPO_DIR/lib/cmd-order-status.sh" && return 0
   fi
-  # ordem 013: adiada não anda — verificação por área compara com o tip ATUAL
-  # do branch, e é exatamente esse "vencer por mudança de árvore" que
-  # trabalho suspenso não deve sofrer. Pula o bloco inteiro (não reprova).
-  if [[ "$st" != "adiada" ]]; then
-    _vareas=$(_order_verif_areas "$proj" "$of"); _vrep=$(_order_verif_report "$proj" "$of" "$_vareas")
-    if [[ -n "$_vrep" ]]; then
-      printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
-      while IFS= read -r _vl; do [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"; done <<<"$_vrep"
-    fi
-  fi
-  _od=$(_order_field "$of" doc)
-  if [[ -n "$_od" ]]; then
-    printf '  doc     : %s — ' "$_od"
-    cmd_docs --project "$proj" 2>/dev/null | grep -m1 "^$_od:" | sed "s|^$_od: ||" || echo "?"
-  fi
-}
-_order_show_next() { # <proj> <arquivo> <id> <status> <branch> → bloco final ("próximo"/"encerrada")
-  local proj="$1" of="$2" oid="$3" st="$4" br="$5"
-  case "$st" in
-    provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
-    aceita)   # S-1805: avisa se o branch andou DEPOIS do aceite (compara CAMINHO, não árvore)
-      local _at2 _tip2 _mudou=""
-      # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
-      _at2=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
-      _tip2=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
-      if [[ -n "$_at2" && "$_at2" != "desconhecida" && -n "$_tip2" && "$_at2" != "$_tip2" ]]; then
-        _mudou=$(git -C "$proj" diff --name-only "$_at2" "$_tip2" 2>/dev/null \
-                 | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ') || true
-      fi
-      if [[ -n "$_mudou" ]]; then
-        printf '  ATENÇÃO: o branch andou DEPOIS do aceite — aceito %s, tip %s.\n' "${_at2:0:12}" "${_tip2:0:12}"
-        printf '           mudou fora do bookkeeping: %s\n' "$_mudou"
-        printf '           o que está no branch NÃO foi aceito; reaceite se for o caso.\n'
-      else
-        echo '  encerrada.'
-      fi
-      ;;
-    absorvida)   # issue #12: terminal, DISTINTO de aceita
-      printf '  encerrada por absorção — provada junto de %s; nada mais a executar aqui.\n' \
-        "$(_order_terminal_field_header "$proj" "$of" absorbed_by)"
-      ;;
-    adiada)   # ordem 013: SUSPENSA, distinta de absorvida — não é terminal, volta
-      printf '  suspensa por decisão de %s — não cobra aceite nem prova enquanto o campo existir.\n' "$(_order_field "$of" deferred_by)"
-      printf '  próximo : retomar é remover deferred_by do cabeçalho e seguir o fluxo normal.\n'
-      ;;
-    *) echo '  próximo : executor abre o branch, entrega e prova via ledger' ;;
-  esac
-}
-_order_action_status() { # <proj> <arquivo> <id> — imprime o boletim completo de uma ordem
-  local proj="$1" of="$2" oid="$3" st br _ptree="" _idmis
-  st=$(_order_status "$proj" "$of"); br=$(_order_field "$of" branch)
-  printf 'ordem %s: %s\n' "$oid" "$st"
-  printf '  arquivo : %s\n  branch  : %s' "$of" "${br:-?}"
-  git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 \
-    && printf ' (existe, tip %s)\n' "$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)" \
-    || printf ' (não existe)\n'
-  # ordem 018: id/branch DIVERGEM — diagnóstico, não reparo; silêncio quando
-  # coerente ou quando não dá pra extrair número do branch com confiança.
-  _idmis=$(_order_identifier_mismatch "$of")
-  [[ -n "$_idmis" ]] && printf '  ATENÇÃO: %s\n' "$_idmis"
-  printf '  prova   : '
-  # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
-  [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
-  if [[ "$st" == "absorvida" ]]; then
-    printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)\n' \
-      "$(_order_terminal_field_header "$proj" "$of" absorbed_by)" \
-      "$(_order_terminal_field_header "$proj" "$of" absorbed_tree | head -c 12)"
-  elif [[ "$st" == "adiada" ]]; then
-    # ordem 013: NUNCA "VENCIDA" — nem por idade nem por mudança de árvore.
-    # A árvore mostrada é a que o recibo JÁ CONGELOU (_order_deferred_tree),
-    # nunca comparada ao tip atual do branch (essa comparação é o que
-    # "venceria" o recibo por mudança de árvore).
-    local _dtree; _dtree=$(_order_deferred_tree "$proj" "$of")
-    if [[ -n "$_dtree" ]]; then
-      printf 'ADIADA por %s — prova congelada em %s (idade e mudança de árvore não se aplicam: trabalho adiado não anda)\n' \
-        "$(_order_field "$of" deferred_by)" "${_dtree:0:12}"
-    else
-      printf 'ADIADA por %s — sem recibo gravado ainda (nada a congelar)\n' "$(_order_field "$of" deferred_by)"
-    fi
-  elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
-    printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
-  else
-    "$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$proj" "$of")" --project "$proj" 2>/dev/null | head -1 || echo "?"
-  fi
-  _order_show_context "$proj" "$of" "$st"
-  _order_show_next "$proj" "$of" "$oid" "$st" "$br"
+  die env "lib/cmd-order-status.sh não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
 }
 
 # ------------------------------------------ ação: --accept (ordem 022, módulo próprio)
@@ -312,8 +258,8 @@ _order_accept_lib_load() { # carrega lib/cmd-order-accept.sh — uma vez, degrad
 # `oversized-file` (400 linhas) sem nenhum motivo além de conveniência de
 # edição. Carregado SOB DEMANDA — só quando `--status` vem com `--json` — no
 # molde de `_order_lib_load`/`_verif_lib_load`: módulo ausente derruba SÓ
-# este comando (I-2, `die env`), nunca o CLI inteiro; `--status` SEM `--json`
-# nunca paga o custo de sourcing de um módulo que não usa.
+# este comando (I-2, `die env`), nunca o CLI; `--status` SEM `--json` nunca
+# paga o custo de sourcing de um módulo que não usa.
 _order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
   declare -f _order_action_status_json >/dev/null 2>&1 && return 0
   if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
@@ -345,7 +291,7 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
 # ------------------------------------------------------------------ despacho
 cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
-  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0
+  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp=""
   while (( $# )); do
     case "$1" in
       --create)  action="create" ;;
@@ -359,13 +305,14 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --budget-min)   b_min="${2:-}"; shift ;;
       --budget-cents) b_cents="${2:-}"; shift ;;
       --doc)     odoc="${2:-}"; shift ;;
+      --work-project) wp="${2:-}"; shift ;;   # ordem 036 (DATA_MODEL §9 v1.22), só com --create
       --intent-reviewed) intent_reviewed=1 ;;   # E22
       --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12, usa-se COM --accept
       --json) json_out=1 ;;   # ordem 014/issue #18, só com --status: fonte única p/ o supervisor ler
       --session) sid="${2:-}"; shift ;;
       --project) proj="${2:-}"; shift ;;
       *) die validation "flag desconhecida '$1'" \
-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
+           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
     esac
     shift
   done
@@ -378,21 +325,26 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
   maestro_verif_load   # E23b: AQUI — dentro de $(...) a lib morreria no subshell
 
   case "$action" in
-    create) _order_action_create "$proj" "$sid" "$title" "$branch" "$frozen" "$b_steps:$b_min:$b_cents" "$odoc"; return 0 ;;
+    create) _order_action_create "$proj" "$sid" "$title" "$branch" "$frozen" "$b_steps:$b_min:$b_cents" "$odoc" "$wp"; return 0 ;;
     list)   _order_action_list "$proj" "$odir"; return 0 ;;
   esac
 
   [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
   oid=$(printf '%03d' "$((10#$oid))")
   local of; of=$(_order_resolve_stamped "$odir" "$oid")
+  # ordem 036: a resolução de `wproj` acontece AQUI — depois de
+  # _order_resolve_stamped, antes de QUALQUER emissão (--status --json não
+  # pode sair com stdout meio escrito). `die validation` (forma inválida /
+  # não resolve) sai daqui direto; ausente/próprio-dono resolvem pro `proj`.
+  local wproj; wproj=$(_order_work_project "$proj" "$of")
 
   case "$action" in
     status)
-      if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$of" "$oid"
-      else _order_action_status "$proj" "$of" "$oid"; fi ;;
+      if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$wproj" "$of" "$oid"
+      else _order_status_lib_load; _order_action_status "$proj" "$wproj" "$of" "$oid"; fi ;;
     accept)
       _order_accept_lib_load
-      if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
-      else _order_accept_own "$proj" "$of" "$oid" "$sid" "$intent_reviewed"; fi ;;
+      if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$wproj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
+      else _order_accept_own "$proj" "$wproj" "$of" "$oid" "$sid" "$intent_reviewed"; fi ;;
   esac
 }

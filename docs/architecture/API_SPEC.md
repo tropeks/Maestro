@@ -375,6 +375,39 @@ rastreia `.maestro/` (E15/E22) via o próprio aceite vencer o recibo que o
 autorizou — caso real: NetForge, ordem 016. Prova: `tests/cli/test-order.sh`,
 falhando contra o `bin/maestro-wtree` anterior e passando com a exclusão.
 
+**Emenda (ordem 036, DATA_MODEL §9 v1.22) — `work_project`: o trabalho mora em outro
+repo.** `--create --title t ... --work-project <nome>` grava `work_project: <nome>` no
+cabeçalho, validando NA HORA (recusa forma inválida, alvo que não resolve para repo git, ou
+alvo == o próprio dono — três motivos, `exit 1`, nada gravado). `<nome>` é um DIRETÓRIO
+irmão do projeto dono (`dirname(realpath(--project))/<nome>`) ou, com `MAESTRO_WORK_ROOT`
+setado, `$MAESTRO_WORK_ROOT/<nome>` — nunca relativo ao `$PWD`. Com o campo presente:
+- `--status N [--json]`/`--accept N`: o branch/tip/áreas tocadas (E23b) e o ledger de
+  evidência passam a ser lidos do projeto do TRABALHO resolvido; o ARQUIVO da ordem, o
+  carimbo de aceite, o registro terminal (`~/.maestro/order-state/`) e a citação de direção
+  (E22) continuam SEMPRE no projeto DONO (`--project`). Forma inválida ou alvo que não
+  resolve → `die validation` (rc 1) na fronteira de despacho, ANTES de qualquer emissão —
+  `--status --json` nunca sai com JSON parcial. Alvo == o próprio dono é tratado como
+  ausente, com uma nota `ATENÇÃO:` no boletim (é typo, não erro fatal fora do `--create`).
+- `--list`: NUNCA morre por um `work_project` quebrado de uma ordem — marca `[?] work_project
+  "<valor>": <motivo>` ao lado do estado e segue listando as demais.
+- O rótulo do recibo ganha o candidato canônico `order-<n>-<dono8>` (`dono8` = 8 hex djb2 do
+  `maestro_brief_file` do dono) na frente dos legados `order-<n>`/`order-<0NN>`; SEM tip de
+  branch para ancorar (branch nunca criado ou já apagado), só o candidato namespeado vale —
+  os legados ficariam ambíguos entre dois projetos com o mesmo id de ordem.
+- A linha `prova :` do boletim, para ordem `provada`, passa a sair da PRÓPRIA derivação
+  (`VÁLIDA no tip do branch — árvore <sha>, recibo <rótulo> exit 0`) em vez de perguntar a
+  `maestro evidence` — vale para ordens single-repo também: lidas de um checkout fora do
+  branch dela, a linha deixa de acusar `VENCIDA`. `maestro evidence --label X --project Y`
+  isolado NÃO muda (issue #36 continua aberta).
+- `--status N --json` ganha dois campos aditivos, sempre presentes, `null` quando não se
+  aplica: `"work_project": "<nome>"`, `"work_project_dir": "<caminho resolvido>"`. `estado`
+  não ganha valor novo (enum fechado de 6 valores, contrato do `RespostaSchema` do daemon).
+- `MAESTRO_WORK_ROOT`: escape/hermeticidade da resolução (mesma técnica de `MAESTRO_HOME`/
+  `MAESTRO_UPDATE_TIMEOUT`) — vence a resolução por diretório irmão quando setado.
+- Ordem SEM `work_project`: comportamento idêntico ao de antes desta emenda, byte a byte
+  (provado por golden — `tests/fixtures/order036-golden-*.sh` — contra as ~118 ordens reais
+  desta máquina).
+
 ### `maestro intent` (E22/S-2201)
 ```
 maestro intent [--show|--check|--init|--bump] [--project d] [--session s]

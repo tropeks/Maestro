@@ -70,10 +70,9 @@ git -C "$P" -c user.email=t@t -c user.name=t commit -qm mais
 chk "recibo com label order-001 (acolchoado) ainda deriva provada" \
     "$("$BIN" order --list --project "$P" | grep -o '\[[a-z_]*\]')" "[provada]"
 # S-1804: a EXIBIÇÃO tem de tolerar o mesmo acolchoado que a DERIVAÇÃO tolera.
-# Antes: estado 'provada' e linha de prova 'NENHUMA' — a mesma ordem descrita
-# de dois jeitos incompatíveis, e foi isso que levou um operador a regravar um
-# recibo que já estava bom.
-if "$BIN" order --status 1 --project "$P" | grep -q 'prova   : evidência (order-001): VÁLIDA'; then
+# ordem 036: 'provada' sai da PRÓPRIA DERIVAÇÃO ("VÁLIDA no tip do branch —
+# árvore ..., recibo <rótulo> exit 0"), não mais de `maestro evidence`.
+if "$BIN" order --status 1 --project "$P" | grep -q 'prova   : VÁLIDA no tip do branch — árvore .*, recibo order-001 exit 0'; then
   ok "linha de prova enxerga o recibo acolchoado (derivação e exibição concordam)"
 else
   bad "linha de prova ignora o acolchoado ($("$BIN" order --status 1 --project "$P" | grep 'prova' | head -1))"

@@ -17,12 +17,19 @@
 # _order_field/_order_status/_order_state_write/_order_terminal_field_header/
 # _order_terminal_field_appended/_order_default_branch/_order_proof_tree/
 # _order_moved_since_accept/_order_intent_gate/_order_verif_gate/
-# _order_stamp_intent — todas já no escopo). Módulo ausente derruba SÓ o
-# comando `--accept` (die env em `_order_accept_lib_load`), nunca o CLI;
-# `--create`/`--list`/`--status` nunca carregam este arquivo.
+# _order_stamp_intent/_order_work_project — todas já no escopo). Módulo
+# ausente derruba SÓ o comando `--accept` (die env em
+# `_order_accept_lib_load`), nunca o CLI; `--create`/`--list`/`--status`
+# nunca carregam este arquivo.
 #
-# Convenção de core-order-state.sh/cmd-order.sh: proj/of/oid/sid chegam por
-# parâmetro posicional, nessa ordem.
+# Convenção de core-order-state.sh/cmd-order.sh: proj/wproj/of/oid/sid
+# chegam por parâmetro posicional, nessa ordem. ordem 036 (DATA_MODEL §9
+# v1.22): `wproj` — R1/R2, projeto do TRABALHO — só entra onde a função
+# precisa de git/ledger; `_order_default_branch`/o rótulo do recibo de
+# `--absorbed-by main|master` CONTINUAM sobre `proj` (dono) de propósito —
+# absorção por OUTRA ordem/branch é um conceito do MESMO projeto dono, fora
+# do escopo desta ordem (§10 do desenho: "ordem cujo trabalho vive em DOIS
+# repos" não inclui "absorvida por branch de um terceiro repo").
 
 # --------------------------------- ação: --accept (ordem 022: cura o carimbo só-por-arquivo)
 #
@@ -89,9 +96,9 @@ _order_accept_cura_aceita() { # <proj> <arquivo> <id> — registro ausente, arqu
   printf 'ordem %s: registro migrado do arquivo (carimbo era só-por-arquivo) — ACEITA, árvore %s\n' "$oid" "${tr:0:12}"
 }
 
-_order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — --accept --absorbed-by (issue #12)
-  local proj="$1" odir="$2" of="$3" oid="$4" sid="$5" absorbed_by="$6" st abs_tree="" stamp ts
-  st=$(_order_status "$proj" "$of")
+_order_accept_absorb() { # <proj> <wproj> <odir> <arquivo> <id> <sid> <absorbed_by> — --accept --absorbed-by (issue #12)
+  local proj="$1" wproj="$2" odir="$3" of="$4" oid="$5" sid="$6" absorbed_by="$7" st abs_tree="" stamp ts
+  st=$(_order_status "$proj" "$wproj" "$of")
   case "$st" in
     aceita|absorvida) _order_accept_absorb_terminal "$proj" "$of" "$oid" "$st"; return 0 ;;
   esac
@@ -99,6 +106,8 @@ _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — 
     || die validation "ordem $oid não pode absorver a si mesma" "" 1
   if [[ "$absorbed_by" == "main" || "$absorbed_by" == "master" ]]; then
     # NetForge: 'main'/'master' são os DOIS apelidos pro branch padrão real.
+    # ordem 036: absorção pelo branch padrão continua sobre `proj` (dono) —
+    # não é o trabalho cross-repo que esta ordem endereça (ver nota no topo).
     local def_br; def_br=$(_order_default_branch "$proj")
     git -C "$proj" rev-parse --verify --quiet "$def_br" >/dev/null 2>&1 \
       || die validation "branch padrão do repo ('$def_br') não existe" "" 1
@@ -114,13 +123,14 @@ _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — 
     abs_tree="$m_tip"
     absorbed_by="$def_br"   # carimbo grava o branch REAL, não o apelido digitado
   elif [[ "$absorbed_by" =~ ^[0-9]{1,3}$ ]]; then
-    local m_oid m_of m_st
+    local m_oid m_of m_st m_wproj
     m_oid=$(printf '%03d' "$((10#$absorbed_by))")
     m_of=$(ls "$odir/$m_oid"-*.md "$odir/$m_oid.md" 2>/dev/null | head -1 || true)
     [[ -n "$m_of" && -f "$m_of" ]] || die validation "ordem absorvente $absorbed_by não existe" "maestro order --list" 1
-    m_st=$(_order_status "$proj" "$m_of")
+    m_wproj=$(_order_work_project "$proj" "$m_of")   # ordem 036: a ABSORVENTE pode ter o SEU PRÓPRIO work_project
+    m_st=$(_order_status "$proj" "$m_wproj" "$m_of")
     case "$m_st" in
-      provada) abs_tree=$(_order_proof_tree "$proj" "$m_of") ;;
+      provada) abs_tree=$(_order_proof_tree "$proj" "$m_wproj" "$m_of") ;;
       aceita)  abs_tree=$(_order_terminal_field_appended "$proj" "$m_of" accepted_tree) ;;
       *) die validation "ordem $absorbed_by está '$m_st', não 'provada' nem 'aceita'" \
            "a absorvente tem de provar o PRÓPRIO trabalho antes de absorver outra — prove $absorbed_by: maestro evidence --record --label order-$((10#$absorbed_by)) -- <suíte>" 1 ;;
@@ -143,21 +153,21 @@ _order_accept_absorb() { # <proj> <odir> <arquivo> <id> <sid> <absorbed_by> — 
   printf 'ordem %s ABSORVIDA por %s — árvore %s; estado terminal, DISTINTO de aceita (esta ordem não provou o próprio trabalho)\n' \
     "$oid" "$absorbed_by" "${abs_tree:0:12}"
 }
-_order_accept_own() { # <proj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
-  local proj="$1" of="$2" oid="$3" sid="$4" reviewed="$5" st ptree _mv ts
-  st=$(_order_status "$proj" "$of")
+_order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
+  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" st ptree _mv ts
+  st=$(_order_status "$proj" "$wproj" "$of")
   if [[ "$st" == "aceita" ]]; then
-    _mv=$(_order_moved_since_accept "$proj" "$of")   # S-1806: reaceite é no-op se nada andou
+    _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")   # S-1806: reaceite é no-op se nada andou
     if [[ -z "$_mv" ]]; then
       if _order_state_registrado "$proj" "$oid"; then echo "ordem $oid já aceita"
       else _order_accept_cura_aceita "$proj" "$of" "$oid"; fi
       return 0
     fi
-    _order_intent_gate "$proj" "$of" "$oid" "$reviewed"
-    ptree=$(_order_proof_tree "$proj" "$of")
+    _order_intent_gate "$proj" "$of" "$oid" "$reviewed"   # E22 — SEMPRE contra o INTENT do DONO (R3)
+    ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
     [[ -n "$ptree" ]] || die validation "ordem $oid andou depois do aceite e não tem prova do conteúdo atual" \
       "mudou fora do bookkeeping: ${_mv}— re-rode e regrave: maestro evidence --record --label order-$((10#$oid)) -- <suíte>" 1
-    _order_verif_gate "$proj" "$of" "$oid"
+    _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2)
     ts=$(date -Iseconds)
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
       "$ts" "${sid:-desconhecido}" "$ptree" >> "$of"
@@ -172,9 +182,9 @@ _order_accept_own() { # <proj> <arquivo> <id> <sid> <intent_reviewed> — aceita
   fi
   [[ "$st" == "provada" ]] || die validation "ordem $oid está '$st', não 'provada'" \
     "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
-  _order_intent_gate "$proj" "$of" "$oid" "$reviewed"
-  _order_verif_gate "$proj" "$of" "$oid"   # S-1803: grava a árvore que a prova cobriu, fato histórico
-  ptree=$(_order_proof_tree "$proj" "$of")
+  _order_intent_gate "$proj" "$of" "$oid" "$reviewed"   # E22 — SEMPRE contra o INTENT do DONO (R3)
+  _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
+  ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
   ts=$(date -Iseconds)
   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
     "$ts" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"

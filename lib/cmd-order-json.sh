@@ -7,8 +7,8 @@
 # interrompia humano era a que errava, e cada estado novo (absorvida na
 # ordem 004, adiada na 013) alargava o buraco porque o consumidor externo
 # não os conhecia. Esta é a FONTE ÚNICA: lê os MESMOS predicados de
-# core-order-state.sh que `_order_action_status` (lib/cmd-order.sh) lê para
-# o texto — nunca uma segunda derivação (precedente hooks/lib/habit-sensors.awk:
+# core-order-state.sh que `_order_action_status` (lib/cmd-order-status.sh)
+# lê para o texto — nunca uma segunda derivação (precedente hooks/lib/habit-sensors.awk:
 # "sensor único, dois momentos"; aqui são dois momentos de ESTADO). Contrato
 # em docs/architecture/DATA_MODEL.md §9, emenda v1.15: nome de campo e forma
 # do objeto não mudam sem emenda; campo novo é sempre ADITIVO.
@@ -27,12 +27,15 @@
 # ordem 015) NÃO são residentes: `_order_json_direcao_frag` chama
 # `_intent_lib_load` antes de usá-las, mesma técnica de `_verif_lib_load`.
 #
-# Mesma convenção de core-order-state.sh/cmd-order.sh: proj/of/oid/st chegam
-# por parâmetro posicional, nessa ordem. Cada bloco do boletim (prova/
-# direção/verificação/ação) virou uma função `_order_json_*_frag`, por
-# RESPONSABILIDADE — não é _order_action_status_json cortada ao meio, é o
-# mesmo recorte que _order_show_context/_order_show_next já fazem no texto,
-# só que cada fragmento devolve o literal JSON pronto para embutir.
+# Mesma convenção de core-order-state.sh/cmd-order.sh: proj/wproj/of/oid/st
+# chegam por parâmetro posicional, nessa ordem (ordem 036: `wproj` logo
+# depois de `proj` em toda função que precisa do repo do TRABALHO — R1/R2;
+# `direcao`/`absorvido_por`/`adiado_por` continuam SÓ `proj` — R3, do DONO,
+# nunca movem). Cada bloco do boletim (prova/direção/verificação/ação) virou
+# uma função `_order_json_*_frag`, por RESPONSABILIDADE — não é
+# _order_action_status_json cortada ao meio, é o mesmo recorte que
+# _order_show_context/_order_show_next já fazem no texto, só que cada
+# fragmento devolve o literal JSON pronto para embutir.
 
 _order_json_esc() { # <str> → escapado para caber dentro de aspas JSON (puro bash, zero lib externa)
   local s="$1"
@@ -47,8 +50,8 @@ _order_json_bool() { # <chave> <0|1> → "chave":true|false
   [[ "$2" == "1" ]] && printf '"%s":true' "$1" || printf '"%s":false' "$1"
 }
 
-_order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto "prova" — MESMO condicional/chamada de _order_action_status
-  local proj="$1" of="$2" oid="$3" st="$4" _ptree="" p_estado="" p_detalhe="" p_arvore=""
+_order_json_prova_frag() { # <proj> <wproj> <arquivo> <id> <estado_derivado> → objeto "prova" — MESMO condicional/chamada de _order_action_status
+  local proj="$1" wproj="$2" of="$3" oid="$4" st="$5" _ptree="" p_estado="" p_detalhe="" p_arvore=""
   # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
   [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
   if [[ "$st" == "absorvida" ]]; then
@@ -56,7 +59,7 @@ _order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto 
     p_detalhe=$(printf 'ABSORVIDA por %s — árvore %s (prova é da absorvente, não desta ordem)' \
       "$(_order_terminal_field_header "$proj" "$of" absorbed_by)" "${p_arvore:0:12}")
   elif [[ "$st" == "adiada" ]]; then
-    p_estado="adiada"; p_arvore=$(_order_deferred_tree "$proj" "$of")
+    p_estado="adiada"; p_arvore=$(_order_deferred_tree "$proj" "$wproj" "$of")
     if [[ -n "$p_arvore" ]]; then
       p_detalhe=$(printf 'ADIADA por %s — prova congelada em %s (idade e mudança de árvore não se aplicam: trabalho adiado não anda)' \
         "$(_order_field "$of" deferred_by)" "${p_arvore:0:12}")
@@ -66,8 +69,18 @@ _order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto 
   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
     p_estado="valida"; p_arvore="$_ptree"
     p_detalhe=$(printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0' "${_ptree:0:12}" "$((10#$oid))")
+  elif [[ "$st" == "provada" ]]; then
+    # ordem 036 (§5.5): sai da PRÓPRIA derivação, não pergunta a `maestro
+    # evidence` — mesmo motivo do texto (lib/cmd-order-status.sh). Efeito
+    # colateral NOMEADO (risco #3 do desenho): `prova.estado` de uma ordem
+    # `provada` single-repo lida de um checkout fora do branch dela passa de
+    # "vencida" para "valida" — mais verdadeiro, nenhum gate consultava esta
+    # linha.
+    p_estado="valida"; p_arvore=$(_order_proof_tree "$proj" "$wproj" "$of")
+    p_detalhe=$(printf 'VÁLIDA no tip do branch — árvore %s, recibo %s exit 0' \
+      "${p_arvore:0:12}" "$(_order_evidence_label "$proj" "$wproj" "$of")")
   else
-    p_detalhe=$("$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$proj" "$of")" --project "$proj" 2>/dev/null | head -1)
+    p_detalhe=$("$REPO_DIR/bin/maestro" evidence --label "$(_order_evidence_label "$proj" "$wproj" "$of")" --project "$wproj" 2>/dev/null | head -1)
     [[ -z "$p_detalhe" ]] && p_detalhe="?"
     case "$p_detalhe" in
       *VÁLIDA*)  p_estado="valida" ;;
@@ -75,13 +88,12 @@ _order_json_prova_frag() { # <proj> <arquivo> <id> <estado_derivado> → objeto 
       *NENHUMA*) p_estado="nenhuma" ;;
       *)         p_estado="desconhecida" ;;
     esac
-    [[ "$st" == "provada" ]] && p_arvore=$(_order_proof_tree "$proj" "$of")
   fi
   printf '{%s,%s,%s}' "$(_order_json_field estado "$p_estado")" "$(_order_json_field detalhe "$p_detalhe")" \
     "$(_order_json_field arvore "$p_arvore")"
 }
 
-_order_json_direcao_frag() { # <proj> <arquivo> → objeto "direcao" (E22), ou "null" — MESMO condicional de _order_show_context
+_order_json_direcao_frag() { # <proj> <arquivo> → objeto "direcao" (E22), ou "null" — MESMO condicional de _order_show_context; SEMPRE do DONO (R3)
   local proj="$1" of="$2" _ov _ivn
   _intent_lib_load   # ordem 015: _intent_* não é mais residente
   _ov=$(_order_field "$of" intent_version); _ivn=$(_intent_version "$(_intent_file "$proj")")
@@ -98,7 +110,7 @@ _order_json_direcao_frag() { # <proj> <arquivo> → objeto "direcao" (E22), ou "
     "$(_order_json_bool desatualizada "$d_stale")" "$(_order_json_bool hash_bump_pendente "$d_bump")"
 }
 
-_order_json_verificacao_frag() { # <proj> <arquivo> <estado_derivado> → array "verificacao" (E23b), ou "null" — pula 'adiada' pelo MESMO motivo do texto
+_order_json_verificacao_frag() { # <wproj> <arquivo> <estado_derivado> → array "verificacao" (E23b), ou "null" — pula 'adiada' pelo MESMO motivo do texto; R1/R2
   local proj="$1" of="$2" st="$3" _vareas _vrep _vl _vitems="" _first=1 _rot _est
   [[ "$st" != "adiada" ]] || { printf 'null'; return 0; }
   _vareas=$(_order_verif_areas "$proj" "$of"); _vrep=$(_order_verif_report "$proj" "$of" "$_vareas")
@@ -112,12 +124,12 @@ _order_json_verificacao_frag() { # <proj> <arquivo> <estado_derivado> → array 
   printf '[%s]' "$_vitems"
 }
 
-_order_json_acao_frag() { # <proj> <arquivo> <estado_derivado> → terminal/suspensa/pede_aceite/motivo — MESMOS casos de _order_show_next
-  local proj="$1" of="$2" st="$3" pede=0 motivo=""
+_order_json_acao_frag() { # <proj> <wproj> <arquivo> <estado_derivado> → terminal/suspensa/pede_aceite/motivo — MESMOS casos de _order_show_next
+  local proj="$1" wproj="$2" of="$3" st="$4" pede=0 motivo=""
   case "$st" in
     provada) pede=1; motivo="revisar e aceitar" ;;
     aceita)
-      local _mv; _mv=$(_order_moved_since_accept "$proj" "$of")
+      local _mv; _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")
       if [[ -n "$_mv" ]]; then pede=1; motivo="branch andou depois do aceite (reaceite se for o caso)"
       else motivo="encerrada"; fi ;;
     absorvida) motivo="encerrada por absorção" ;;
@@ -132,11 +144,12 @@ _order_json_acao_frag() { # <proj> <arquivo> <estado_derivado> → terminal/susp
     "$(_order_json_bool pede_aceite "$pede")" "$(_order_json_field motivo "$motivo")"
 }
 
-_order_action_status_json() { # <proj> <arquivo> <id> — o boletim de _order_action_status, em JSON, MESMA fonte
-  local proj="$1" of="$2" oid="$3" st br br_existe=0 br_tip=""
-  st=$(_order_status "$proj" "$of"); br=$(_order_field "$of" branch)
-  if git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
-    br_existe=1; br_tip=$(git -C "$proj" rev-parse --short=7 "$br" 2>/dev/null)
+_order_action_status_json() { # <proj> <wproj> <arquivo> <id> — o boletim de _order_action_status, em JSON, MESMA fonte
+  local proj="$1" wproj="$2" of="$3" oid="$4" st br br_existe=0 br_tip=""
+  st=$(_order_status "$proj" "$wproj" "$of"); br=$(_order_field "$of" branch)
+  # ordem 036: existência/tip do branch são R1 — julgados no repo do TRABALHO.
+  if git -C "$wproj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+    br_existe=1; br_tip=$(git -C "$wproj" rev-parse --short=7 "$br" 2>/dev/null)
   fi
   local out='{'
   out+="$(_order_json_field id "$oid")"
@@ -149,12 +162,17 @@ _order_action_status_json() { # <proj> <arquivo> <id> — o boletim de _order_ac
   # texto (_order_identifier_mismatch) — nunca uma segunda derivação.
   out+=",$(_order_json_field identificador_incoerente "$(_order_identifier_mismatch "$of")")"
   out+=",$(_order_json_field arquivo "$of")"
-  out+=",$(_order_json_acao_frag "$proj" "$of" "$st")"
+  out+=",$(_order_json_acao_frag "$proj" "$wproj" "$of" "$st")"
   out+=",\"direcao\":$(_order_json_direcao_frag "$proj" "$of")"
-  out+=",\"verificacao\":$(_order_json_verificacao_frag "$proj" "$of" "$st")"
+  out+=",\"verificacao\":$(_order_json_verificacao_frag "$wproj" "$of" "$st")"
   out+=",$(_order_json_field absorvido_por "$(_order_terminal_field_header "$proj" "$of" absorbed_by)")"
   out+=",$(_order_json_field adiado_por "$(_order_field "$of" deferred_by)")"
-  out+=",\"prova\":$(_order_json_prova_frag "$proj" "$of" "$oid" "$st")"
+  out+=",\"prova\":$(_order_json_prova_frag "$proj" "$wproj" "$of" "$oid" "$st")"
+  # ordem 036 (DATA_MODEL §9 v1.22, §5.4) — aditivo, I4: dois campos novos,
+  # sempre presentes, null quando não se aplica. `estado` acima NÃO ganha
+  # valor novo.
+  out+=",$(_order_json_field work_project "$(_order_field "$of" work_project)")"
+  out+=",$(_order_json_field work_project_dir "$( [[ "$wproj" != "$proj" ]] && printf '%s' "$wproj" )")"
   out+='}'
   printf '%s\n' "$out"
 }

@@ -20,7 +20,21 @@
 # Convenção (firmada em _order_field antes de custar caro, E24): nenhuma
 # função fecha sobre local de outra — `proj`/`of`/`oid` chegam SEMPRE por
 # parâmetro posicional, nessa ordem; função pura não recebe `proj`.
-
+#
+# ordem 036 (DATA_MODEL §9 v1.22) — três papéis que, até a 033, sempre
+# coincidiram num único `proj`:
+#   R1 — repo do GIT (branch/tip/merge-base/áreas tocadas)
+#   R2 — chave do LEDGER (maestro_evidence_file)
+#   R3 — dono da ORDEM (arquivo, carimbo, ~/.maestro/order-state/, INTENT, doc)
+# Quando `work_project:` está no cabeçalho, R1/R2 passam a ser o projeto do
+# TRABALHO (`wproj`, resolvido por `_order_work_project`); R3 continua SEMPRE
+# o projeto DONO (`proj`/`dono`, o mesmo parâmetro de sempre). Convenção
+# estendida: funções que precisam dos dois papéis recebem `dono` e `wproj`
+# como os DOIS PRIMEIROS parâmetros posicionais, nessa ordem; funções só-R1/R2
+# (verificação por área) recebem `wproj` no lugar onde recebiam `proj` — sem
+# mudança de forma, só de QUEM o chamador passa. `work_project` AUSENTE →
+# `wproj` resolvido é o PRÓPRIO `dono` → literalmente os mesmos argumentos de
+# antes desta ordem (I3 do desenho — prova é o golden T1, não este comentário).
 
 # ---------------------------------------------- carimbo e campos (puro; janela = cabeçalho, 20 linhas)
 _order_field() { # <arquivo> <chave> → valor do campo, ou vazio
@@ -86,8 +100,20 @@ _order_identifier_mismatch() { # <arquivo> → detalhe do aviso se branch:/id: D
     "$br" "$bn" "$idn"
   return 0
 }
-_order_evidence_candidates() { # <id> → as 2 variantes de rótulo (S-1802: canônica e acolchoada), uma por linha; vazio se id vazio/não numérico
+_order_evidence_candidates() { # <id> [dono8] [strict:0|1] → variantes de rótulo, uma por linha; vazio se id vazio/não numérico
+  # ordem 036 (DATA_MODEL §9 v1.22): com `dono8` (work_project presente), o
+  # candidato CANÔNICO NOVO `order-<n>-<dono8>` entra na FRENTE da lista.
+  # `strict=1` (chamado só quando NÃO HÁ tip pra ancorar — v1.16 endurecida)
+  # corta os dois legados: sem árvore do branch pra desambiguar, um recibo
+  # `order-<n>` do repo do OUTRO dono seria falso positivo de aceite (M4).
+  # `dono8` vazio (work_project ausente) → EXATAMENTE as 2 variantes de
+  # sempre (S-1802), na mesma ordem — I3 do desenho da ordem 036.
   local n; n=$(_order_num "$1") || return 0   # ordem 037: era aqui que `10#` estourava sobre id vazio (arquivo sem carimbo)
+  local dono8="${2:-}" strict="${3:-0}"
+  if [[ -n "$dono8" ]]; then
+    printf 'order-%s-%s\n' "$n" "$dono8"
+    (( strict == 1 )) && return 0
+  fi
   printf 'order-%s\n' "$n"
   printf 'order-%03d\n' "$n"
 }
@@ -108,20 +134,42 @@ _order_default_branch() { # <proj> → branch padrão do repo, resolvido — SEM
   printf 'main'
 }
 
-# --------------------------------------------------------- estado derivado (proj)
-_order_evidence_match() { # <proj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
-  local proj="$1" f="$2" br cand ev_f ev_w tip_tree
+
+# lib/core-order-workproject.sh e lib/core-order-terminal.sh são sourced por
+# ESTE arquivo — não por bin/maestro (congelado nesta ordem). Mesmo molde de
+# _order_json_lib_load (I-2), mas carregado NA HORA (não sob demanda de uma
+# flag do CLI): as funções dos dois módulos são usadas por quase todo
+# predicado deste núcleo.
+_order_workproject_lib_load() {
+  declare -f _order_work_project >/dev/null 2>&1 && declare -f _order_state_write >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/core-order-workproject.sh" && -f "$REPO_DIR/lib/core-order-terminal.sh" ]]; then
+    # shellcheck source=lib/core-order-workproject.sh
+    source "$REPO_DIR/lib/core-order-workproject.sh"
+    # shellcheck source=lib/core-order-terminal.sh
+    source "$REPO_DIR/lib/core-order-terminal.sh" && return 0
+  fi
+  die env "lib/core-order-workproject.sh (ou core-order-terminal.sh) não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
+}
+_order_workproject_lib_load
+# --------------------------------------------------------- estado derivado (dono, wproj)
+_order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
+  local dono="$1" wproj="$2" f="$3" br cand ev_f ev_w tip_tree dono8=""
   br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
-  tip_tree=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || return 0
-  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)"); do
-    ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+  tip_tree=$(git -C "$wproj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || return 0
+  [[ -n "$(_order_field "$f" work_project)" ]] && dono8=$(_order_dono8 "$dono")
+  # branch VIVO ancora a árvore — candidato legado é seguro mesmo com
+  # work_project presente (M2/§5.3: recibo alheio tem OUTRA árvore, nunca
+  # casa por acidente), então strict=0 aqui sempre.
+  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" 0); do
+    ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
     ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
     [[ -n "$ev_w" && "$ev_w" == "$tip_tree" ]] && { printf '%s %s' "$cand" "$ev_w"; return 0; }
   done
   return 0
 }
-_order_evidence_frozen_tree() { # <proj> <arquivo> → wtree_after do recibo VÁLIDO (exit=0), sem comparar com tip
+_order_evidence_frozen_tree() { # <dono> <wproj> <arquivo> → wtree_after do recibo VÁLIDO (exit=0), sem comparar com tip
   # ordem 017: branch AUSENTE (nunca criado OU mergeado-e-apagado) não tem
   # tip vivo pra comparar — mesma situação de _order_deferred_tree (ordem
   # 013), por outro motivo (lá é "adiada não anda", aqui é "o branch sumiu").
@@ -130,83 +178,30 @@ _order_evidence_frozen_tree() { # <proj> <arquivo> → wtree_after do recibo VÁ
   # o gate já é o campo deferred_by, a árvore é só para exibição) e aqui o
   # exit=0 É o gate — é o que decide 'provada' em vez de 'aberta', tem de
   # ser tão rígido quanto _order_evidence_match exige quando o branch existe.
-  local proj="$1" f="$2" cand ev_f ev_w
-  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)"); do
-    ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+  #
+  # ordem 036 (DATA_MODEL §9 v1.22, endurecimento da v1.16): SEM tip pra
+  # ancorar, um recibo legado `order-<n>` pode ser de ORDEM HOMÔNIMA em OUTRO
+  # projeto (M4) — falso positivo de aceite. Com `work_project` presente,
+  # `strict=1`: SÓ o candidato namespeado (`order-<n>-<dono8>`) vale.
+  local dono="$1" wproj="$2" f="$3" cand ev_f ev_w dono8="" strict=0
+  if [[ -n "$(_order_field "$f" work_project)" ]]; then dono8=$(_order_dono8 "$dono"); strict=1; fi
+  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" "$strict"); do
+    ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
     ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
     [[ -n "$ev_w" ]] && { printf '%s' "$ev_w"; return 0; }
   done
   return 0
 }
-# ------------------------------------ registro de estado TERMINAL, fora da árvore (ordem 021, DATA_MODEL §9 v1.18)
-#
-# Causa (medida no Agenda_Studio, issue da ordem 021): o carimbo terminal
-# (`accepted_at`/`absorbed_by`) só existia como modificação NÃO COMMITADA no
-# arquivo da ordem — `maestro order --accept` escreve na árvore de trabalho e
-# para aí. Qualquer `git checkout`/`stash`/`reset` que restaure o HEAD apaga o
-# carimbo em silêncio, e a ordem "reabre" sozinha. Mesma raiz da issue #36
-# (o carimbo de aceite não atravessa worktree), um degrau abaixo (aqui não
-# atravessa um checkout).
-#
-# O registro mora em `maestro_order_state_file` (hooks/lib/project-state.sh,
-# ordem 021) — MESMA chave djb2 do brief/evidência, por ORDEM (id) em vez de
-# rótulo livre. Formato chave=valor (mesmo parser/técnica de `_ev_write` em
-# lib/core-evidence.sh — schema versionado, tmp+mv atômico).
-_order_state_field() { # <arquivo-do-registro> <chave> → valor, ou vazio
-  [[ -f "$1" ]] || return 0
-  awk -F= -v k="$2" '$1 == k { print substr($0, length(k)+2); exit }' "$1" 2>/dev/null
-}
-_order_state_write() { # <proj> <arquivo-da-ordem> <outcome:aceita|absorvida> <k=v>... → grava o registro TERMINAL fora da árvore; rc 0/2
-  local proj="$1" of="$2" outcome="$3" oid oidn sf tmp kv
-  shift 3
-  oid=$(_order_field "$of" id)
-  oidn=$(_order_num "$oid") || return 2   # ordem 037: sem carimbo, id vem vazio — não grava registro para "ordem" nenhuma
-  sf=$(maestro_order_state_file "$proj" "$oidn") || return 2
-  [[ -n "$sf" ]] || return 2
-  mkdir -p "${sf%/*}" 2>/dev/null || return 2
-  tmp="$sf.tmp.$$"
-  { printf 'schema=maestro-order-state-v1\n'
-    printf 'id=%s\noutcome=%s\n' "$oidn" "$outcome"
-    for kv in "$@"; do printf '%s\n' "$kv"; done
-  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$sf" 2>/dev/null && return 0
-  rm -f "$tmp" 2>/dev/null
-  return 2
-}
-# Duas variantes de leitura — não é a MESMA função por CAMPO (v1.16 já
-# firmou o precedente: irmã, não a mesma, quando o rigor difere). Aqui o que
-# difere é ONDE cada campo vive no arquivo: `absorbed_*` no CABEÇALHO
-# (_order_field, janela de 20 linhas — emenda v1.11); `accepted_*` ANEXADO ao
-# FINAL, lido por grep+tail-1 SEM janela porque reaceite pode anexar mais de
-# um carimbo e o ÚLTIMO vence (S-1806). Nos dois casos: registro (quando tem
-# a chave) é a FONTE; arquivo é a conveniência de migração — MESMA
-# precedência de _order_status.
-_order_terminal_field_header() { # <proj> <arquivo> <chave> → valor de campo do CABEÇALHO (absorbed_*)
-  local proj="$1" f="$2" k="$3" sf v
-  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
-  if [[ -n "$sf" && -f "$sf" ]]; then
-    v=$(_order_state_field "$sf" "$k")
-    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-  fi
-  _order_field "$f" "$k"
-}
-_order_terminal_field_appended() { # <proj> <arquivo> <chave> → valor de campo ANEXADO ao final (accepted_*, último vence)
-  local proj="$1" f="$2" k="$3" sf v
-  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
-  if [[ -n "$sf" && -f "$sf" ]]; then
-    v=$(_order_state_field "$sf" "$k")
-    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-  fi
-  grep "^$k: " "$f" 2>/dev/null | tail -1 | sed "s/^$k: //"
-}
-_order_status() { # <proj> <arquivo> → status derivado no stdout
-  local proj="$1" f="$2" br sf so
+_order_status() { # <dono> <wproj> <arquivo> → status derivado no stdout
+  local dono="$1" wproj="$2" f="$3" br sf so
   # ordem 021: o registro fora da árvore é a FONTE do estado terminal.
   # Presente → DECIDE, mesmo que o arquivo tenha sido restaurado por um
   # checkout (é exatamente o defeito que esta ordem fecha). Ausente → o
   # carimbo do ARQUIVO ainda conta (migração: ordens carimbadas antes desta
   # ordem entrar, em qualquer projeto desta máquina, não podem "reabrir").
-  sf=$(maestro_order_state_file "$proj" "$(_order_field "$f" id)" 2>/dev/null)
+  # ordem 036: registro terminal é SEMPRE do DONO (R3) — nunca do wproj.
+  sf=$(maestro_order_state_file "$dono" "$(_order_field "$f" id)" 2>/dev/null)
   if [[ -n "$sf" && -f "$sf" ]]; then
     so=$(_order_state_field "$sf" outcome)
     case "$so" in
@@ -218,63 +213,82 @@ _order_status() { # <proj> <arquivo> → status derivado no stdout
   [[ -n "$(_order_field "$f" absorbed_by)" ]] && { printf 'absorvida'; return 0; }   # issue #12
   [[ -n "$(_order_field "$f" deferred_by)" ]] && { printf 'adiada'; return 0; }   # ordem 013: suspensa, NÃO terminal — distinta de absorvida
   br=$(_order_field "$f" branch)
-  if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+  # ordem 036: existência do branch e recibo passam a ser conferidos no
+  # WPROJ (R1/R2) — quando work_project está ausente, wproj == dono e nada
+  # muda (I3).
+  if [[ -z "$br" ]] || ! git -C "$wproj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
     # ordem 017: branch ausente tem dois sentidos opostos — nunca criado
     # (nada começou) vs mergeado-e-apagado (tudo terminou). O recibo no
     # ledger é o que sobrevive aos dois e distingue: sem recibo, 'aberta'
     # continua certo; com recibo válido, é 'provada' (árvore CONGELADA do
     # recibo, decisão do diretor — não abre estado novo no enum).
-    [[ -n "$(_order_evidence_frozen_tree "$proj" "$f")" ]] && { printf 'provada'; return 0; }
+    [[ -n "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
     printf 'aberta'; return 0
   fi
-  [[ -n "$(_order_evidence_match "$proj" "$f")" ]] && { printf 'provada'; return 0; }
+  [[ -n "$(_order_evidence_match "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
   printf 'em_execucao'
   return 0
 }
-_order_proof_tree() { # <proj> <arquivo> → árvore PROVADA (sha), vazio se não há prova
-  local proj="$1" f="$2" m br
-  m=$(_order_evidence_match "$proj" "$f")
+_order_proof_tree() { # <dono> <wproj> <arquivo> → árvore PROVADA (sha), vazio se não há prova
+  local dono="$1" wproj="$2" f="$3" m br
+  m=$(_order_evidence_match "$dono" "$wproj" "$f")
   if [[ -n "$m" ]]; then printf '%s' "${m#* }"; return 0; fi
   # ordem 017: branch ausente não tem tip pra _order_evidence_match comparar
   # (ela devolve vazio de propósito, cedo, na linha 1) — cai para a árvore
   # CONGELADA do recibo, a MESMA que decidiu 'provada' em _order_status.
   br=$(_order_field "$f" branch)
-  if [[ -z "$br" ]] || ! git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
-    printf '%s' "$(_order_evidence_frozen_tree "$proj" "$f")"
+  if [[ -z "$br" ]] || ! git -C "$wproj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+    printf '%s' "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")"
   fi
   return 0
 }
-_order_deferred_tree() { # <proj> <arquivo> → wtree_after do recibo já gravado p/ esta ordem, vazio se nenhum
+_order_deferred_tree() { # <dono> <wproj> <arquivo> → wtree_after do recibo já gravado p/ esta ordem, vazio se nenhum
   # ordem 013: a árvore que a prova CONGELOU — nunca comparada ao tip atual
   # (isso é o que faria o recibo "vencer por mudança de árvore"; adiada não
   # anda, então não há comparação a fazer, só a árvore que ficou registrada).
-  local proj="$1" f="$2" cand ev_f ew
-  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)"); do
-    ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+  # ordem 036: mesmo endurecimento de _order_evidence_frozen_tree — sem tip
+  # pra ancorar, work_project presente restringe ao candidato namespeado.
+  local dono="$1" wproj="$2" f="$3" cand ev_f ew dono8="" strict=0
+  if [[ -n "$(_order_field "$f" work_project)" ]]; then dono8=$(_order_dono8 "$dono"); strict=1; fi
+  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" "$strict"); do
+    ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] || continue
     ew=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
     [[ -n "$ew" ]] && { printf '%s' "$ew"; return 0; }
   done
   return 0
 }
-_order_moved_since_accept() { # <proj> <arquivo> → caminhos mudados desde o aceite (S-1806; vazio = não andou)
-  local proj="$1" f="$2" at tip br
+_order_moved_since_accept() { # <dono> <wproj> <arquivo> → caminhos mudados desde o aceite (S-1806; vazio = não andou)
+  local dono="$1" wproj="$2" f="$3" at tip br
   br=$(_order_field "$f" branch)
   # ordem 021: accepted_tree pode só existir no registro fora da árvore, se
   # um checkout restaurou o arquivo depois do --accept — mesma precedência de
-  # _order_status.
-  at=$(_order_terminal_field_appended "$proj" "$f" accepted_tree) || true
+  # _order_status. accepted_tree é R3 (dono); o tip comparado é R1 (wproj).
+  at=$(_order_terminal_field_appended "$dono" "$f" accepted_tree) || true
   [[ -n "$at" && "$at" != "desconhecida" ]] || return 0
-  tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
+  tip=$(git -C "$wproj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
   [[ -n "$tip" && "$at" != "$tip" ]] || return 0
-  git -C "$proj" diff --name-only "$at" "$tip" 2>/dev/null \
+  git -C "$wproj" diff --name-only "$at" "$tip" 2>/dev/null \
     | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ' || true
 }
-_order_evidence_label() { # <proj> <arquivo> → rótulo do recibo a EXIBIR (S-1804: mesma tolerância do status)
-  local proj="$1" f="$2" m cand ev_f
-  m=$(_order_evidence_match "$proj" "$f"); [[ -n "$m" ]] && { printf '%s' "${m%% *}"; return 0; }
-  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)"); do
-    ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
+_order_evidence_label() { # <dono> <wproj> <arquivo> → rótulo do recibo a EXIBIR (S-1804: mesma tolerância do status)
+  local dono="$1" wproj="$2" f="$3" m cand ev_f dono8="" strict=0 br
+  br=$(_order_field "$f" branch)
+  # achado P3 da revisão da 036: o `dono8` vale para a LISTA de candidatos em
+  # QUALQUER caminho. Sem ele, a linha de diagnóstico de uma ordem cross-repo
+  # ainda NÃO provada mostrava só o rótulo legado e escondia o namespeaceado —
+  # justamente o que o operador precisa procurar. O `strict` é que continua
+  # exclusivo do caminho sem tip: com branch vivo a árvore ancora e o legado
+  # segue legível de propósito (S-1804).
+  [[ -n "$(_order_field "$f" work_project)" ]] && dono8=$(_order_dono8 "$dono")
+  if [[ -n "$br" ]] && git -C "$wproj" rev-parse --verify --quiet "$br" >/dev/null 2>&1; then
+    m=$(_order_evidence_match "$dono" "$wproj" "$f"); [[ -n "$m" ]] && { printf '%s' "${m%% *}"; return 0; }
+    # branch VIVO ancora — nunca estrito (mesma razão de _order_evidence_match)
+  else
+    [[ -n "$dono8" ]] && strict=1
+  fi
+  for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" "$strict"); do
+    ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] && { printf '%s' "$cand"; return 0; }
   done
   # ordem 037: era EXATAMENTE aqui (era a linha 267 antes desta ordem) que o
@@ -284,7 +298,9 @@ _order_evidence_label() { # <proj> <arquivo> → rótulo do recibo a EXIBIR (S-1
 }
 
 # ------------------ verificação obrigatória por área (E23b): julga o TIP via recibo em arquivo, nunca ao vivo
-_order_verif_areas() { # <proj> <arquivo> → áreas tocadas pelo branch (uma por linha)
+# ordem 036: R1/R2 — chamador passa `wproj` (repo do TRABALHO) no lugar onde
+# antes só existia `proj`; sem `work_project`, `wproj == dono`, sem mudança.
+_order_verif_areas() { # <wproj> <arquivo> → áreas tocadas pelo branch (uma por linha)
   local proj="$1" f="$2" br base
   br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
   git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 || return 0
@@ -294,7 +310,7 @@ _order_verif_areas() { # <proj> <arquivo> → áreas tocadas pelo branch (uma po
   maestro_verif_touched "$proj" "$base" "$br"
   return 0
 }
-_order_verif_report() { # <proj> <arquivo> [áreas] → uma linha "rótulo: estado" por rótulo exigido
+_order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: estado" por rótulo exigido
   local proj="$1" f="$2" areas="${3-}" labels lb tip br ef ev_w ev_m st
   [[ -n "$areas" || $# -ge 3 ]] || areas=$(_order_verif_areas "$proj" "$f")
   [[ -n "$areas" ]] || return 0
@@ -318,7 +334,7 @@ _order_verif_report() { # <proj> <arquivo> [áreas] → uma linha "rótulo: esta
   done
   return 0
 }
-_order_verif_gate() { # <proj> <arquivo> <id> — recusa (exit 1) o aceite sem o conjunto exigido
+_order_verif_gate() { # <wproj> <arquivo> <id> — recusa (exit 1) o aceite sem o conjunto exigido
   local proj="$1" f="$2" id="$3" rep falta="" lb st
   rep=$(_order_verif_report "$proj" "$f"); [[ -n "$rep" ]] || return 0
   while IFS= read -r st; do
@@ -333,7 +349,7 @@ _order_verif_gate() { # <proj> <arquivo> <id> — recusa (exit 1) o aceite sem o
     "rode os comandos acima NO TIP DO BRANCH e aceite de novo" 1
 }
 
-# --------------------------------------------------------------- direção (E22)
+# --------------------------------------------------------------- direção (E22) — SEMPRE do DONO (R3, ordem 036/§4-B)
 _order_stamp_intent() { # <proj> <arquivo> — grava sob QUAL direção o aceite foi dado
   local proj="$1" nv
   _intent_lib_load   # ordem 015: _intent_* não é mais residente
