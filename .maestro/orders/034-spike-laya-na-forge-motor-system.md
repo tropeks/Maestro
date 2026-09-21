@@ -264,3 +264,7 @@ coluna do Jev nas tabelas continua vazia e dita vazia até a 028 rodar.
 - Direção vigente na criação: INTENT v4 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 034` (você não fecha a própria ordem).
+accepted_at: 2026-09-20T13:28:01-03:00
+accepted_session: desconhecido
+accepted_tree: e5efe43a20d64028392bf0036e21a46b890adb3c
+accepted_intent: 4
