@@ -72,6 +72,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
   exit 0
 fi
+# shellcheck source=lib/transcript.sh
+source "$SCRIPT_DIR/lib/transcript.sh" 2>/dev/null || true
 maestro_killswitch
 
 # Ordem 020: cópia do stdout real em fd 3, ANTES de qualquer coisa assumir o
@@ -218,15 +220,12 @@ MCP_ASK_REASON_JSON='{"decision":"block","reason":"maestro: a rodada terminou co
 MCP_NUDGE_REASON_JSON='{"decision":"block","reason":"maestro: esta rodada termina pedindo decisao ao Diretor, mas SEM a linha canonica. Reescreva o fecho da rodada com a linha exata: colchete-s-p-o-c-k-colchete espaco aguardando: <sua pergunta> — e so essa forma aciona a Ponte; parafrase nao aciona. Depois de reescrever, chame a tool MCP director.ask uma vez e director.wait em laco. Se nao ha decisao pendente de verdade, encerre a rodada sem pedir nada."}'
 
 # ---------------------------------------------------------------------------
-# Ordem 020, gatilho da VOLTA por MCP — Ordem 025: SOBE para cá, antes do
-# `exit 0` de "sem gate" logo abaixo, e passa a rodar sempre (não só com gate
-# pendente). Socket da Ponte presente E a linha `[spock] aguardando:` na
-# última rodada. Checa primeiro em `$raw` (o próprio payload do Stop — cobre
-# `last_assistant_message`, se o build do Claude Code tiver o campo); sem
-# achar ali, cai para o transcript (`tail -c`, bounded, sem parser). Escrito
-# com `+` no regex, nunca `{1,N}` grande: `{1,4096}` mediu ~2,7s nesta forge
-# (glibc é ~O(N²) para compilar/casar quantificador limitado) contra ~7ms de
-# `+`.
+# Ordem 020, gatilho da VOLTA por MCP — Ordem 025: SOBE para cá e passa a
+# rodar sempre (não só com gate pendente). Socket da Ponte presente E a linha
+# canônica na última rodada. Checa primeiro em `$raw` (payload do Stop, cobre
+# `last_assistant_message`); sem achar ali, cai para o transcrito — só a
+# rodada corrente (ordem 038, lib/transcript.sh). Regex com `+`, nunca
+# `{1,N}` grande (#42).
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Ordem 029 (decisão do Capitão): o Stop deixa de liberar por TEXTO. Três
@@ -250,8 +249,9 @@ if [[ -e "$ponte_sock" ]]; then
       tpath="${BASH_REMATCH[1]:0:4096}"
     fi
     if [[ -n "$tpath" && -f "$tpath" && -r "$tpath" ]]; then
-      tail_txt=$(tail -c 8192 -- "$tpath" 2>/dev/null) || tail_txt=""
-      [[ -n "$tail_txt" ]] && ask_txt="$tail_txt"
+      # Ordem 038: só a rodada corrente (porquê e números em lib/transcript.sh)
+      last_asst=$(maestro_last_assistant_line "$tpath")
+      [[ -n "$last_asst" ]] && ask_txt="$last_asst"
     fi
   fi
   if [[ "$ask_txt" =~ $MAESTRO_ASK_CANON ]]; then
