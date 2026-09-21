@@ -29,6 +29,38 @@ _order_slug() { # <título> → slug de arquivo/branch (minúsculo, [a-z0-9-], a
   local slug; slug=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | tr -s '-' | head -c 32)
   slug="${slug%-}"; printf '%s' "${slug#-}"
 }
+# ordem 037 — lê o corpo do stdin sem pendurar e sem cortar calado. Casa
+# própria porque `_order_create_write` passou do teto do `maestro habits` com
+# o bloco dentro (a régua não sobe para acomodar o novo).
+#
+# `head` sob `timeout` PERDE o que já leu quando é morto (o buffer vai junto),
+# e aí "corpo parcial" fica indistinguível de "sem corpo" — o silêncio que a
+# ordem 032 matou no `brief --write`, de volta. `cat` para um temporário
+# escreve enquanto lê: o que chegou SOBREVIVE ao kill, e os três desfechos
+# ficam distinguíveis de verdade.
+_order_body_from_stdin() { # <teto-em-bytes> → corpo em stdout; recusa em vez de cortar
+  local body_cap="$1" rc=0 stdin_tmp body_bytes
+  local stdin_to="${MAESTRO_ORDER_STDIN_TIMEOUT:-2}"
+  [[ "$stdin_to" =~ ^[0-9]{1,3}$ ]] || stdin_to=2
+  stdin_tmp=$(mktemp "${TMPDIR:-/tmp}/maestro-order-stdin.XXXXXX") || \
+    die env "não consigo criar temporário para ler o stdin" "cheque TMPDIR e espaço em disco" 2
+  timeout "$stdin_to" cat > "$stdin_tmp" || rc=$?
+  body_bytes=$(wc -c < "$stdin_tmp" | tr -d ' ')
+  if (( rc == 124 )) && (( body_bytes > 0 )); then
+    rm -f "$stdin_tmp"
+    die validation \
+      "corpo do stdin veio pela metade: $body_bytes bytes lidos e nenhum EOF em $stdin_to s" \
+      "feche o stdin (o produtor precisa terminar) ou passe o corpo já pronto; nada foi gravado" 1
+  fi
+  if (( body_bytes > body_cap )); then
+    rm -f "$stdin_tmp"
+    die validation \
+      "corpo de $body_bytes bytes excede o teto de $body_cap bytes (excedeu por $(( body_bytes - body_cap )) bytes)" \
+      "reduza o corpo para até $body_cap bytes ou divida a ordem; nada foi gravado" 1
+  fi
+  cat "$stdin_tmp"; rm -f "$stdin_tmp"
+}
+
 _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc> <sid> — grava, loga, imprime confirmação
   local proj="$1" oid="$2" title="$3" branch="$4" frozen="$5" extra="$6" odoc="$7" sid="$8"
   local of="$proj/.maestro/orders/$oid-$(_order_slug "$title").md" head_sha
@@ -39,7 +71,25 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
     i_ver=$(_intent_version "$(_intent_file "$proj")")
     i_hash=$(_intent_body_hash "$(_intent_file "$proj")")
   fi
-  local body; body=$(head -c 16384)
+  # ordem 037: gêmeo da issue #43 (ordem 032 truncava o `brief --write` em
+  # silêncio; aqui, o MESMO `head -c 16384` incondicional TRAVAVA em silêncio
+  # — stdin pipe/socket aberto e vazio nunca fecha e nunca manda byte, e sem
+  # timeout o processo espera para sempre, medido: 147s em pipe_read). Ler
+  # corpo de stdin continua implícito (`cat corpo.md | maestro order
+  # --create ...` não muda), mas a espera passa a ser LIMITADA — ausência de
+  # corpo dentro da janela é caminho normal (ordem nasce só com título e
+  # contrato), nunca erro. `MAESTRO_ORDER_STDIN_TIMEOUT` (segundos) por trás
+  # do default, mesma técnica de MAESTRO_UPDATE_TIMEOUT (E19).
+  local stdin_to="${MAESTRO_ORDER_STDIN_TIMEOUT:-2}"
+  [[ "$stdin_to" =~ ^[0-9]{1,3}$ ]] || stdin_to=2
+  # Os TRÊS desfechos, separados — limitar a espera sem separá-los traria de
+  # volta o corte silencioso que a ordem 032 matou no `brief --write`:
+  #   leitura completa          → corpo inteiro, caminho normal;
+  #   timeout com ZERO byte     → sem corpo, caminho normal (é o hang);
+  #   timeout COM byte lido     → corpo veio pela metade ⇒ RECUSA, nunca grava.
+  # `head -c $((cap+1))` deixa o excesso VISÍVEL: passou do teto, recusa com os
+  # três números (mesma doutrina da 032), em vez de cortar calado.
+  local body; body=$(_order_body_from_stdin 16384)
   {
     printf '<!-- maestro-order v1\n'
     printf 'id: %s\nts: %s\nepoch: %s\nhead: %s\n' "$oid" "$(date -Iseconds)" "$(maestro_now_epoch)" "$head_sha"
@@ -274,6 +324,24 @@ _order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando
     "reinstale o plugin (maestro doctor)" 2
 }
 
+# ------------------------------------------------ resolução por id (--status/--accept)
+_order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; die se ausente ou sem carimbo
+  # ordem 037: --list (linha ~106, issue #13) já recusa .md sem carimbo antes
+  # de tratá-lo como ordem; a resolução por glob de id que serve --status/
+  # --accept NÃO aplicava a mesma guarda — duas portas para o mesmo dado, uma
+  # com tranca e a outra sem. Sem isso, id vazio (_order_field devolve "" pra
+  # arquivo sem carimbo) chegava cru a `10#` em core-order-state.sh e vazava
+  # erro de bash, com o estado saindo inventado ("aberta"). Degrada com a
+  # MESMA linguagem do --list, citando o caminho, rc previsível, nunca stderr
+  # de implementação.
+  local odir="$1" oid="$2" of
+  of=$(ls "$odir/$oid"-*.md "$odir/$oid.md" 2>/dev/null | head -1 || true)   # pipefail: glob vazio sai 2
+  [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
+  _order_valid_stamp "$of" || die validation "$of sem carimbo de ordem" \
+    "não é uma ordem válida (maestro order --list mostra o que é ordem de verdade)" 1
+  printf '%s' "$of"
+}
+
 # ------------------------------------------------------------------ despacho
 cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
@@ -316,9 +384,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
 
   [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
   oid=$(printf '%03d' "$((10#$oid))")
-  local of
-  of=$(ls "$odir/$oid"-*.md "$odir/$oid.md" 2>/dev/null | head -1 || true)   # pipefail: glob vazio sai 2
-  [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
+  local of; of=$(_order_resolve_stamped "$odir" "$oid")
 
   case "$action" in
     status)

@@ -34,6 +34,16 @@ _order_valid_stamp() { # <arquivo> → rc 0 se carimbo de ordem válido (issue #
     END { exit !(hdr && idok) }
   ' "$1" 2>/dev/null
 }
+_order_num() { # <string> → "$((10#string))" em decimal, ou vazio (rc 1) se não for 1-9 dígitos
+  # ordem 037: causa-raiz do bug reproduzido pelo Capitão — arquivo sem
+  # carimbo faz `_order_field ... id` devolver VAZIO, e todo `$((10#$id))`
+  # cru virava `$((10#))`, erro de bash vazando pro usuário e estado
+  # inventado ("aberta") no lugar. Defesa em profundidade: NENHUM `10#`
+  # deste arquivo roda mais sobre string vazia — quem precisa do valor
+  # numérico passa por aqui primeiro.
+  [[ "${1:-}" =~ ^[0-9]{1,9}$ ]] || return 1
+  printf '%s' "$((10#$1))"
+}
 _order_intent_stale() { # <arquivo> <versão atual> → rc 0 se a direção andou depois da ordem (E22)
   local ov; ov=$(_order_field "$1" intent_version)
   [[ "$ov" =~ ^[0-9]{1,9}$ && "${2:-}" =~ ^[0-9]{1,9}$ ]] || return 1
@@ -66,18 +76,20 @@ _order_identifier_mismatch() { # <arquivo> → detalhe do aviso se branch:/id: D
   # verdade. Puro: só os DOIS campos DECLARADOS no cabeçalho, nunca git nem
   # ledger — não é sobre o branch EXISTIR (isso é _order_status), é sobre o
   # NÚMERO que ele embute bater com o id do arquivo que o declara.
-  local f="$1" id br bn
+  local f="$1" id br bn idn
   id=$(_order_field "$f" id); [[ -n "$id" ]] || return 0
   br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
   bn=$(_order_branch_number "$br"); [[ -n "$bn" ]] || return 0
-  (( 10#$id == 10#$bn )) && return 0
+  idn=$(_order_num "$id") || return 0   # ordem 037: id não numérico é "não sei dizer", não estouro de 10#
+  (( idn == 10#$bn )) && return 0
   printf 'branch declarado "%s" embute o número %s — id desta ordem é %s; id, branch e recibo podem apontar para ordens diferentes, nenhum foi corrigido automaticamente' \
-    "$br" "$bn" "$((10#$id))"
+    "$br" "$bn" "$idn"
   return 0
 }
-_order_evidence_candidates() { # <id> → as 2 variantes de rótulo (S-1802: canônica e acolchoada), uma por linha
-  printf 'order-%s\n' "$((10#$1))"
-  printf 'order-%03d\n' "$((10#$1))"
+_order_evidence_candidates() { # <id> → as 2 variantes de rótulo (S-1802: canônica e acolchoada), uma por linha; vazio se id vazio/não numérico
+  local n; n=$(_order_num "$1") || return 0   # ordem 037: era aqui que `10#` estourava sobre id vazio (arquivo sem carimbo)
+  printf 'order-%s\n' "$n"
+  printf 'order-%03d\n' "$n"
 }
 _order_default_branch() { # <proj> → branch padrão do repo, resolvido — SEM rede (NetForge: 'main' fixo recusava master)
   # Ordem de resolução: origin/HEAD (mais confiável quando existe) → config
@@ -146,15 +158,16 @@ _order_state_field() { # <arquivo-do-registro> <chave> → valor, ou vazio
   awk -F= -v k="$2" '$1 == k { print substr($0, length(k)+2); exit }' "$1" 2>/dev/null
 }
 _order_state_write() { # <proj> <arquivo-da-ordem> <outcome:aceita|absorvida> <k=v>... → grava o registro TERMINAL fora da árvore; rc 0/2
-  local proj="$1" of="$2" outcome="$3" oid sf tmp kv
+  local proj="$1" of="$2" outcome="$3" oid oidn sf tmp kv
   shift 3
   oid=$(_order_field "$of" id)
-  sf=$(maestro_order_state_file "$proj" "$oid") || return 2
+  oidn=$(_order_num "$oid") || return 2   # ordem 037: sem carimbo, id vem vazio — não grava registro para "ordem" nenhuma
+  sf=$(maestro_order_state_file "$proj" "$oidn") || return 2
   [[ -n "$sf" ]] || return 2
   mkdir -p "${sf%/*}" 2>/dev/null || return 2
   tmp="$sf.tmp.$$"
   { printf 'schema=maestro-order-state-v1\n'
-    printf 'id=%s\noutcome=%s\n' "$((10#$oid))" "$outcome"
+    printf 'id=%s\noutcome=%s\n' "$oidn" "$outcome"
     for kv in "$@"; do printf '%s\n' "$kv"; done
   } > "$tmp" 2>/dev/null && mv -f "$tmp" "$sf" 2>/dev/null && return 0
   rm -f "$tmp" 2>/dev/null
@@ -264,7 +277,10 @@ _order_evidence_label() { # <proj> <arquivo> → rótulo do recibo a EXIBIR (S-1
     ev_f=$(maestro_evidence_file "$proj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] && { printf '%s' "$cand"; return 0; }
   done
-  printf 'order-%s' "$((10#$(_order_field "$f" id)))"
+  # ordem 037: era EXATAMENTE aqui (era a linha 267 antes desta ordem) que o
+  # bug reproduzido pelo Capitão vazava "10#: invalid integer constant" —
+  # arquivo sem carimbo, id vazio, `10#` cru sobre string vazia.
+  local n; n=$(_order_num "$(_order_field "$f" id)") && printf 'order-%s' "$n" || printf 'order-?'
 }
 
 # ------------------ verificação obrigatória por área (E23b): julga o TIP via recibo em arquivo, nunca ao vivo
