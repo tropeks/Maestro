@@ -1,0 +1,9 @@
+# CHAVE DE TESTE do vetor canônico (docs-ops/045/VETOR-CANONICO-prova-de-aceite.md,
+# ponte-daemon) — publicada de propósito para os dois lados (daemon emite,
+# Maestro verifica) fecharem o contrato ANTES de a chave de PRODUÇÃO existir.
+# NUNCA é a chave real do Diretor. Quando a produção existir, esta linha e a
+# chave abaixo são substituídas NO MESMO commit que liga MAESTRO_ACCEPT_
+# REQUIRE_PROOF em qualquer projeto (default continua desligado até lá).
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEARkaNyPRegAbbFAVQ54YlisOh02okQUqFL6xLg3vXecc=
+-----END PUBLIC KEY-----

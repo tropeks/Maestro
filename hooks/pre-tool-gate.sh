@@ -382,7 +382,14 @@ ALLOW_PATHS="${MAESTRO_GATE_ALLOW_PATHS-}"
 # paths = universais (qualquer projeto); self = só ancorados no plugin root.
 DENY_PATHS="${MAESTRO_GATE_DENY_PATHS-.claude/ .github/workflows/}"
 ORDER_FROZEN="${MAESTRO_GATE_ORDER_FROZEN-}"
-DENY_SELF="${MAESTRO_GATE_DENY_SELF-agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/}"
+# ordem 041: config/accept-proof.pub é a ÂNCORA DE CONFIANÇA do aceite por
+# identidade (Ed25519) — trocá-la deixa de ser edição comum. NÃO impede um
+# executor com o MESMO uid do Diretor (nesta forge, é sempre o mesmo): eleva
+# a barra (a troca exige editar um arquivo dentro da autoproteção do gate,
+# visível em diff/log) e torna a troca AUDITÁVEL (maestro doctor imprime a
+# impressão digital — check_accept_proof_key, bin/maestro) — nunca a torna
+# impossível para quem já tem shell.
+DENY_SELF="${MAESTRO_GATE_DENY_SELF-agents/ bin/ src/ hooks/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/}"
 PLUGIN_ROOT="${MAESTRO_PLUGIN_ROOT-}"
 # A autoproteção só age ancorada na raiz do plugin. Se a política não foi
 # compilada ainda (ou veio parcial), derivamos a raiz da localização do próprio

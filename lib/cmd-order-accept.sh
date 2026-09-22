@@ -153,6 +153,52 @@ _order_accept_absorb() { # <proj> <wproj> <odir> <arquivo> <id> <sid> <absorbed_
   printf 'ordem %s ABSORVIDA por %s — árvore %s; estado terminal, DISTINTO de aceita (esta ordem não provou o próprio trabalho)\n' \
     "$oid" "$absorbed_by" "${abs_tree:0:12}"
 }
+# ------------------------------------------ ordem 041: aceite por identidade
+#
+# `MAESTRO_ACCEPT_PROOF` ("v1:<sujeito>:<assinatura b64url>", envelope FIXADO
+# em lib/core-order-accept-proof.sh) chega ao `--accept` pelo mesmo canal que
+# `--session` — variável de ambiente, não flag (quem assina é o daemon, não
+# quem digita o comando). `_order_accept_session_resolve` decide o que vai em
+# `accepted_session` e que campos extras (se algum) entram no registro
+# terminal — UM lugar só, reusado pelos dois braços de `_order_accept_own`
+# (aceite novo e reaceite pós-S-1806) para não duplicar a regra.
+_order_accept_session_resolve() { # <proj> <oid> <ptree> <sid> → stdout "sessão<TAB>kv extra (pode vir vazio)"; morre (validation) se REQUIRE ligado e a prova não bater
+  local proj="$1" oid="$2" ptree="$3" sid="$4" id3 envelope gate_out subj parsed kv=""
+  id3=$(printf '%03d' "$((10#$oid))")
+  envelope="${MAESTRO_ACCEPT_PROOF:-}"
+  if _order_accept_require_proof "$proj"; then
+    # REQUIRE ligado: as DUAS portas (comando E leitura, decisão do desenho)
+    # — aqui é a do comando. Recusa fail-closed em toda camada (prova
+    # ausente, envelope malformado, sujeito fora do conjunto, base64url
+    # corrompido, chave pública/openssl ausentes, e — até o vetor canônico
+    # chegar — SEMPRE, porque _order_accept_proof_verify é hoje um coto que
+    # recusa de propósito; ver o comentário lá).
+    gate_out=$(_order_accept_proof_gate "$proj" "$id3" "${ptree:-desconhecida}" "$envelope") || \
+      die validation "ordem $oid: aceite recusado — ${gate_out#recusa }" \
+        "MAESTRO_ACCEPT_REQUIRE_PROOF está ligado para este projeto; --accept exige prova de identidade Ed25519 do Diretor (sujeito captain/spock)" 1
+    subj="${gate_out#ok }"
+    parsed=$(_order_accept_proof_parse "$envelope")
+    kv="accept_proof_subject=$subj accept_proof_sig=${parsed#*$'\t'} accept_proof_version=v1"
+    printf '%s\t%s' "$subj" "$kv"
+    return 0
+  fi
+  # REQUIRE desligado: comportamento de hoje, byte a byte —
+  # `accepted_session` continua o `--session` autodeclarado, e NADA aqui
+  # morre. Captura OPORTUNISTA: se uma prova bem-formada veio mesmo assim (o
+  # daemon já pode estar emitindo antes do projeto ligar a exigência), grava
+  # os campos no registro para o dia em que o REQUIRE ligar — mas um
+  # envelope malformado é apenas IGNORADO aqui, nunca motivo de morte
+  # (REQUIRE desligado nunca recusa).
+  if [[ -n "$envelope" ]]; then
+    parsed=$(_order_accept_proof_parse "$envelope" 2>/dev/null) && {
+      subj="${parsed%%$'\t'*}"
+      _order_accept_proof_subject_ok "$subj" \
+        && kv="accept_proof_subject=$subj accept_proof_sig=${parsed#*$'\t'} accept_proof_version=v1"
+    }
+  fi
+  printf '%s\t%s' "${sid:-desconhecido}" "$kv"
+}
+
 _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
   local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" st ptree _mv ts
   st=$(_order_status "$proj" "$wproj" "$of")
@@ -169,10 +215,14 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> �
       "mudou fora do bookkeeping: ${_mv}— re-rode e regrave: maestro evidence --record --label order-$((10#$oid)) -- <suíte>" 1
     _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2)
     ts=$(date -Iseconds)
+    local resolved sess kv kv_args=()
+    resolved=$(_order_accept_session_resolve "$proj" "$oid" "$ptree" "$sid")
+    sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
+    [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
-      "$ts" "${sid:-desconhecido}" "$ptree" >> "$of"
+      "$ts" "$sess" "$ptree" >> "$of"
     _order_state_write "$proj" "$of" aceita \
-      "accepted_at=$ts" "accepted_session=${sid:-desconhecido}" "accepted_tree=$ptree" \
+      "accepted_at=$ts" "accepted_session=$sess" "accepted_tree=$ptree" "${kv_args[@]}" \
       || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
     _order_stamp_intent "$proj" "$of"
     log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
@@ -186,10 +236,14 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> �
   _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
   ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
   ts=$(date -Iseconds)
+  local resolved sess kv kv_args=()
+  resolved=$(_order_accept_session_resolve "$proj" "$oid" "${ptree:-desconhecida}" "$sid")
+  sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
+  [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
-    "$ts" "${sid:-desconhecido}" "${ptree:-desconhecida}" >> "$of"
+    "$ts" "$sess" "${ptree:-desconhecida}" >> "$of"
   _order_state_write "$proj" "$of" aceita \
-    "accepted_at=$ts" "accepted_session=${sid:-desconhecido}" "accepted_tree=${ptree:-desconhecida}" \
+    "accepted_at=$ts" "accepted_session=$sess" "accepted_tree=${ptree:-desconhecida}" "${kv_args[@]}" \
     || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
   _order_stamp_intent "$proj" "$of"
   log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"

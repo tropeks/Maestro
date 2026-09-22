@@ -682,6 +682,38 @@ check_vendor_integrity() { # S-706: vendor/ verificado offline contra manifesto 
   fi
 }
 
+check_accept_proof_key() { # ordem 041: âncora de confiança do aceite por identidade — visível, não impede
+  # Imprime a IMPRESSÃO DIGITAL de config/accept-proof.pub para que uma TROCA
+  # de âncora seja visível entre dois `doctor` (mesma disciplina do vendor.
+  # sha256 acima). NÃO RESOLVE: executor e Diretor rodam com o MESMO uid
+  # nesta forge, então permissão de arquivo não separa os dois — quem já tem
+  # shell pode editar config/accept-proof.pub como qualquer outro arquivo.
+  # O que isto FAZ: eleva a barra (a troca cai na DENY_SELF do gate — vira
+  # aviso/bloqueio auditado em vez de edição silenciosa) e torna a troca
+  # AUDITÁVEL (a impressão digital abaixo muda visivelmente de um doctor
+  # para o outro). Nunca muda o VEREDITO (sempre `ok`/`warn`, nunca fail):
+  # a chave é opcional até MAESTRO_ACCEPT_REQUIRE_PROOF ligar em algum
+  # projeto, e nenhum projeto liga por padrão (ordem 041, migração §5).
+  local pub="$REPO_DIR/config/accept-proof.pub" fp
+  if [[ ! -f "$pub" ]]; then
+    report ok "aceite por identidade: chave pública ausente (config/accept-proof.pub) — MAESTRO_ACCEPT_REQUIRE_PROOF não pode ligar em nenhum projeto até o ponte-daemon publicá-la"
+    return 0
+  fi
+  if has openssl && has sha256sum; then
+    # `|| fp=""` é necessário: sob `set -e -o pipefail` (topo do arquivo), uma
+    # chave malformada faz `openssl pkey` sair != 0 e, sem a rede de segurança,
+    # o doctor INTEIRO morreria aqui — justamente o comando que diagnostica
+    # ambiente quebrado não pode ele mesmo quebrar com ambiente quebrado.
+    fp=$(openssl pkey -pubin -in "$pub" -outform DER 2>/dev/null | sha256sum 2>/dev/null | awk '{print $1}') || fp=""
+  fi
+  if [[ -n "${fp:-}" ]]; then
+    report ok "aceite por identidade: chave pública presente — impressão digital sha256:$fp"
+  else
+    report warn "aceite por identidade: chave pública presente mas ILEGÍVEL (openssl/sha256sum não conseguiram derivar a impressão digital)" \
+      "config/accept-proof.pub malformada ou openssl/sha256sum ausentes — não ligue MAESTRO_ACCEPT_REQUIRE_PROOF até corrigir"
+  fi
+}
+
 check_plugin_install() { # S-710: cópia instalada do plugin divergente deste repo
   # O Claude Code resolve `${CLAUDE_PLUGIN_ROOT}` (o que o hooks.json usa) a
   # partir de ~/.claude/plugins, e o `installPath` de installed_plugins.json
@@ -1544,6 +1576,7 @@ doctor() {
   check_consents
   check_evidence
   check_vendor_integrity
+  check_accept_proof_key
   check_plugin_install
   check_update_state
   check_upstream

@@ -438,6 +438,26 @@ _g_scan_seg() {
       esac
       return 0 ;;
 
+    # (e2) maestro order --accept — ordem 041 (aceite por identidade): quem
+    # tem shell não pode aceitar a própria ordem em fluxo autônomo. Detecta
+    # o SUBCOMANDO `order` com a flag `--accept` em QUALQUER posição do
+    # segmento (--accept N, --accept N --absorbed-by M, --accept N --intent-
+    # reviewed…) — vocabulário fechado da própria flag já limita o falso
+    # positivo (nenhum outro comando `maestro` reconhece `--accept`). Mesmo
+    # tratamento de bloqueio/aviso das outras categorias (passo 6 abaixo);
+    # `accept` NÃO entra na lista de categorias operacionais rebaixáveis por
+    # `maestro consent --grant ops` (só sudo/containers/kubectl rebaixam).
+    maestro)
+      local m_sub="" m_accept=0 m_j
+      for ((m_j = sub_i; m_j < n; m_j++)); do
+        case "${toks[$m_j]}" in
+          order) m_sub="order" ;;
+          --accept) m_accept=1 ;;
+        esac
+      done
+      if [[ "$m_sub" == "order" && $m_accept -eq 1 ]]; then _g_flag accept; fi
+      return 0 ;;
+
     # (f) clientes de banco: marcam o comando inteiro para varredura SQL.
     #     Exigir o cliente na cabeça é o que impede `grep -r "DROP TABLE" .` de
     #     virar alarme — e ele é comando de rotina numa pasta de migrations.

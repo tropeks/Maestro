@@ -135,20 +135,26 @@ _order_default_branch() { # <proj> → branch padrão do repo, resolvido — SEM
 }
 
 
-# lib/core-order-workproject.sh e lib/core-order-terminal.sh são sourced por
-# ESTE arquivo — não por bin/maestro (congelado nesta ordem). Mesmo molde de
-# _order_json_lib_load (I-2), mas carregado NA HORA (não sob demanda de uma
-# flag do CLI): as funções dos dois módulos são usadas por quase todo
-# predicado deste núcleo.
+# lib/core-order-workproject.sh, lib/core-order-terminal.sh e lib/core-order-
+# accept-proof.sh (ordem 041) são sourced por ESTE arquivo — não por
+# bin/maestro (congelado nesta ordem). Mesmo molde de _order_json_lib_load
+# (I-2), mas carregado NA HORA (não sob demanda de uma flag do CLI): as
+# funções dos três módulos são usadas por quase todo predicado deste núcleo
+# (_order_status confere a prova de identidade em TODA leitura, não só em
+# --accept).
 _order_workproject_lib_load() {
-  declare -f _order_work_project >/dev/null 2>&1 && declare -f _order_state_write >/dev/null 2>&1 && return 0
-  if [[ -f "$REPO_DIR/lib/core-order-workproject.sh" && -f "$REPO_DIR/lib/core-order-terminal.sh" ]]; then
+  declare -f _order_work_project >/dev/null 2>&1 && declare -f _order_state_write >/dev/null 2>&1 \
+    && declare -f _order_accept_proof_gate >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/core-order-workproject.sh" && -f "$REPO_DIR/lib/core-order-terminal.sh" \
+        && -f "$REPO_DIR/lib/core-order-accept-proof.sh" ]]; then
     # shellcheck source=lib/core-order-workproject.sh
     source "$REPO_DIR/lib/core-order-workproject.sh"
     # shellcheck source=lib/core-order-terminal.sh
-    source "$REPO_DIR/lib/core-order-terminal.sh" && return 0
+    source "$REPO_DIR/lib/core-order-terminal.sh"
+    # shellcheck source=lib/core-order-accept-proof.sh
+    source "$REPO_DIR/lib/core-order-accept-proof.sh" && return 0
   fi
-  die env "lib/core-order-workproject.sh (ou core-order-terminal.sh) não encontrado em $REPO_DIR" \
+  die env "lib/core-order-workproject.sh (ou core-order-terminal.sh/core-order-accept-proof.sh) não encontrado em $REPO_DIR" \
     "reinstale o plugin (maestro doctor)" 2
 }
 _order_workproject_lib_load
@@ -194,22 +200,39 @@ _order_evidence_frozen_tree() { # <dono> <wproj> <arquivo> → wtree_after do re
   return 0
 }
 _order_status() { # <dono> <wproj> <arquivo> → status derivado no stdout
-  local dono="$1" wproj="$2" f="$3" br sf so
+  local dono="$1" wproj="$2" f="$3" br sf so oid id3
   # ordem 021: o registro fora da árvore é a FONTE do estado terminal.
   # Presente → DECIDE, mesmo que o arquivo tenha sido restaurado por um
   # checkout (é exatamente o defeito que esta ordem fecha). Ausente → o
   # carimbo do ARQUIVO ainda conta (migração: ordens carimbadas antes desta
   # ordem entrar, em qualquer projeto desta máquina, não podem "reabrir").
   # ordem 036: registro terminal é SEMPRE do DONO (R3) — nunca do wproj.
-  sf=$(maestro_order_state_file "$dono" "$(_order_field "$f" id)" 2>/dev/null)
+  oid=$(_order_field "$f" id)
+  sf=$(maestro_order_state_file "$dono" "$oid" 2>/dev/null)
   if [[ -n "$sf" && -f "$sf" ]]; then
     so=$(_order_state_field "$sf" outcome)
     case "$so" in
-      aceita)    printf 'aceita';    return 0 ;;
+      aceita)
+        # ordem 041: com MAESTRO_ACCEPT_REQUIRE_PROOF ligado, 'aceita' só se
+        # deriva se a assinatura gravada no REGISTRO bater — é isto que fecha
+        # a porta dos fundos (carimbo escrito à mão no arquivo E/OU no
+        # registro, sem os campos accept_proof_*, nunca deriva). REQUIRE
+        # desligado: _order_accept_proof_derived_ok devolve rc 0 sem olhar
+        # nada — comportamento de hoje, byte a byte.
+        id3=$(printf '%03d' "$(_order_num "$oid" 2>/dev/null || echo 0)")
+        if _order_accept_proof_derived_ok "$dono" "$id3" "$(_order_state_field "$sf" accepted_tree)" "$sf"; then
+          printf 'aceita'; return 0
+        fi
+        ;;
       absorvida) printf 'absorvida'; return 0 ;;
     esac
   fi
-  grep -q '^accepted_at: ' "$f" 2>/dev/null && { printf 'aceita'; return 0; }
+  if grep -q '^accepted_at: ' "$f" 2>/dev/null; then
+    # ordem 041: carimbo SÓ-POR-ARQUIVO (sem registro, ou registro sem
+    # outcome=aceita) nunca prova identidade — com REQUIRE ligado, cai para
+    # os sinais normais abaixo (branch/recibo), nunca 'aceita' sem prova.
+    if ! _order_accept_require_proof "$dono"; then printf 'aceita'; return 0; fi
+  fi
   [[ -n "$(_order_field "$f" absorbed_by)" ]] && { printf 'absorvida'; return 0; }   # issue #12
   [[ -n "$(_order_field "$f" deferred_by)" ]] && { printf 'adiada'; return 0; }   # ordem 013: suspensa, NÃO terminal — distinta de absorvida
   br=$(_order_field "$f" branch)
