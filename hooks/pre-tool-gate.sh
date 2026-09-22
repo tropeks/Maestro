@@ -120,6 +120,241 @@ _gate_ext_match() {
 }
 
 # ---------------------------------------------------------------------------
+# Exceção estreita do roster (ordem 039): agents/*.md abre SÓ para os campos
+# de frontmatter `effort` (baixo|alto) e `omitClaudeMd` (true|false), e só
+# eles — decisão do Capitão 01M325GBZFYMNFV9A44KJTYMSJ (2026-09-22, Ponte),
+# emendando o INTENT (§Limites). Mecanismo: EQUIVALÊNCIA POR REMOÇÃO — tirando
+# de AMBOS os lados as linhas das duas chaves, o resto tem de ser
+# byte-idêntico. Falha FECHADA em qualquer ramo (payload sem os campos certos,
+# arquivo ilegível/grande demais, `old_string` que não casa ou casa mais de
+# uma vez, valor fora da gramática fechada, mudança fora do frontmatter, ou
+# tool que não seja Edit/Write): a chamadora simplesmente não concede a
+# exceção, e o bloqueio normal da denylist (adiante) prevalece. Não é bypass
+# de nada — é um caminho A MAIS, automático e mais estreito que o
+# `consent --grant roster` já existente (que continua intacto, ver 3b).
+#
+# CUSTO (medido; NFR do gate é 50ms): o driver de custo aqui são forks de
+# `jq` (~9-10ms cada nesta classe de máquina) — por isso no máximo 2 por
+# invocação (Edit: old_string + new_string; Write: content), nunca mais.
+# Conteúdo grande NUNCA passa por herestring/process-substitution — medido
+# ~20-28ms em 8KB nesta forge (mesma classe do "pipe lê byte-a-byte" já
+# documentado em hooks/lib/common.sh para o stdin do próprio gate); em vez
+# disso, todo conteúdo vira linhas via um arquivo de rascunho REAL
+# (`printf > arquivo` + `mapfile < arquivo`, ambos builtin, sem fork, e um
+# arquivo comum é sempre lido em bloco, nunca byte-a-byte) — medido 0ms no
+# mesmo conteúdo de 8KB. O arquivo do roster em si é lido com `read -d ''`
+# limitado a MAESTRO_GATE_ROSTER_MAX_BYTES+1 (builtin, sem fork, sem ler além
+# do teto mesmo se o arquivo em disco for maior).
+MAESTRO_GATE_ROSTER_MAX_BYTES="${MAESTRO_GATE_ROSTER_MAX_BYTES:-8192}"
+_gate_roster_key_re='^(effort|omitClaudeMd):'
+_gate_roster_grammar_re='^(effort: (baixo|alto)|omitClaudeMd: (true|false))$'
+# rascunho PID-escopado, reaproveitado só DENTRO desta invocação do hook —
+# sem mktemp (fork evitado); apagado no fim de _gate_roster_frontmatter_ok.
+_gate_roster_scratch="${TMPDIR:-/tmp}/.maestro-gate-roster-$$"
+_gate_roster_cleanup() { rm -f "$_gate_roster_scratch" 2>/dev/null || :; }
+
+_gate_read_capped() {  # $1=arquivo -> $_gate_content; rc=1 se ilegível/>teto
+  local f="$1" content=""
+  [[ -f "$f" && -r "$f" ]] || { _gate_content=""; return 1; }
+  IFS= read -r -d '' -n "$(( MAESTRO_GATE_ROSTER_MAX_BYTES + 1 ))" content < "$f" 2>/dev/null
+  if (( ${#content} > MAESTRO_GATE_ROSTER_MAX_BYTES )); then _gate_content=""; return 1; fi
+  _gate_content="$content"
+  return 0
+}
+
+# .tool_input.<campo> do $PAYLOAD — string obrigatória, senão rc=1 (falha
+# fechada: campo ausente, null, número, array etc. nunca vira "casou vazio").
+_gate_jq_str_field() {  # $1=expressão jq -> $_gate_jf
+  local out=""
+  out=$(jq -j --exit-status "
+    (${1}?) as \$v |
+    if (\$v == null) or ((\$v|type) != \"string\") then error(\"bad\") else \$v end
+  " <<< "$PAYLOAD" 2>/dev/null) || { _gate_jf=""; return 1; }
+  (( ${#out} <= MAESTRO_GATE_ROSTER_MAX_BYTES )) || { _gate_jf=""; return 1; }
+  _gate_jf="$out"
+  return 0
+}
+
+# string -> array de linhas, via o arquivo de rascunho (nunca herestring —
+# ver nota de custo acima).
+_gate_roster_lines_from_str() {  # $1=conteúdo $2=nome do array destino
+  local -n _dst="$2"
+  printf '%s' "$1" > "$_gate_roster_scratch" 2>/dev/null
+  _dst=()
+  mapfile -t _dst < "$_gate_roster_scratch" 2>/dev/null || :
+}
+
+# localiza a única ocorrência CONTÍGUA de $1 (array de linhas) dentro de $2
+# (idem) — publica $_gate_loc_count (0/1/N) e $_gate_loc_start (índice
+# 0-based da primeira linha do match, só válido quando count==1). É assim que
+# `old_string` "casa" com o arquivo: por LINHAS inteiras, nunca por
+# substring bruta — old_string/new_string fragmentado no meio de uma linha
+# não é o caso de uso real do Edit tool para trocar valor de chave YAML, e
+# tratá-lo como "não casa" (falha fechada) é a escolha segura.
+_gate_roster_locate() {
+  local -n _needle="$1" _hay="$2"
+  local nk="${#_needle[@]}" nh="${#_hay[@]}" i j ok
+  _gate_loc_count=0
+  _gate_loc_start=-1
+  (( nk > 0 && nk <= nh )) || return 0
+  for (( i = 0; i + nk <= nh; i++ )); do
+    ok=1
+    for (( j = 0; j < nk; j++ )); do
+      [[ "${_hay[i+j]}" == "${_needle[j]}" ]] || { ok=0; break; }
+    done
+    (( ok == 1 )) || continue
+    _gate_loc_count=$(( _gate_loc_count + 1 ))
+    (( _gate_loc_count == 1 )) && _gate_loc_start=$i
+  done
+}
+
+# equivalência por remoção sobre um ARRAY de linhas: publica $_gate_stripped
+# (as linhas que sobram, unidas por \n) e $_gate_removed (as linhas
+# retiradas, uma por linha) — iteração de array, nunca padrão glob sobre
+# string grande (armadilha conhecida: `${x##*"$pat"}`/`${x%%"$pat"*}` em
+# conteúdo de alguns KB já mediu dezenas de ms neste mesmo sandbox).
+_gate_roster_strip_lines() {  # $1=nome do array de linhas
+  local -n _src="$1"
+  local line first=1
+  _gate_stripped=""
+  _gate_removed=""
+  for line in "${_src[@]}"; do
+    if [[ "$line" =~ $_gate_roster_key_re ]]; then
+      _gate_removed+="$line"$'\n'
+    else
+      if (( first == 1 )); then _gate_stripped="$line"; first=0
+      else _gate_stripped+=$'\n'"$line"; fi
+    fi
+  done
+}
+
+# linha de fechamento do frontmatter (1-based) de um array de linhas: a
+# linha 1 tem de ser exatamente "---" e precisa existir uma segunda linha
+# "---" mais adiante. $_gate_fm_close=0 (rc=1) se o arquivo não tem
+# frontmatter válido — sem isso, nada pode estar "dentro" dele.
+_gate_roster_fm_close() {  # $1=nome do array
+  local -n _a="$1"
+  _gate_fm_close=0
+  (( ${#_a[@]} >= 2 )) || return 1
+  [[ "${_a[0]}" == "---" ]] || return 1
+  local i
+  for (( i = 1; i < ${#_a[@]}; i++ )); do
+    if [[ "${_a[i]}" == "---" ]]; then _gate_fm_close=$(( i + 1 )); return 0; fi
+  done
+  return 1
+}
+
+# TODA linha que mencione effort:/omitClaudeMd: (mudada ou não) tem de estar
+# dentro do frontmatter — mais estrito que checar só a linha alterada, e
+# mais simples/seguro (não precisa alinhar diffs entre antes/depois).
+_gate_roster_keys_in_frontmatter() {  # $1=nome do array
+  local -n _a="$1"
+  _gate_roster_fm_close "$1" || return 1
+  local close="$_gate_fm_close" i
+  for (( i = 0; i < ${#_a[@]}; i++ )); do
+    if [[ "${_a[i]}" =~ $_gate_roster_key_re ]]; then
+      local ln=$(( i + 1 ))
+      (( ln > 1 && ln < close )) || return 1
+    fi
+  done
+  return 0
+}
+
+# monta o array "depois" a partir do Edit (old_string/new_string do
+# $PAYLOAD contra $1=nome do array "antes"): localiza old_string em disk
+# (única ocorrência, por linhas inteiras) e substitui por new_string no
+# lugar. $2=nome do array de saída. rc=1 falha fechado em qualquer ramo.
+_gate_roster_build_edit_after() {  # $1=array disk_lines  $2=array de saída
+  local -n _disk="$1" _out="$2"
+  _gate_jq_str_field '.tool_input.old_string' || return 1
+  local old="$_gate_jf"
+  _gate_jq_str_field '.tool_input.new_string' || return 1
+  local new="$_gate_jf"
+  [[ -n "$old" ]] || return 1
+  local -a old_lines=() new_lines=()
+  _gate_roster_lines_from_str "$old" old_lines
+  _gate_roster_lines_from_str "$new" new_lines
+  _gate_roster_locate old_lines _disk
+  (( _gate_loc_count == 1 )) || return 1
+  local start="$_gate_loc_start" nk="${#old_lines[@]}" i
+  _out=()
+  for (( i = 0; i < start; i++ )); do _out+=("${_disk[i]}"); done
+  for (( i = 0; i < ${#new_lines[@]}; i++ )); do _out+=("${new_lines[i]}"); done
+  for (( i = start + nk; i < ${#_disk[@]}; i++ )); do _out+=("${_disk[i]}"); done
+  return 0
+}
+
+# gramática fechada em toda linha removida (de qualquer lado) + no máx. 1
+# linha de cada chave por lado (sem duplicidade ambígua). $1/$2 são NO
+# MÁXIMO umas poucas linhas curtas — herestring aqui não tem o custo do
+# conteúdo grande já documentado acima.
+_gate_roster_removed_ok() {  # $1=before_removed  $2=after_removed
+  local n_eff_b n_omit_b n_eff_a n_omit_a
+  _gate_roster_count_keys "$1" || return 1
+  n_eff_b="$_gate_n_eff"; n_omit_b="$_gate_n_omit"
+  _gate_roster_count_keys "$2" || return 1
+  n_eff_a="$_gate_n_eff"; n_omit_a="$_gate_n_omit"
+  (( n_eff_b <= 1 && n_omit_b <= 1 && n_eff_a <= 1 && n_omit_a <= 1 ))
+}
+
+# conta linhas "effort:"/"omitClaudeMd:" em $1 (um lado só), validando a
+# gramática fechada de CADA uma no caminho — publica $_gate_n_eff/$_gate_n_omit.
+_gate_roster_count_keys() {  # $1=linhas removidas (de um lado)
+  local line
+  _gate_n_eff=0; _gate_n_omit=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] || continue
+    [[ "$line" =~ $_gate_roster_grammar_re ]] || return 1
+    case "$line" in
+      effort:*)        _gate_n_eff=$(( _gate_n_eff + 1 )) ;;
+      omitClaudeMd:*)  _gate_n_omit=$(( _gate_n_omit + 1 )) ;;
+    esac
+  done <<< "$1"
+  return 0
+}
+
+# ponto de entrada: rc=0 concede a exceção; rc!=0 falha fechado (chamadora
+# não altera DENIED). Usa $ABS (caminho já normalizado), $TOOL, $PAYLOAD —
+# todos já resolvidos pelo corpo principal do gate antes desta função rodar.
+_gate_roster_frontmatter_ok() {
+  local file="$ABS"
+  _gate_read_capped "$file" || return 1
+  local -a disk_lines=() after_lines=()
+  _gate_roster_lines_from_str "$_gate_content" disk_lines
+
+  case "$TOOL" in
+    Edit)
+      _gate_roster_build_edit_after disk_lines after_lines
+      local edit_rc=$?
+      _gate_roster_cleanup
+      (( edit_rc == 0 )) || return 1
+      ;;
+    Write)
+      _gate_jq_str_field '.tool_input.content' || { _gate_roster_cleanup; return 1; }
+      local content="$_gate_jf"
+      _gate_roster_lines_from_str "$content" after_lines
+      _gate_roster_cleanup
+      ;;
+    *)
+      _gate_roster_cleanup; return 1
+      ;;
+  esac
+
+  _gate_roster_strip_lines disk_lines
+  local before_stripped="$_gate_stripped" before_removed="$_gate_removed"
+  _gate_roster_strip_lines after_lines
+  local after_stripped="$_gate_stripped" after_removed="$_gate_removed"
+
+  [[ "$before_stripped" == "$after_stripped" ]] || return 1
+  _gate_roster_removed_ok "$before_removed" "$after_removed" || return 1
+
+  _gate_roster_keys_in_frontmatter disk_lines || return 1
+  _gate_roster_keys_in_frontmatter after_lines || return 1
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Política compilada (CONTRATO §2), escrita pelo session-start a partir de
 # config/routing-table.yaml — fonte de verdade única.
 # Ausente/ilegível/insourceável → degrada com exit 0.
@@ -357,6 +592,25 @@ if [[ -z "$DENIED" && -n "$PLUGIN_ROOT" && -n "$PROJ" && -n "$REL" ]] \
     DENIED="1"
     DENIED_PLUGIN_REL="$REL"
   fi
+fi
+
+# ── 3a-quater. exceção estreita do roster (ordem 039) ──────────────────────
+# agents/*.md abre SÓ para `effort`/`omitClaudeMd`, só no frontmatter, só
+# Edit/Write, e só por equivalência-por-remoção (ver as funções `_gate_roster_*`
+# acima). Roda depois de 3a-anchored E 3a-bis: pega DENIED_PLUGIN_REL de
+# qualquer um dos dois ramos que a tenham marcado. Nunca é bypass do
+# `consent --grant roster` (3b, abaixo) — é caminho A MAIS, automático,
+# mais estreito, e falha fechado em qualquer ambiguidade.
+if [[ -n "$DENIED" && -n "${DENIED_PLUGIN_REL:-}" && "$DENIED_PLUGIN_REL" == agents/*.md ]]; then
+  case "$TOOL" in
+    Edit|Write)
+      if command -v jq >/dev/null 2>&1 && _gate_roster_frontmatter_ok; then
+        DENIED=""
+        LOG_ARGS+=("scope=roster-frontmatter")
+        log_event gate_pass "${LOG_ARGS[@]}"
+      fi
+      ;;
+  esac
 fi
 
 # ── 3b. consentimento (E10/S-1005, ADR-003 v1.2) ───────────────────────────

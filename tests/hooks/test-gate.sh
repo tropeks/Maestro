@@ -380,6 +380,152 @@ else
   echo "     (pulado: session-start ainda não compila gate-policy.sh)"
 fi
 
+# Ordem 002/ponta 3 + ordem 016 PR1: carga e sonda medidas UMA VEZ (custo
+# desprezível, reaproveitado pela seção do roster abaixo E pelo bloco de NFR
+# mais adiante — mesma leitura, não duas).
+maestro_latency_read_load
+maestro_latency_probe "$GATE"
+
+echo "-- ordem 039: exceção do roster (effort/omitClaudeMd) — equivalência por remoção"
+# dogfood: projeto == plugin (mesma raiz), com um agents/*.md REAL em disco —
+# a exceção lê o arquivo (equivalência por remoção não reconstrói sem ele),
+# então (ao contrário do resto do arquivo) este bloco precisa de um projeto
+# sintético que EXISTE de verdade, não só de um caminho léxico.
+RHOME="$TMP/roster"; mkdir -p "$RHOME/agents"
+cat > "$RHOME/agents/testagent.md" <<'EOF'
+---
+name: testagent
+description: agente de teste.
+model: sonnet
+tools: Read, Grep, Glob, Edit, Write, Bash
+effort: baixo
+---
+
+Corpo do agente de teste, inalterado por estas provas.
+EOF
+cat > "$RHOME/agents/comchave.md" <<'EOF'
+---
+name: comchave
+tools: Read
+---
+
+effort: baixo
+Corpo com uma linha que parece chave mas está fora do frontmatter.
+EOF
+cat > "$MAESTRO_HOME/gate-policy.sh" <<EOF
+MAESTRO_GATE_MODE="warn"
+MAESTRO_GATE_ALLOW_EXT=".md .txt"
+MAESTRO_GATE_ALLOW_PATHS=".maestro/ docs/"
+MAESTRO_GATE_DENY_PATHS=".claude/ .github/workflows/"
+MAESTRO_GATE_DENY_SELF="agents/ bin/ hooks/ config/routing-table.yaml .claude-plugin/"
+MAESTRO_PLUGIN_ROOT="$RHOME"
+EOF
+roster_run() {  # $1 = payload JSON -> RC / OUT_ERR, com CLAUDE_PROJECT_DIR=$RHOME
+  OUT_ERR=$(printf '%s' "$1" | CLAUDE_PROJECT_DIR="$RHOME" "$GATE" 2>&1 >/dev/null)
+  RC=$?
+}
+roster_edit_json() {  # $1=old $2=new [$3=arquivo]
+  jq -n --arg f "$RHOME/agents/${3:-testagent.md}" --arg o "$1" --arg n "$2" \
+    '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$f, old_string:$o, new_string:$n}}'
+}
+
+reset_log
+roster_run "$(roster_edit_json 'effort: baixo' 'effort: alto')"
+check "roster: Edit effort baixo→alto → exit 0" "$RC" "0"
+check "roster: Edit effort baixo→alto → gate_pass" "$(last_event)" "gate_pass"
+if [[ "$(tail -1 "$LOG" | jq -r '.scope // ""')" == "roster-frontmatter" ]]; then
+  ok "roster: log registra scope=roster-frontmatter"
+else
+  bad "roster: log sem scope=roster-frontmatter"
+fi
+
+reset_log
+roster_run "$(roster_edit_json $'effort: baixo\n---' $'effort: baixo\nomitClaudeMd: true\n---')"
+check "roster: Edit acrescenta omitClaudeMd via âncora → exit 0" "$RC" "0"
+
+NEWCONTENT=$(sed 's/^effort: baixo$/effort: alto/' "$RHOME/agents/testagent.md")
+p=$(jq -n --arg f "$RHOME/agents/testagent.md" --arg c "$NEWCONTENT" \
+  '{session_id:"sess-abc123",tool_name:"Write",tool_input:{file_path:$f, content:$c}}')
+reset_log
+roster_run "$p"
+check "roster: Write equivalente (só effort muda) → exit 0" "$RC" "0"
+
+TERCEIRA_OLD=$'description: agente de teste.\nmodel: sonnet\ntools: Read, Grep, Glob, Edit, Write, Bash\neffort: baixo'
+TERCEIRA_NEW=$'description: agente MODIFICADO.\nmodel: sonnet\ntools: Read, Grep, Glob, Edit, Write, Bash\neffort: alto'
+reset_log
+roster_run "$(roster_edit_json "$TERCEIRA_OLD" "$TERCEIRA_NEW")"
+check "roster: terceira chave (description) junto → exit 2" "$RC" "2"
+
+CORPO_OLD=$'effort: baixo\n---\n\nCorpo do agente de teste, inalterado por estas provas.'
+CORPO_NEW=$'effort: alto\n---\n\nCorpo MODIFICADO.'
+reset_log
+roster_run "$(roster_edit_json "$CORPO_OLD" "$CORPO_NEW")"
+check "roster: mudança no corpo junto → exit 2" "$RC" "2"
+
+reset_log
+roster_run "$(roster_edit_json 'model: sonnet' 'model: opus')"
+check "roster: mudança em model → exit 2" "$RC" "2"
+
+reset_log
+roster_run "$(roster_edit_json 'effort: baixo' 'effort: medio')"
+check "roster: effort fora da gramática (medio) → exit 2" "$RC" "2"
+
+CORPO_COM_CHAVE=$'Corpo do agente de teste, inalterado por estas provas.\neffort: alto'
+reset_log
+roster_run "$(roster_edit_json 'Corpo do agente de teste, inalterado por estas provas.' "$CORPO_COM_CHAVE")"
+check "roster: chave inserida no corpo → exit 2" "$RC" "2"
+
+reset_log
+roster_run "$(roster_edit_json 'effort: NAO-EXISTE-NO-ARQUIVO' 'effort: alto')"
+check "roster: old_string que não casa → exit 2" "$RC" "2"
+
+reset_log
+roster_run "$(roster_edit_json 'effort: baixo' 'effort: alto' 'comchave.md')"
+check "roster: chave-like fora do frontmatter no arquivo → exit 2" "$RC" "2"
+
+reset_log
+p=$(jq -n --arg f "$RHOME/agents/testagent.md" \
+  '{session_id:"sess-abc123",tool_name:"MultiEdit",tool_input:{file_path:$f, old_string:"effort: baixo", new_string:"effort: alto"}}')
+roster_run "$p"
+check "roster: MultiEdit (tool fora de Edit/Write) → exit 2" "$RC" "2"
+
+reset_log
+p=$(jq -n --arg f "$RHOME/agents/testagent.md" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$f, old_string:123, new_string:"effort: alto"}}')
+roster_run "$p"
+check "roster: old_string não-string (extração jq falha) → exit 2" "$RC" "2"
+
+# jq TOTALMENTE ausente: comportamento pré-existente do gate inteiro (ADR-003
+# v1.1) — degrada em exit 0 para TUDO, não só para a exceção do roster; é o
+# MESMO "jq ausente → degrada" já coberto acima, aqui só documentado no
+# contexto do roster para não confundir com o "extração falha → exit 2" logo
+# acima (são dois ramos DIFERENTES: falta o binário inteiro vs. o campo
+# extraído não é string).
+p="$(roster_edit_json 'effort: baixo' 'effort: alto')"
+OUT_ERR=$(printf '%s' "$p" | PATH="$NOJQ" CLAUDE_PROJECT_DIR="$RHOME" "$GATE" 2>&1 >/dev/null); RC=$?
+check "roster: jq totalmente ausente → exit 0 (degrada; gate inteiro sem jq)" "$RC" "0"
+
+# Latência da EXCEÇÃO em si — ela paga até 2 forks extra de jq (old_string +
+# new_string) sobre o caminho comum do gate. Orçamento 60, não 100: medido
+# lado a lado na MESMA corrida (load 10,41), roster-frontmatter deu mediana
+# 116ms contra 106ms do `gate_pass` — o custo da exceção sobre o caminho
+# comum é ~10ms, e o orçamento é a base de 50 mais esses 10. Decisão do
+# Capitão, 2026-09-22: "teto que não aperta não protege" — 100 daria folga
+# para uma regressão de 40ms passar calada.
+ROSTER_FIX="$TMP/roster-pass.json"
+roster_edit_json 'effort: baixo' 'effort: alto' > "$ROSTER_FIX"
+maestro_latency_measure "$GATE" "$ROSTER_FIX"
+maestro_latency_report "roster-frontmatter" "$MIN" "$MED" "$MAX" 60
+case "$MAESTRO_LATENCY_VERDICT" in
+  ok) ok "latência ok — roster-frontmatter (mediana ${MED}ms < teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO])" ;;
+  inconclusivo)
+    echo "INCONCLUSIVO sob carga — roster-frontmatter (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — não conta como falha)" ;;
+  fail) bad "regressão de latência — roster-frontmatter (mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — sem carga para culpar)" ;;
+esac
+
+# CLAUDE_PROJECT_DIR é só desta seção — restaura para o resto do arquivo.
+export CLAUDE_PROJECT_DIR="$PROJ"
+
 echo "-- NFR: latência < 50ms"
 write_policy warn
 write_record sess-abc123 14400
@@ -389,11 +535,7 @@ write_record sess-abc123 14400
 # estouro de teto é "inconclusivo sob carga", nunca "fail". Protocolo, N,
 # folga e limiar de carga em tests/lib/latency.sh (mesmo helper usado por
 # test-guarda-destrutiva.sh — o método sempre foi compartilhado, agora o
-# arquivo também é).
-maestro_latency_read_load
-# ordem 016 PR1: sonda de baseline, medida uma vez (como a carga acima) —
-# ver rationale em tests/lib/latency.sh:maestro_latency_probe.
-maestro_latency_probe "$GATE"
+# arquivo também é); carga e sonda já foram lidas antes da seção do roster.
 # `adv-huge-path` (22 KB) não é carga real — nenhum arquivo tem esse caminho.
 # O orçamento dele existe só para provar que o gate não degenera.
 for pair in "gate_pass:edit-go.json:50" "denylist:deny-hooks-lib.json:50" \

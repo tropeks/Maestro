@@ -9,7 +9,39 @@
 # commit POR QUÊ.
 set -u
 
-RATCHET=7310   # DESCIDA deliberada 7317→7310 em 2026-09-19 (ordem 024 fatia 1): a
+RATCHET=7308   # DESCIDA deliberada 7310→7308 em 2026-09-22 (ordem 039): H9 nasce
+               # (config/routing-table.yaml, execution_heuristics) — a régua de
+               # QUAL effort/omitClaudeMd cada agente recebe quando essa mudança
+               # de frontmatter acontecer (H9 não muda nenhum agente por si; só
+               # diz a regra). +150B medidos (H9 compacta, citando H8 por
+               # referência em vez de repetir a lista de perfis). Pago no MESMO
+               # changeset com cortes de prosa redundante em H1/H2/H4/H5/H7 (a
+               # DECISÃO de cada heurística sobrevive inteira; o que saiu foi
+               # reafirmação que já estava implícita ou dita em outro lugar —
+               # mesma moeda do corte que pagou H8 em 2026-09-19):
+               #   H1  -58B  "delegar um bugfix de uma linha a um especialista
+               #              sonnet custa menos que fazê-lo no contexto
+               #              principal" → "ainda é mais barato que o contexto
+               #              principal" (a comparação already é o ponto; o
+               #              exemplo "bugfix de uma linha" não muda a decisão)
+               #   H2  -17B  "ou que cita duas ou mais áreas" → "ou cita duas+
+               #              áreas" (mesma regra, prosa mais curta)
+               #   H4  -15B  "componha com H5 (ou dev-pleno)" → "componha com
+               #              H5" (H5 JÁ é "a linguagem do alvo escolhe o
+               #              especialista"; dev-pleno é o residual que H5 usa
+               #              quando nenhum especialista cobre — dizer os dois
+               #              nomes aqui repetia o que H5 já cobre)
+               #   H5  -37B  "(do .maestro.yaml do projeto ou do arquivo citado,
+               #              não da palavra usada no pedido)" → "(do
+               #              projeto/arquivo, não da palavra do pedido)"
+               #   H7  -33B  removida a cauda "quando um projeto está nascendo"
+               #              — redundante com o próprio nome "day-zero" que a
+               #              frase anterior já usa
+               #   =-160B líquido nos cortes contra +152B líquido de H9 (a régua
+               #          decai porque os cortes correram um pouco à frente do
+               #          necessário — sobrou 2B, não é intervalo generoso).
+               #
+               # (bump anterior: 7317→7310 em 2026-09-19, ordem 024 fatia 1): a
                # heurística H8 (coluna model, config/routing-table.yaml) sobe na
                # injeção — mapeia PERFIL da tarefa → haiku|sonnet|opus (ADR-004),
                # o eixo que faltava para o `decide` escolher modelo sem depender só

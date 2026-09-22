@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 4
-ts: 2026-09-19T23:50:34-03:00
-head: 9b336cfbfafa4e670d153034f197cc78fa8057b9
+version: 5
+ts: 2026-09-22T07:09:04-03:00
+head: 921e41381ccdb2f0ec693bb2ad7f7f4f0f01f109
 author_session: desconhecido
-hash: 580bb30a
+hash: 58d22900
 -->
 # Direção — Maestro
 
@@ -92,7 +92,7 @@ Ordem de desempate: em qualquer colisão, vence a prioridade mais alta desta lis
 - Telemetria cross-máquina é opt-in e viaja pelo git, como o E20 já a implementa: nunca liga sozinha, nunca carrega além de metadado. Ela emenda o "sem telemetria na v1" do PROJECT_BRIEF §4 (EPICS E20; decisão do Capitão, 2026-09-10).
 - Memória em supermemory (cloud) fica ACEITA por escrito, contra o "tudo local" do PROJECT_BRIEF §7: o conflito é consciente e mora aqui, na direção, não escondido num ADR (ADR-007; decisão do Capitão, 2026-09-10).
 - Distribuição é plugin local do Claude Code; marketplace e QM são fase 2, e só depois do gatilho (ADR-001; decisão do Capitão, 2026-09-10).
-- Autoproteção do gate: mesmo com record válido, edições a `.claude/`, `.github/workflows/`, `hooks/`, `bin/`, `src/`, `agents/`, `config/routing-table.yaml` e `.claude-plugin/` seguem bloqueadas; `maestro consent` levanta a denylist só para DADOS (routing table, roster), nunca para a máquina (ADR-003 v1.2).
+- Autoproteção do gate: mesmo com record válido, edições a `.claude/`, `.github/workflows/`, `hooks/`, `bin/`, `src/`, `agents/`, `config/routing-table.yaml` e `.claude-plugin/` seguem bloqueadas; `maestro consent` levanta a denylist só para DADOS (routing table, roster), nunca para a máquina (ADR-003 v1.2). Exceção nomeada e estreita dentro de `agents/`: só os dois campos de frontmatter `effort` (`baixo|alto`) e `omitClaudeMd` (`true|false`) abrem, e só por equivalência-por-remoção (o resto do diff tem de ser byte-idêntico); todo o resto de `agents/` — nome, corpo, `model`, `description`, `tools`, terceira chave — segue barrado como antes. Decisão do Capitão `01M325GBZFYMNFV9A44KJTYMSJ`, 2026-09-22.
 - Single-user na v1: sem auth própria, a superfície é a da máquina e da conta Claude (ADR-005).
 - Sessões concorrentes na mesma máquina não corrompem a política uma da outra — cada sessão lê e escreve a sua, escopada (EPICS E26/S-2601; CHANGELOG v1.15.1).
 
