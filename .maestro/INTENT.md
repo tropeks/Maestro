@@ -1,9 +1,9 @@
 <!-- maestro-intent v1
-version: 5
-ts: 2026-09-22T07:09:04-03:00
-head: 921e41381ccdb2f0ec693bb2ad7f7f4f0f01f109
+version: 6
+ts: 2026-09-22T08:18:56-03:00
+head: e4bf7573395e31fab3f0091787a51e4ee5f9f2e6
 author_session: desconhecido
-hash: 58d22900
+hash: 31205cc5
 -->
 # Direção — Maestro
 
@@ -35,7 +35,7 @@ hash: 58d22900
 - `stable` só se move com CI verde: nenhuma máquina recebe commit que a CI não provou (EPICS E23/S-2303).
 - Toda ordem cita a versão do INTENT que a autorizou, e mudar a direção marca as ordens vivas para revisão de plano (EPICS E22).
 - O descarte aparece: janela madura sem nenhum `killed` é sintoma, não virtude (EPICS E25/S-2501; CHANGELOG v1.15.0).
-- Gatilho da Fase 2: ela abre quando o dogfood medir override <20% numa janela de 30 dias com ≥100 decisões. O gatilho é esse número, não uma data (decisão do Capitão, 2026-09-10; fecha a lacuna de PROJECT_BRIEF §9 × EPICS "Roadmap Fase 2"). **DISPARADO em 2026-09-19: 0,2% de override (1 não-roteável) em 481 decisões na janela de 30 dias, 16 projetos.** O gatilho abriu a Fase 2 — e a Fase 2 NÃO é do v1 (decisão A do Capitão; ver "Fora de escopo").
+- Gatilho da Fase 2: ela abre quando o dogfood medir override <20% numa janela de 30 dias com ≥100 decisões. O gatilho é esse número, não uma data (decisão do Capitão, 2026-09-10; fecha a lacuna de PROJECT_BRIEF §9 × EPICS "Roadmap Fase 2"). **DISPARADO em 2026-09-19: 0,2% de override (1 não-roteável) em 481 decisões na janela de 30 dias, 16 projetos** — e **CUMPRIDO-E-ENCERRADO em 2026-09-22**: o gatilho era o desfecho prometido, ele foi medido, e com ele o bullet fecha. O gatilho abriu a Fase 2, e a Fase 2 NÃO é do v1 (decisão do Capitão `01M325G8FJKQ4AW1HAXMBD8AWE`, 2026-09-22; ver "Fora de escopo"). Nada aqui espera número novo.
 
 ### CUMPRIDO — 2026-09-19 (v4)
 
@@ -98,7 +98,7 @@ Ordem de desempate: em qualquer colisão, vence a prioridade mais alta desta lis
 
 ## Fora de escopo
 
-- Multi-usuário e QM — fase 2. O gatilho de override DISPAROU em 2026-09-19 (0,2% em 481 decisões), e por **decisão A do Capitão** a Fase 2 sai como PROJETO PRÓPRIO: ela está destravada e continua fora do escopo do Maestro v1, que encerra ao cumprir este Resultado (PROJECT_BRIEF §4; ADR-006).
+- **A Fase 2, inteira — e este é o registro final dela (decisão do Capitão `01M325G8FJKQ4AW1HAXMBD8AWE`, 2026-09-22).** Multi-usuário/QM e a camada MCP dinâmica `activate(domínio, projeto)` estão **destravadas pelo gatilho medido** (0,2% de override em 481 decisões, 30 dias, 16 projetos) e **não entram no v1**. Onde elas moram: **projeto próprio ou wishlist**, nunca a lista de dívida do v1 — quem reabrir isto como pendência está lendo errado. O Maestro v1 **encerrou ao fechar a ordem 039**, em 2026-09-22 (PROJECT_BRIEF §4; ADR-006; `docs/ENCERRAMENTO-v1.md`).
 - Fork ou reescrita dos packs upstream (superpowers, gstack): vendorizados, customização só na camada Maestro (PROJECT_BRIEF §4; CLAUDE.md).
 - Camada MCP dinâmica `activate(domínio, projeto)` — fase 2, módulo do orchestrator, atrás do mesmo gatilho, que já disparou; segue fora do v1 pela mesma decisão A (PROJECT_BRIEF §4).
 - Task-observer embutido e auto-evolução de skills em runtime — o aprendizado é sempre em lote (PROJECT_BRIEF §4; README "The learning loop").
