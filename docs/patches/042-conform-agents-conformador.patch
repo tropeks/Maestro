@@ -9,7 +9,7 @@ index 0000000..ff7ca0d
 +description: Leva um projeto especifico a ficar conforme ao metodo Maestro ate "maestro conform --check" sair com 0 — fecha lacuna por lacuna (INTENT, .maestro.yaml, frescor, ordens, cadastro no ponte, CLAUDE.md), sem tocar gate, aceite, merge, ship ou o ponte.db.
 +model: sonnet
 +effort: alto
-+tools: Read, Grep, Glob, Edit, Write, Bash
++tools: Read, Grep, Glob, Edit, Write, Bash, Agent, Skill, mcp__plugin_maestro_ponte__director_ask, mcp__plugin_maestro_ponte__director_wait, mcp__plugin_maestro_ponte__director_report
 +# classification: public
 +---
 +
@@ -36,8 +36,8 @@ index 0000000..ff7ca0d
 +**Você roda como persona de sessão (`claude --agent conformador`), não como subagente
 +lançado por `Task`/`Agent`.** O motivo é mecânico: um subagente não pode lançar outro
 +subagente, e parte do seu trabalho é abrir um swarm de skills de arquitetura quando falta
-+desenho (abaixo). `Agent`/`Task` não fazem parte do seu `tools:` de propósito — sessão de
-+persona não precisa deles para orquestrar o swarm da forma como este ambiente o expõe.
++desenho (abaixo). Por isso o seu `tools:` traz `Agent` e `Skill` (o swarm) e as três
++ferramentas da Ponte (`director_*`): numa sessão `--agent`, o que não está ali não existe.
 +
 +## O ciclo
 +

@@ -33,8 +33,8 @@ F="$AGENTS_SANDBOX/conformador.md"
 # ---------------------------------------------------------------------------
 # 1. Frontmatter — mesmo contrato de tests/hooks/test-roster.sh (ordem 039):
 #    abre/fecha com ---, name casa com o arquivo, description de uma linha,
-#    model no vocabulário fechado, tools sem ferramenta inventada e SEM
-#    Agent/Task (subagente não lança subagente — corpo roda como persona).
+#    model no vocabulário fechado, tools com Agent/Skill e as três director_*
+#    (o envelope roda como persona de sessão `--agent`, não como subagente).
 # ---------------------------------------------------------------------------
 # uma linha só: o corpo multi-linha do awk (chaves em várias linhas) confunde
 # o contador de função do próprio habit hook (oversized-function não distingue
@@ -54,8 +54,12 @@ EFFORT="$(fm effort "$F")"
 [[ "$EFFORT" == "alto" || "$EFFORT" == "baixo" || -z "$EFFORT" ]] && ok "effort (se presente) no vocabulário da ordem 039" \
   || bad "effort='$EFFORT' fora de {baixo,alto}"
 TOOLS="$(fm tools "$F")"
-[[ "$TOOLS" != *"Agent"* && "$TOOLS" != *"Task"* ]] && ok "tools sem Agent/Task (subagente não lança subagente)" \
-  || bad "tools inclui Agent/Task — fora do vocabulário para este envelope: $TOOLS"
+# Decisão do Diretor (25/09): numa sessão `--agent`, o que não está em tools:
+# não existe — sem Agent/Skill não há swarm, sem director_* não há pergunta nem relato.
+for t in Agent Skill mcp__plugin_maestro_ponte__director_ask mcp__plugin_maestro_ponte__director_wait mcp__plugin_maestro_ponte__director_report; do
+  [[ ", $TOOLS," == *", $t,"* ]] && ok "tools traz $t" || bad "tools sem $t: $TOOLS"
+done
+[[ "$TOOLS" != *"Task"* ]] && ok "tools sem Task" || bad "tools inclui Task: $TOOLS"
 [[ -n "$TOOLS" ]] && ok "tools não vazio" || bad "tools vazio"
 
 # ---------------------------------------------------------------------------
