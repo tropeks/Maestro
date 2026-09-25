@@ -889,6 +889,45 @@ esse desenho é exatamente isto: suportar N sessões na mesma máquina sem se co
 
 ---
 
+### E27 — `maestro conform --check`: a lacuna vira comando, e o Conformador que as fecha (P1, M) — ordem 042, autorizada pelo Capitão em 25/09
+
+Origem: pedido do Capitão, desenho aprovado no item 17 de `~/dev/spock/docs/WISHLIST.md`
+(primeiro caso: SmartQuotation). O v1 encerrou (`docs/ENCERRAMENTO-v1.md` §5: "nada novo
+sem ordem do Capitão") — esta é a ordem que abre o v2 no ponto onde o v1 parou: hoje "o
+projeto está pronto para rodar headless" é declaração, ninguém confere. Direção: INTENT v6
+§Prioridades 4 (prova mecânica antes de declaração) e §Prioridades 3 (trilho onde o trilho
+alcança).
+
+**S-2701 — `maestro conform --check [<dir>] [--json]`.** Determinístico, sem LLM e sem
+rede: seis famílias de lacuna com código estável — INTENT (`lib/core-intent.sh`),
+`.maestro.yaml` (`hooks/lib/verifications.sh` + a chave nova `lab:`), frescor (brief/
+README/docs contra o `ts:` do INTENT), ordens não-terminais sem a linha "Execução
+headless" (`lib/core-order-state.sh` — mesma derivação de `order --status --json`),
+cadastro no `~/.ponte/ponte.db` (só leitura, `sqlite3 -readonly`) e `CLAUDE.md`. Nenhum
+formato é reimplementado — cada família chama o dono do formato correspondente. Saída
+texto (`código\talvo\tfix`, ordem estável) e `--json`; exit 0 conforme · 1 lacuna · 2
+uso. Não escreve nada em lugar nenhum; único rastro é `log_event conform` (débito
+declarado em `hooks/lib/common.sh`, congelada nesta ordem — DATA_MODEL §4).
+
+**S-2702 — o envelope `agents/conformador.md` (aplicado por patch, ver
+`docs/patches/042-conform-agents-conformador.patch`).** Especialista chamado SOB DEMANDA
+pelo Capitão ou pelo Diretor, para um projeto específico — nunca entra no roster injetado
+nem em `config/routing-table.yaml`, não conduz o office-hours (`gstack-office-hours`
+continua sendo quem descobre projeto novo) e roda como persona de sessão
+(`claude --agent`, não subagente — subagente não lança subagente, e ele abre um swarm de
+skills de arquitetura para lacunas de desenho). Ciclo: `conform --check --json` → fecha
+uma lacuna → roda de novo. Proibido resolver gate, aceitar ordem, merge, ship ou escrever
+no `ponte.db` (lacunas `ponte-*` viram pergunta ao Diretor, nunca escrita). Termina
+quando o check sai 0 ou só sobram lacunas que não são dele; relata por `director_report`.
+
+**Fora do épico:** o desenho de CADA lacuna de arquitetura que o Conformador encontrar —
+isso é do swarm, caso a caso, nunca prescrito aqui.
+
+**Dependências:** E15 (ordens, estado derivado), E22 (INTENT), E23b (`.maestro.yaml`,
+`verifications:`), E16 (`docs:`), E8 (brief).
+
+---
+
 ## Grafo de dependências
 
 ```

@@ -168,6 +168,24 @@ pontas (`base`..`tip`) para a ordem (`--accept`); com `tip` vazio, working tree 
 index + arquivos novos não-ignorados contra a base (default `merge-base main|master
 HEAD`, nesta ordem). Sem git, sem base ou sem declaração → nada tocado.
 
+#### Emenda E27 (S-2701) — `lab:` (rótulos que só provam fora do headless)
+
+```yaml
+lab: [e2e, smoke-lab]          # rótulos cujo comando só roda em docker/compose/--context lab
+```
+
+`lab`: lista inline (`[a, b]`) ou separada por espaço de RÓTULOS (mesma regra do rótulo
+de `verifications:`/`--label`, `^[a-z][a-z0-9-]{0,23}$`) que só provam dentro de um
+ambiente de laboratório — o comando declarado em `commands.<rótulo>` roda `docker`,
+`compose`, ou é invocado com `--context lab`. Mesmo parser raso de `docs:` (uma linha,
+flow, sem bloco `- item`). Consumido por `maestro conform --check` (ordem 042, E27):
+rótulo cujo comando "parece lab" e não está listado aqui é a lacuna `yaml-lab-unmarked`
+— a declaração existe para o Conformador (e qualquer leitor humano) saberem, sem abrir o
+comando, que aquele rótulo não prova nada no run headless (a forge não roda lab). Área
+cujos rótulos são TODOS lab é a lacuna `yaml-lab-only-area`: ela nunca tem prova
+alcançável fora da lab. Ausência da chave é o comportamento de sempre — nenhum rótulo
+marcado como lab, e o `conform` decide sozinho pelo padrão do comando.
+
 #### Emenda E23d (S-2304) — `habits_ignore:` e o corpo de heredoc
 
 ```yaml
@@ -401,7 +419,9 @@ sincronizado com `common.sh::_maestro_event_valid` em 2026-09-19):** `decision` 
 `gate_pass` · `gate_warn` · `gate_block` · `override_manual` · `killswitch` ·
 `session_end` · `habit_warn` · `consent_grant` · `consent_revoke` · `outcome` ·
 `conduct` · `budget_warn` · `order_create` · `order_accept` · `upgrade` ·
-`delegation` · `intent` · `verify` · `route_fix`. Evento fora da lista é descartado com aviso no
+`delegation` · `intent` · `verify` · `route_fix` · **`conform`** (E27/ordem 042 —
+DÉBITO: já emitido por `lib/cmd-conform.sh`, ainda NÃO em `common.sh::_maestro_event_valid`
+— `hooks/` congelada nessa ordem, ver emenda logo abaixo). Evento fora da lista é descartado com aviso no
 stderr; incluir um novo exige emenda AQUI, em `common.sh` e em `src/cli.ts`
 (`EVENTS`, senão o summary do `maestro log` joga evento real em `unknownEvent`).
 
@@ -525,6 +545,19 @@ não loga. Nunca o título, o hash ou o caminho.
 **Emenda E23b (S-2302):** evento novo `verify`, com `n` = número de verificações
 obrigatórias FALTANTES no changeset. Nunca rótulo, área ou caminho.
 
+**Emenda E27 (S-2701) — `conform`, DÉBITO DECLARADO (mesmo padrão de `route_fix`,
+emenda v1.19/ordem 030 acima).** `maestro conform --check` (ordem 042) grava
+`log_event conform n_lacunas=<inteiro> familias=<lista fechada ou "none"> rc=<0|1>` a
+cada rodada — nunca código de lacuna, alvo ou fix (isso seria conteúdo, não metadado).
+`hooks/` estava **zona CONGELADA** no contrato de execução da ordem 042 (não é o mesmo
+caso do E24/`bin/maestro`, resolvido por patch aplicado pelo Capitão): a chamada acima
+já está no código de `lib/cmd-conform.sh`, correta e completa, mas
+`common.sh::_maestro_event_valid`/`_maestro_set_key_regex` AINDA não reconhecem
+`conform`/`n_lacunas`/`familias`/`rc` — o evento é descartado em silêncio (comportamento
+padrão de vocabulário desconhecido) até um patch em `hooks/lib/common.sh`, pela MESMA
+via de patch desta ordem (`docs/patches/`), aplicado pelo Capitão. Este parágrafo é essa
+emenda — o código já está pronto para o dia em que o patch entrar.
+
 #### Chaves tipadas — tabela canônica (25, sincronizada com `common.sh::_maestro_set_key_regex`)
 
 Nenhuma regex admite `/`: garantia estrutural contra vazamento de caminho, reforçada
@@ -557,6 +590,9 @@ por uma checagem explícita de `*/*` no `log_event`.
 | `phase` | `^(planned\|started\|received\|accepted)$` | E23a |
 | `channel` | `^(stable\|main)$` | E23c |
 | `axis` | `^(mode\|agents\|workflow)$` | ordem 030 |
+| `n_lacunas` | `^[0-9]{1,9}$` | E27 (ordem 042 — débito, ver §4 acima) |
+| `familias` | `^(none\|(intent\|yaml\|frescor\|ordens\|daemon\|claude-md)(,(intent\|yaml\|frescor\|ordens\|daemon\|claude-md)){0,5})$` | E27 (ordem 042 — débito) |
+| `rc` | `^[01]$` | E27 (ordem 042 — débito) |
 
 ### 5. Roster — `agents/*.md` (repo do plugin)
 

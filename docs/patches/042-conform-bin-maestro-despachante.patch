@@ -1,0 +1,47 @@
+diff --git a/bin/maestro b/bin/maestro
+index 033f789..6021891 100755
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -78,6 +78,10 @@ maestro <comando>
+                   (--base REF; default merge-base main/master) com o bloco `verifications:`
+                   do .maestro.yaml e diz, por rótulo exigido, VÁLIDA/VENCIDA/NENHUMA —
+                   --check sai 1 se algum exigido não estiver VÁLIDA
++  conform         lacunas para o projeto entrar no metodo e rodar headless (ordem 042):
++                  seis familias (INTENT/.maestro.yaml/frescor/ordens/daemon/CLAUDE.md),
++                  sem LLM e sem rede — --check [<dir>] [--json]; exit 0 conforme · 1 lacuna
++                  · 2 uso; nao escreve nada, so log_event conform
+   graph           freshness do grafo graphify (E11): mtime do graphify-out/graph.json vs
+                   último commit — --check sai 1 se STALE (para a rotina de refresh)
+   consent         consentimento escopado (E10): --grant/--revoke routing-table|roster|ops,
+@@ -1623,6 +1627,23 @@ _docs_lib_load() { # carrega lib/cmd-docs.sh — uma vez, degradando por comando
+   die env "lib/cmd-docs.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
++# --------------------------------------------------------------- conform (ordem 042)
++#
++# `maestro conform --check`: lacunas para o projeto entrar no metodo e rodar
++# headless (INTENT v6 Prioridades 3/4) - lib/cmd-conform.sh (e os cinco
++# lib/core-conform-*.sh que ele carrega sob demanda). Aqui fica so o
++# carregador, no molde de `_order_json_lib_load`/`_docs_lib_load`, com die env
++# no lugar dos stubs: modulo ausente derruba SO este comando (I-2), nunca o CLI.
++
++_conform_lib_load() { # carrega lib/cmd-conform.sh - uma vez, degradando por comando (I-2)
++  declare -f cmd_conform >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-conform.sh" ]]; then
++    # shellcheck source=lib/cmd-conform.sh
++    source "$REPO_DIR/lib/cmd-conform.sh" && return 0
++  fi
++  die env "lib/cmd-conform.sh nao encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
++}
++
+ # ---------------------------------------------------------------- intent (E22)
+ #
+ # `maestro intent`: E24 moveu o FORMATO do INTENT (carimbo, seções, hash) para
+@@ -2318,6 +2339,7 @@ case "$cmd" in
+   evidence) shift; _ev_lib_load; cmd_evidence "$@" ;;
+   order) shift; _order_lib_load; cmd_order "$@" ;;
+   docs) shift; _docs_lib_load; cmd_docs "$@" ;;
++  conform) shift; _conform_lib_load; cmd_conform "$@" ;;
+   upgrade) shift; cmd_upgrade "$@" ;;
+   telemetry) shift; _telemetry_lib_load; cmd_telemetry "$@" ;;
+   intent) shift; _intent_lib_load; cmd_intent "$@" ;;        # E22

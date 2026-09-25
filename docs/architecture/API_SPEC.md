@@ -453,6 +453,46 @@ maestro verify [--base REF] [--project P] [--check]
 - Log: evento `verify` com `n = <faltantes>` (0 inclusive). Nunca rótulo, área ou
   caminho.
 
+### `maestro conform --check` (E27/S-2701, ordem 042)
+```
+maestro conform --check [<dir>] [--json]
+```
+Determinístico, **sem LLM e sem rede**: lista o que falta para `<dir>` (default: toplevel
+git do cwd) entrar no método e rodar headless. Seis famílias de lacuna, código estável:
+
+| família | códigos |
+|---|---|
+| (a) INTENT | `intent-missing` · `intent-sections` · `intent-hash` |
+| (b) `.maestro.yaml` | `yaml-missing` · `yaml-no-verifications` · `yaml-label-no-command` · `yaml-lab-unmarked` · `yaml-lab-only-area` |
+| (c) frescor | `brief-missing` · `brief-stale` · `readme-stale` · `doc-stale` |
+| (d) ordens | `order-no-headless` |
+| (e) daemon (ponte) | `ponte-unregistered` · `ponte-no-policy` · `ponte-unreadable` |
+| (f) CLAUDE.md | `claude-md-missing` |
+
+Regras por família em `docs/architecture/DATA_MODEL.md` §2 (`lab:`) e §13 (INTENT).
+`intent-*` reusa `lib/core-intent.sh` (`_intent_valid`/`_intent_missing`/
+`_intent_body_hash`); `yaml-*` reusa `hooks/lib/verifications.sh`
+(`maestro_verif_areas`/`maestro_verif_cmd`); `order-no-headless` reusa
+`lib/core-order-state.sh` (`_order_status` — MESMA derivação de `order --status --json`;
+terminal = `aceita`|`absorvida`, `adiada` conta como não-terminal); `ponte-*` lê
+`~/.ponte/ponte.db` (override `MAESTRO_PONTE_DB`) **somente em `sqlite3 -readonly`** —
+sem `sqlite3` ou banco ilegível é `ponte-unreadable`, nunca crash.
+
+**Saída texto:** uma lacuna por linha, `<código>\t<alvo>\t<fix>` — alvo relativo ao
+projeto, nunca caminho absoluto. Ordem estável: por família (a→f) e depois por alvo
+(`LC_ALL=C`, byte a byte — não depende do locale do shell que roda o comando).
+
+**`--json`:** `{"project":<basename>,"conforme":bool,"lacunas":[{"codigo","familia","alvo","fix"}]}`,
+mesmas lacunas e mesma ordem do texto; escapado com o mesmo helper de
+`lib/cmd-order-json.sh` (`_order_json_field`/`_order_json_esc`).
+
+**Exit:** `0` só com zero lacunas (stdout vazio) · `1` com ≥1 lacuna · `2` uso (flag
+desconhecida, `<dir>` inexistente, `--check` ausente).
+
+**Não escreve nada, em lugar nenhum** — nem no projeto, nem em `~/.maestro/`, nem no
+`ponte.db`. Único rastro: `log_event conform n_lacunas=<n> familias=<lista|none>
+rc=<0|1>` (DATA_MODEL §4, débito declarado — `hooks/` congelada nesta ordem).
+
 ### `maestro delegation` (E23a/S-2301)
 ```
 maestro delegation --session <id> | --all
