@@ -118,6 +118,18 @@ conform_fixture_ponte_db "$DB_NOPOL" "$SLUG" 0
 run_conform "$D" "$H" "$DB_NOPOL"
 assert_only "ponte-no-policy" "ponte-no-policy"
 
+# --- worktree: o slug é o do repo principal, não o do diretório do worktree -
+# (E15, molde de maestro_brief_file). Sem isto, conform num worktree acusa
+# ponte-unregistered do nome do worktree mesmo com o projeto cadastrado.
+D="$TMP/f-wt-main"; conform_fixture_golden "$D"; prep_ponte "$D"
+W="$TMP/f-wt-outro-nome"
+git -C "$D" worktree add -q "$W" -b wt-teste >/dev/null 2>&1
+H="$TMP/home-wt"; mkdir -p "$H"
+conform_write_brief "$BIN" "$H" "$W"
+run_conform "$W" "$H"
+[[ "$CODES" != *"ponte-unregistered"* ]] && ok "worktree: slug do repo principal (sem ponte-unregistered falso)" \
+  || bad "worktree: ponte-unregistered falso pelo nome do worktree — $OUT"
+
 # --- ponte-unreadable: banco ausente -----------------------------------------
 D="$TMP/f-ponte-unreadable"; conform_fixture_golden "$D"
 H="$TMP/home-pun"; mkdir -p "$H"

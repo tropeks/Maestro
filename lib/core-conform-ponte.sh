@@ -17,6 +17,14 @@
 _conform_project_slug() { # <proj> → slug (basename do toplevel git, minúsculas, _→-)
   local proj="$1" top base
   top=$(git -C "$proj" rev-parse --show-toplevel 2>/dev/null) || top="$proj"
+  # E15: worktree e repo principal são o MESMO projeto (molde de
+  # maestro_brief_file) — sem isto, conform num worktree acusa
+  # ponte-unregistered do nome do diretório do worktree.
+  if [[ -f "$top/.git" ]]; then
+    local common
+    common=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+    [[ -n "$common" && "$common" == */.git ]] && top="${common%/.git}"
+  fi
   base=$(basename -- "$top")
   base="${base,,}"; base="${base//_/-}"
   printf '%s' "$base"
