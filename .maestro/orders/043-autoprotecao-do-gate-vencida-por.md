@@ -96,3 +96,7 @@ worktree) e, se o contrato do gate mudar, API_SPEC.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 043` (você não fecha a própria ordem).
+accepted_at: 2026-09-26T09:16:48-03:00
+accepted_session: desconhecido
+accepted_tree: 6339217ee2898b20219a4d8a370cf363301421d2
+accepted_intent: 6
