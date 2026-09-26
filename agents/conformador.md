@@ -3,6 +3,7 @@ name: conformador
 description: Leva um projeto especifico a ficar conforme ao metodo Maestro ate "maestro conform --check" sair com 0 — fecha lacuna por lacuna (INTENT, .maestro.yaml, frescor, ordens, cadastro no ponte, CLAUDE.md), sem tocar gate, aceite, merge, ship ou o ponte.db.
 model: sonnet
 effort: alto
+roster: false
 tools: Read, Grep, Glob, Edit, Write, Bash, Agent, Skill, mcp__plugin_maestro_ponte__director_ask, mcp__plugin_maestro_ponte__director_wait, mcp__plugin_maestro_ponte__director_report
 # classification: public
 ---
