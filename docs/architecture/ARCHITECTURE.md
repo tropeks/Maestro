@@ -107,6 +107,18 @@ decision record: avisos de ORÇAMENTO (caps declarados no record — passo/janel
 por cap, nunca bloqueio) e ZONAS CONGELADAS de work orders (compiladas na política pelo
 SessionStart; autônomo bloqueia dentro da zona, humano é avisado — a assimetria do S-502).
 O gate.mode foi promovido a `block` em 2026-08-29 com prova comportamental (live E2E).
+**Emenda v1.4 (ordem 043, 2026-09-26) — o worktree é o plugin, esteja onde estiver:** a
+autoproteção ancorava em DOIS endereços, a raiz do plugin e o projeto da sessão quando ele
+é worktree do plugin (ordem 012). Um Write num worktree em outro diretório, com a sessão
+no main, não caía em nenhum dos dois, e a denylist inteira passava (incidente da 042). O
+gate passa a perguntar pelo `.git` do PRÓPRIO caminho editado: `.git` arquivo (worktree)
+com o mesmo `--git-common-dir` do plugin cai na denylist ancorada. Falha FECHADA nesse
+ramo: worktree reconhecido, plugin versionado e git sem resposta bloqueiam. O custo fica
+fora do caminho comum: fork de git só quando o caminho já casa a denylist e mora num
+worktree. O PreToolUse dispara em subagente, com o `session_id` da sessão-mãe (log de
+2026-09-25): o furo era do gate, não do harness. A mesma ordem corrigiu a denylist que
+VALE, o `self_paths` do routing-table: `config/accept-proof.pub` (âncora do aceite por
+identidade, ordem 041) estava só no default do hook, que a política compilada substitui.
 
 ### ADR-008 — Sinal observável de override manual
 **Status:** Aceito (v1.1, review Opus).
