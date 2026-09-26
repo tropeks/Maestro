@@ -606,6 +606,16 @@ tools: Read, Grep, Glob, Write, Edit, Bash   # mínimas por papel (padrão VoltA
 ```
 `# classification: public` (prompts adaptados de repositórios abertos)
 
+#### Emenda (ordem 042) — `roster: false`, agente sob demanda
+
+Chave opcional `roster: false` no frontmatter: o agente existe (o Claude Code o carrega,
+`claude --agent <nome>` o abre), mas o `session-start` **não o injeta** no roster, nem com
+`experts:` ausente, nem quando `experts:` o nomeia. É para quem é chamado só por pedido
+nominal do Capitão ou do Diretor (primeiro caso: `conformador`), nunca pelo roteamento.
+Ausente ou `roster: true`, nada muda. É marcador declarativo do próprio agente, não lista
+de nomes no hook. `capabilities.json` continua contando todo `agents/*.md` em
+`roster.agents`.
+
 ### 6. Estado do doctor — `~/.maestro/capabilities.json` + `bindings-snapshot.tsv` (E7/S-705-706)
 
 Escritos pelo `maestro doctor` a cada rodada; **estado local de diagnóstico, não log**
