@@ -461,9 +461,11 @@ experts: [golang-pro]')" "$REPO/agents"
     && chk yes "E2E: injeção com o roster real inteiro cabe em 8000 B ($OUTBYTES B)" \
     || chk no "E2E: injeção com o roster real inteiro cabe em 8000 B" "$OUTBYTES B"
   n=$(listed | wc -w)
-  [[ "$n" -eq ${#real[@]} ]] \
-    && chk yes "E2E: os $n agentes reais aparecem sem filtro" \
-    || chk no "E2E: todos os agentes reais aparecem sem filtro" "injetados=$n, arquivos=${#real[@]}"
+  # ordem 042: `roster: false` no frontmatter é sob demanda — fora da injeção.
+  sob_demanda=$(grep -lE '^roster:[[:space:]]*false[[:space:]]*$' "${real[@]}" 2>/dev/null | wc -l)
+  [[ "$n" -eq $(( ${#real[@]} - sob_demanda )) ]] \
+    && chk yes "E2E: os $n agentes reais injetáveis aparecem sem filtro ($sob_demanda sob demanda fora)" \
+    || chk no "E2E: todos os agentes reais injetáveis aparecem sem filtro" "injetados=$n, arquivos=${#real[@]}, sob demanda=$sob_demanda"
 fi
 
 # =============================================================================

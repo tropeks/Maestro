@@ -1,0 +1,23 @@
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -360,10 +360,10 @@
+     lines+=("- $nm ($md)")
+   done < <(awk '
+     function clean(s) { gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); gsub(/[<>]/, "", s); return s }
+-    FNR == 1 { st = 0; nm = ""; md = ""; ds = "" }
++    FNR == 1 { st = 0; nm = ""; md = ""; ds = ""; off = 0 }
+     FNR == 1 && /^---[ \t]*$/ { st = 1; next }
+     st == 1 && /^---[ \t]*$/ {
+-      if (nm != "") {
++      if (nm != "" && !off) {
+         if (length(ds) > 100) { ds = substr(ds, 1, 100); sub(/[^ ]*$/, "", ds); ds = ds "…" }
+         print nm "\t" md "\t" ds
+       }
+@@ -372,6 +372,7 @@
+     st == 1 && /^name:/        { nm = clean(substr($0, 6));  next }
+     st == 1 && /^model:/       { md = clean(substr($0, 7));  next }
+     st == 1 && /^description:/ { ds = clean(substr($0, 13)); next }
++    st == 1 && /^roster:[ \t]*false[ \t]*$/ { off = 1; next }   # ordem 042: sob demanda, fora da injeção
+   ' "${files[@]}" 2>/dev/null)
+ 
+   ROSTER_TOTAL=${#names[@]}

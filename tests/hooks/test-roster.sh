@@ -19,7 +19,12 @@ bad()  { echo "FAIL $1"; fail=1; }
 # `tools:` com nome fora daqui é erro de digitação ou invenção.
 KNOWN_TOOLS=" Read Grep Glob Edit Write MultiEdit Bash BashOutput KillShell \
 NotebookEdit WebFetch WebSearch Task TodoWrite Skill SlashCommand \
-ExitPlanMode AskUserQuestion "
+ExitPlanMode AskUserQuestion Agent \
+mcp__plugin_maestro_ponte__director_ask mcp__plugin_maestro_ponte__director_wait \
+mcp__plugin_maestro_ponte__director_report "
+# Ordem 042: `Agent` é o nome atual do `Task` no Claude Code, e as três
+# director_* são as ferramentas MCP do próprio plugin (servidor ponte), pelo
+# nome exato — sem curinga `mcp__*`, que reabriria a porta da invenção.
 
 # Lê uma chave do frontmatter (só a primeira ocorrência), já sem aspas/espaços.
 fm() { # fm <chave> <arquivo>
