@@ -1,0 +1,41 @@
+--- a/hooks/pre-tool-gate.sh
++++ b/hooks/pre-tool-gate.sh
+@@ -601,6 +601,38 @@
+   fi
+ fi
+ 
++# ── 3a-ter. worktree do plugin FORA do projeto (ordem 043) ─────────────────
++# 3a-bis só pergunta se o PROJETO da sessão é worktree do plugin. Com a sessão
++# no main e o Write num worktree em outro diretório (o incidente da 042: um
++# subagente escreveu agents/ assim), o caminho não fica sob PROJ, REL sai
++# vazio e 3a-bis nem roda. Aqui a pergunta é sobre o PRÓPRIO caminho editado.
++#
++# Barato-primeiro: string (algum segmento casa a denylist) e depois só `stat`
++# subindo até o `.git` mais próximo — fork de git só quando esse `.git` é
++# ARQUIVO (worktree) E o caminho relativo a ele casa a denylist.
++# Falha FECHADA: worktree reconhecido, plugin versionado (`.git` na raiz) e o
++# git não resolve os dois common-dirs → bloqueia (ADR-003 v1.1, review P1-3).
++# Sem `.git` nenhum acima, ou `.git` diretório (clone comum, outro repo), não é
++# worktree do plugin: comportamento pré-existente, sem fork.
++if [[ -z "$DENIED" && -n "$PLUGIN_ROOT" && -z "$LONG" ]] \
++   && _gate_deny_anywhere "$ABS" "$DENY_SELF $DENY_PATHS"; then
++  _gate_wt="${ABS%/*}"
++  while [[ -n "$_gate_wt" && ! -e "$_gate_wt/.git" ]]; do _gate_wt="${_gate_wt%/*}"; done
++  if [[ -n "$_gate_wt" && -f "$_gate_wt/.git" ]] \
++     && _gate_prefix_match "${ABS#"$_gate_wt"/}" "$DENY_SELF $DENY_PATHS"; then
++    _gate_wt_common=""; _gate_plugin_common=""
++    if command -v git >/dev/null 2>&1; then
++      _gate_wt_common=$(git -C "$_gate_wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _gate_wt_common=""
++      _gate_plugin_common=$(git -C "$PLUGIN_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _gate_plugin_common=""
++    fi
++    if [[ -n "$_gate_wt_common" && "$_gate_wt_common" == "$_gate_plugin_common" ]] \
++       || { [[ -e "$PLUGIN_ROOT/.git" ]] && [[ -z "$_gate_wt_common" || -z "$_gate_plugin_common" ]]; }; then
++      DENIED="1"
++      DENIED_PLUGIN_REL="${ABS#"$_gate_wt"/}"
++    fi
++  fi
++fi
++
+ # ── 3a-quater. exceção estreita do roster (ordem 039) ──────────────────────
+ # agents/*.md abre SÓ para `effort`/`omitClaudeMd`, só no frontmatter, só
+ # Edit/Write, e só por equivalência-por-remoção (ver as funções `_gate_roster_*`

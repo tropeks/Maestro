@@ -1,0 +1,11 @@
+--- a/config/routing-table.yaml
++++ b/config/routing-table.yaml
+@@ -16,7 +16,7 @@
+     # AUTOPROTEÇÃO: só valem ancorados na raiz do plugin. Como prefixo relativo
+     # bloqueariam o `src/`, `bin/` e `hooks/` de QUALQUER projeto — trabalho
+     # legítimo travado, o pior caso do brief §8.
+-    self_paths: [agents/, bin/, src/, hooks/, lib/, config/routing-table.yaml, .claude-plugin/]
++    self_paths: [agents/, bin/, src/, hooks/, lib/, config/routing-table.yaml, config/accept-proof.pub, .claude-plugin/]
+ workflows:
+   # `steps` são nomes de ETAPA, não nomes de comando: quem diz o que roda é o
+   # bloco `bindings` abaixo. Antes da v2 os steps de ship/audit se chamavam
