@@ -227,6 +227,39 @@ expand_plugin_root() { # ${CLAUDE_PLUGIN_ROOT}/x → <repo>/x
   printf '%s\n' "$s"
 }
 
+_hooks_check_matchers() { # matcher do PreToolUse cobre Edit|Write|MultiEdit (arg 1 = hooks.json, arg 2 = eventos)
+  local f="$1" events="$2"
+  local matchers tool tok m found uncovered=()
+  matchers=$(hooks_json_pretooluse_matchers "$f" || true)
+  if [[ -z "${matchers//[[:space:]]/}" ]]; then
+    # matcher vazio/ausente = casa com toda ferramenta; só é válido se o evento existe
+    if printf '%s\n' "$events" | grep -qx PreToolUse; then
+      report warn "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
+        "matcher ausente — o hook roda para TODA ferramenta"
+    fi
+  else
+    for tool in "${EXPECTED_MATCHER_TOOLS[@]}"; do
+      found=0
+      while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        [[ "$m" == '*' || "$m" == '.*' ]] && { found=1; break; }
+        while IFS= read -r tok; do
+          tok="${tok//[[:space:]]/}"
+          [[ "$tok" == "$tool" ]] && { found=1; break; }
+        done < <(printf '%s\n' "$m" | tr '|' '\n')
+        [[ $found -eq 1 ]] && break
+      done <<<"$matchers"
+      [[ $found -eq 0 ]] && uncovered+=("$tool")
+    done
+    if [[ ${#uncovered[@]} -gt 0 ]]; then
+      report fail_val "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
+        "não coberto(s): ${uncovered[*]}"
+    else
+      report ok "matcher do PreToolUse cobre Edit|Write|MultiEdit"
+    fi
+  fi
+}
+
 check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
   local f="$REPO_DIR/hooks/hooks.json"
 
@@ -260,35 +293,7 @@ check_hooks_registry() { # AC da S-103: "detecta hook não registrado"
   fi
 
   # 2) matcher do PreToolUse cobre Edit|Write|MultiEdit
-  local matchers tool tok found uncovered=()
-  matchers=$(hooks_json_pretooluse_matchers "$f" || true)
-  if [[ -z "${matchers//[[:space:]]/}" ]]; then
-    # matcher vazio/ausente = casa com toda ferramenta; só é válido se o evento existe
-    if printf '%s\n' "$events" | grep -qx PreToolUse; then
-      report warn "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
-        "matcher ausente — o hook roda para TODA ferramenta"
-    fi
-  else
-    for tool in "${EXPECTED_MATCHER_TOOLS[@]}"; do
-      found=0
-      while IFS= read -r m; do
-        [[ -z "$m" ]] && continue
-        [[ "$m" == '*' || "$m" == '.*' ]] && { found=1; break; }
-        while IFS= read -r tok; do
-          tok="${tok//[[:space:]]/}"
-          [[ "$tok" == "$tool" ]] && { found=1; break; }
-        done < <(printf '%s\n' "$m" | tr '|' '\n')
-        [[ $found -eq 1 ]] && break
-      done <<<"$matchers"
-      [[ $found -eq 0 ]] && uncovered+=("$tool")
-    done
-    if [[ ${#uncovered[@]} -gt 0 ]]; then
-      report fail_val "matcher do PreToolUse cobre Edit|Write|MultiEdit" \
-        "não coberto(s): ${uncovered[*]}"
-    else
-      report ok "matcher do PreToolUse cobre Edit|Write|MultiEdit"
-    fi
-  fi
+  _hooks_check_matchers "$f" "$events"
 
   # 3) todo command resolve para arquivo existente e executável
   local cmds n=0 bad=()
@@ -1252,6 +1257,45 @@ roster_frontmatter() { # roster_frontmatter <arquivo> → name\037description\03
 
 join_semi() { local s; s=$(printf '%s; ' "$@"); printf '%s' "${s%; }"; }
 
+_roster_check_file() { # valida o frontmatter de um agents/*.md (arg 1); acumula em problems/dups/seen do chamador
+  local f="$1" base line nm ds md tl
+  base=$(basename -- "$f"); base="${base%.md}"
+  if [[ ! -r "$f" ]]; then
+    problems+=("$base.md: ilegível (fix: cheque permissões)")
+    return
+  fi
+  line=$(roster_frontmatter "$f")
+  if [[ -z "$line" ]]; then
+    problems+=("$base.md: frontmatter ausente ou não fechado por '---'")
+    return
+  fi
+  IFS=$'\037' read -r nm ds md tl <<<"$line"
+
+  if [[ -z "$nm" ]]; then
+    problems+=("$base.md: sem 'name:'")
+  elif [[ ! "$nm" =~ ^[a-z0-9-]{1,40}$ ]]; then
+    # mesma regex do session-start e do CLI: fora dela o agente é silenciosamente
+    # ignorado pelos dois — instalado e invisível é o pior estado possível
+    problems+=("$base.md: name '$nm' fora de kebab-case [a-z0-9-] — hook e CLI o ignoram")
+  elif [[ "$nm" != "$base" ]]; then
+    problems+=("$base.md: name '$nm' não casa com o nome do arquivo")
+  fi
+  if [[ -z "$ds" ]]; then
+    problems+=("$base.md: 'description:' vazia — é o gate MoE, sem ela o agente nunca é escolhido")
+  elif [[ "$ds" == '|'* || "$ds" == '>'* ]]; then
+    problems+=("$base.md: 'description:' em bloco multi-linha (DATA_MODEL §5 exige 1 linha)")
+  fi
+  [[ "$md" =~ ^(haiku|sonnet|opus)$ ]] \
+    || problems+=("$base.md: model '${md:-ausente}' fora de haiku|sonnet|opus")
+  [[ -n "$tl" ]] || problems+=("$base.md: 'tools:' ausente ou vazio")
+
+  if [[ -n "$nm" ]]; then
+    [[ "$seen" == *" $nm "* ]] && dups+=("$nm")
+    seen+="$nm "
+    ROSTER_NAMES+="$nm "
+  fi
+}
+
 check_roster() { # DATA_MODEL §5 (frontmatter obrigatório) + E3
   if [[ ! -d "$AGENTS_DIR" ]]; then
     report fail_env "roster: diretório agents/ presente" "$AGENTS_DIR não existe"
@@ -1266,43 +1310,9 @@ check_roster() { # DATA_MODEL §5 (frontmatter obrigatório) + E3
     return
   fi
 
-  local f base line nm ds md tl problems=() dups=() seen=' '
+  local f problems=() dups=() seen=' '
   for f in "${files[@]}"; do
-    base=$(basename -- "$f"); base="${base%.md}"
-    if [[ ! -r "$f" ]]; then
-      problems+=("$base.md: ilegível (fix: cheque permissões)")
-      continue
-    fi
-    line=$(roster_frontmatter "$f")
-    if [[ -z "$line" ]]; then
-      problems+=("$base.md: frontmatter ausente ou não fechado por '---'")
-      continue
-    fi
-    IFS=$'\037' read -r nm ds md tl <<<"$line"
-
-    if [[ -z "$nm" ]]; then
-      problems+=("$base.md: sem 'name:'")
-    elif [[ ! "$nm" =~ ^[a-z0-9-]{1,40}$ ]]; then
-      # mesma regex do session-start e do CLI: fora dela o agente é silenciosamente
-      # ignorado pelos dois — instalado e invisível é o pior estado possível
-      problems+=("$base.md: name '$nm' fora de kebab-case [a-z0-9-] — hook e CLI o ignoram")
-    elif [[ "$nm" != "$base" ]]; then
-      problems+=("$base.md: name '$nm' não casa com o nome do arquivo")
-    fi
-    if [[ -z "$ds" ]]; then
-      problems+=("$base.md: 'description:' vazia — é o gate MoE, sem ela o agente nunca é escolhido")
-    elif [[ "$ds" == '|'* || "$ds" == '>'* ]]; then
-      problems+=("$base.md: 'description:' em bloco multi-linha (DATA_MODEL §5 exige 1 linha)")
-    fi
-    [[ "$md" =~ ^(haiku|sonnet|opus)$ ]] \
-      || problems+=("$base.md: model '${md:-ausente}' fora de haiku|sonnet|opus")
-    [[ -n "$tl" ]] || problems+=("$base.md: 'tools:' ausente ou vazio")
-
-    if [[ -n "$nm" ]]; then
-      [[ "$seen" == *" $nm "* ]] && dups+=("$nm")
-      seen+="$nm "
-      ROSTER_NAMES+="$nm "
-    fi
+    _roster_check_file "$f"
   done
 
   if [[ ${#problems[@]} -gt 0 ]]; then
@@ -1780,13 +1790,7 @@ cmd_graph() { # E11: freshness do grafo graphify — status para humanos e --che
 
 # --------------------------------------------------------------- consent (E10)
 
-cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegida
-  # Amendment do ADR-003 (v1.2): consentimento destrava DADOS (routing table,
-  # roster), NUNCA a máquina (hooks/, bin/, src/, .claude-plugin/) — consentir
-  # não pode equivaler a poder remover o gate. Escopado, com TTL curto,
-  # auditado no log (consent_grant/consent_revoke com scope; nunca caminho).
-  # O gate continua exigindo o resto do fluxo: consent só levanta a denylist.
-  local action="" scope="" ttl=1800 sid=""
+_consent_parse_flags() { # flags do consent (args do comando); grava action/scope/ttl/sid do chamador
   while (( $# )); do
     case "$1" in
       --grant)  action="grant";  scope="${2:-}"; shift ;;
@@ -1803,6 +1807,34 @@ cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegi
     esac
     shift
   done
+}
+
+_consent_list() { # lista consentimentos ativos e apaga os expirados (arg 1 = dir, arg 2 = epoch atual)
+  local cdir="$1" now="$2"
+  local f sc exp rem any=0
+  shopt -s nullglob
+  for f in "$cdir"/*; do
+    sc="${f##*/}"
+    exp=$(awk -F= '/^expires=/ { print $2; exit }' "$f" 2>/dev/null)
+    if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > now )); then
+      rem=$(( (exp - now) / 60 ))
+      printf 'ativo: %s (expira em %smin)\n' "$sc" "$rem"; any=1
+    else
+      rm -f "$f" 2>/dev/null || :
+    fi
+  done
+  shopt -u nullglob
+  (( any == 0 )) && echo "nenhum consentimento ativo (a denylist de autoproteção vale integral)"
+}
+
+cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegida
+  # Amendment do ADR-003 (v1.2): consentimento destrava DADOS (routing table,
+  # roster), NUNCA a máquina (hooks/, bin/, src/, .claude-plugin/) — consentir
+  # não pode equivaler a poder remover o gate. Escopado, com TTL curto,
+  # auditado no log (consent_grant/consent_revoke com scope; nunca caminho).
+  # O gate continua exigindo o resto do fluxo: consent só levanta a denylist.
+  local action="" scope="" ttl=1800 sid=""
+  _consent_parse_flags "$@"
   [[ "$ttl" =~ ^[0-9]{1,6}$ ]] && (( ttl >= 60 && ttl <= 14400 )) \
     || die validation "TTL fora da janela (1min–4h)" "--ttl 30m é o default" 1
   [[ -z "$sid" || "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] \
@@ -1814,20 +1846,7 @@ cmd_consent() { # S-1005: consentimento escopado para a IA editar CONFIG protegi
   now=$(maestro_now_epoch)
 
   if [[ -z "$action" ]]; then # listar
-    local f sc exp rem any=0
-    shopt -s nullglob
-    for f in "$cdir"/*; do
-      sc="${f##*/}"
-      exp=$(awk -F= '/^expires=/ { print $2; exit }' "$f" 2>/dev/null)
-      if [[ "$exp" =~ ^[0-9]+$ ]] && (( exp > now )); then
-        rem=$(( (exp - now) / 60 ))
-        printf 'ativo: %s (expira em %smin)\n' "$sc" "$rem"; any=1
-      else
-        rm -f "$f" 2>/dev/null || :
-      fi
-    done
-    shopt -u nullglob
-    (( any == 0 )) && echo "nenhum consentimento ativo (a denylist de autoproteção vale integral)"
+    _consent_list "$cdir" "$now"
     return 0
   fi
 
@@ -1899,14 +1918,7 @@ _delegation_lib_load() { # carrega lib/cmd-delegation.sh — uma vez, degradando
 
 # --------------------------------------------------------------- conduct (E17)
 
-cmd_conduct() { # S-1702: regência — mutação genérica do decision record
-  # decide grava a APOSTA (workflow/mode/agents/depth/profile/brief); conduct
-  # MUTA o record já existente, mesmo precedente de escrita de `outcome`:
-  # (i) acumula flags[] tipadas (sev|decisao|tradeoff|mitigacao) consolidadas
-  # pelo diretor a partir dos veredicts dos agentes; (ii) fecha o `approach:`
-  # pendente do brief quando o plano nasce. Verbo genérico: cobre os dois
-  # pontos de enforcement do item 4 do design com um único subcomando.
-  local sid="" approach="" flags=()
+_conduct_parse_args() { # flags do conduct (args do comando); grava sid/approach/flags do chamador
   while (( $# )); do
     case "$1" in
       --session)  sid="${2:-}"; shift ;;
@@ -1917,6 +1929,35 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
     esac
     shift
   done
+}
+
+_conduct_flag_objs() { # valida cada --flag e acumula o JSON em flag_objs do chamador
+  local f sev decisao tradeoff mitigacao pipes part
+  for f in "${flags[@]}"; do
+    [[ "$f" != *$'\t'* ]] || die validation "--flag não pode conter tab" "$f" 1
+    pipes="${f//[^|]/}"
+    [[ ${#pipes} -eq 3 ]] || die validation \
+      "--flag exige exatamente 4 campos 'sev|decisao|tradeoff|mitigacao'" "$f" 1
+    IFS='|' read -r sev decisao tradeoff mitigacao <<<"$f"
+    [[ "$sev" =~ ^(critical|high|medium|low)$ ]] || die validation "sev fora do enum" \
+      "critical|high|medium|low (recebido '$sev')" 1
+    for part in "$sev" "$decisao" "$tradeoff" "$mitigacao"; do
+      [[ "${#part}" -le 120 ]] || die validation "--flag com campo acima de 120 chars" "$f" 1
+    done
+    flag_objs+=("$(jq -nc --arg s "$sev" --arg d "$decisao" --arg t "$tradeoff" --arg m "$mitigacao" \
+      '{sev:$s, decisao:$d, tradeoff:$t, mitigacao:$m}')")
+  done
+}
+
+cmd_conduct() { # S-1702: regência — mutação genérica do decision record
+  # decide grava a APOSTA (workflow/mode/agents/depth/profile/brief); conduct
+  # MUTA o record já existente, mesmo precedente de escrita de `outcome`:
+  # (i) acumula flags[] tipadas (sev|decisao|tradeoff|mitigacao) consolidadas
+  # pelo diretor a partir dos veredicts dos agentes; (ii) fecha o `approach:`
+  # pendente do brief quando o plano nasce. Verbo genérico: cobre os dois
+  # pontos de enforcement do item 4 do design com um único subcomando.
+  local sid="" approach="" flags=()
+  _conduct_parse_args "$@"
   [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
     "maestro conduct --session <id> [--flag ...] [--approach ...]" 1
   if [[ ${#flags[@]} -eq 0 && -z "$approach" ]]; then
@@ -1933,21 +1974,8 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
 
   # --flag "sev|decisao|tradeoff|mitigacao": exatamente 4 campos (3 '|'),
   # sev no enum fechado, cada campo <=120 chars, sem tab.
-  local flag_objs=() f sev decisao tradeoff mitigacao pipes part
-  for f in "${flags[@]}"; do
-    [[ "$f" != *$'\t'* ]] || die validation "--flag não pode conter tab" "$f" 1
-    pipes="${f//[^|]/}"
-    [[ ${#pipes} -eq 3 ]] || die validation \
-      "--flag exige exatamente 4 campos 'sev|decisao|tradeoff|mitigacao'" "$f" 1
-    IFS='|' read -r sev decisao tradeoff mitigacao <<<"$f"
-    [[ "$sev" =~ ^(critical|high|medium|low)$ ]] || die validation "sev fora do enum" \
-      "critical|high|medium|low (recebido '$sev')" 1
-    for part in "$sev" "$decisao" "$tradeoff" "$mitigacao"; do
-      [[ "${#part}" -le 120 ]] || die validation "--flag com campo acima de 120 chars" "$f" 1
-    done
-    flag_objs+=("$(jq -nc --arg s "$sev" --arg d "$decisao" --arg t "$tradeoff" --arg m "$mitigacao" \
-      '{sev:$s, decisao:$d, tradeoff:$t, mitigacao:$m}')")
-  done
+  local flag_objs=()
+  _conduct_flag_objs
   local n_flags=${#flag_objs[@]}
   local new_flags_json='[]'
   if [[ $n_flags -gt 0 ]]; then
