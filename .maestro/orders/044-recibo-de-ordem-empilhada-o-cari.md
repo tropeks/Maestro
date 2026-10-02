@@ -34,3 +34,7 @@ lados, falha fechada. Aplicado nos 5 comparadores (status, gate de verificaçõe
 - O aceite é do diretor: `maestro order --accept 044` (você não fecha a própria ordem).
 
 > **Execução headless:** a prova é o teste em sandbox (`tests/cli/test-order-044-recibo-empilhado.sh`) mais a suíte, sem humano no laço. Nenhuma chamada externa.
+accepted_at: 2026-10-02T08:24:43-03:00
+accepted_session: desconhecido
+accepted_tree: 17b772dba895a5a921eba0e61919d4231e114edf
+accepted_intent: 6
