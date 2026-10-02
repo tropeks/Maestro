@@ -68,7 +68,9 @@
 #                           movidas — cmd_docs 147, cmd_intent 143, cmd_brief 86
 #                           viraram 20 funções, nenhuma acima de 47 linhas.
 #                           22 → 13 num lote. Faltam 7 para o alvo.
-deep-nesting	11	1791601199	10
+# DÍVIDA PAGA pela ordem 045 (2026-10): deep-nesting 11 → 10, oversized-function 13 → 6;
+# as colunas vence_epoch/alvo saem porque o alvo foi atingido — a régua volta a ser só catraca.
+deep-nesting	10
 oversized-file	13
-oversized-function	13	1791601199	6
+oversized-function	6
 skipped-test	1

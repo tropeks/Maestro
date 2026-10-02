@@ -57,8 +57,8 @@ expect_cmd() {
   local desc="$1" want="$2" line got
   line=$(last_line)
   got=$(printf '%s' "$line" | jq -r '.cmd // ""' 2>/dev/null) || got="<json invalido>"
-  [[ "$got" == "$want" ]] && ok "$desc: cmd='$want'" \
-                          || bad "$desc: cmd='$got', esperado '$want'"
+  if [[ "$got" == "$want" ]]; then ok "$desc: cmd='$want'"
+  else bad "$desc: cmd='$got', esperado '$want'"; fi
 }
 
 expect_event() {

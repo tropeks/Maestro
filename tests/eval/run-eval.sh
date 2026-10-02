@@ -168,91 +168,107 @@ log_metric() {
 # selftest do harness: o instrumento (C) é a parte que ninguém consegue exercitar
 # hoje (log vazio), então é a que mais precisa de asserção — com log sintético.
 # ---------------------------------------------------------------------------
-selftest() {
-  local fail=0 tmp out
-  tmp=$(mktemp -d) || die "mktemp falhou"
-  t() { if [[ "$2" == "$3" ]]; then echo "ok   $1"; else echo "FAIL $1"; echo "       esperado: $2"; echo "       obtido:   $3"; fail=1; fi; }
-  has() { if [[ "$2" == *"$3"* ]]; then echo "ok   $1"; else echo "FAIL $1 (obtido: $2)"; fail=1; fi; }
+# selftest em três partes (ordem 045: era uma função de 77 linhas). Os helpers
+# marcam ST_FAIL global em vez de fechar sobre um `fail` local.
+ST_FAIL=0
+_st_t() { # <descrição> <esperado> <obtido>
+  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else echo "FAIL $1"; echo "       esperado: $2"; echo "       obtido:   $3"; ST_FAIL=1; fi
+}
+_st_has() { # <descrição> <texto> <trecho>
+  if [[ "$2" == *"$3"* ]]; then echo "ok   $1"; else echo "FAIL $1 (obtido: $2)"; ST_FAIL=1; fi
+}
 
+_selftest_metrica() { # <tmp> — instrumento (C): a métrica de override sobre o log
+  local tmp="$1" out
   bun "$PRESCRIBE" --selftest >/dev/null 2>&1 && echo "ok   prescribe.ts --selftest" \
-    || { echo "FAIL prescribe.ts --selftest"; fail=1; }
+    || { echo "FAIL prescribe.ts --selftest"; ST_FAIL=1; }
 
   : >"$tmp/vazio.jsonl"
-  has "(C) log vazio → SEM DADO" "$(log_metric "$tmp/vazio.jsonl")" "SEM DADO"
-  has "(C) log inexistente → SEM DADO" "$(log_metric "$tmp/nao-existe.jsonl")" "SEM DADO"
+  _st_has "(C) log vazio → SEM DADO" "$(log_metric "$tmp/vazio.jsonl")" "SEM DADO"
+  _st_has "(C) log inexistente → SEM DADO" "$(log_metric "$tmp/nao-existe.jsonl")" "SEM DADO"
 
   # sessão limpa: uma decisão, nenhum override, gate depois da decisão
   cat >"$tmp/limpa.jsonl" <<'EOF'
 {"ts":"t","event":"decision","session_id":"s1","workflow":"fix","mode":"direct","agents":["golang-pro"]}
 {"ts":"t","event":"gate_pass","session_id":"s1","tool":"Edit","file_ext":".go"}
 EOF
-  has "(C) sessão limpa conta como limpa" "$(log_metric "$tmp/limpa.jsonl")" "1/1"
+  _st_has "(C) sessão limpa conta como limpa" "$(log_metric "$tmp/limpa.jsonl")" "1/1"
 
   # override manual suja a sessão
   cp "$tmp/limpa.jsonl" "$tmp/override.jsonl"
   echo '{"ts":"t","event":"override_manual","session_id":"s1","cmd":"review"}' >>"$tmp/override.jsonl"
-  has "(C) override_manual suja" "$(log_metric "$tmp/override.jsonl")" "0/1"
+  _st_has "(C) override_manual suja" "$(log_metric "$tmp/override.jsonl")" "0/1"
 
   # re-decisão divergente suja; re-decisão idêntica NÃO suja (re-registro do mesmo)
   cp "$tmp/limpa.jsonl" "$tmp/redecide.jsonl"
   echo '{"ts":"t","event":"decision","session_id":"s1","workflow":"feature","mode":"multi","agents":["golang-pro"]}' >>"$tmp/redecide.jsonl"
-  has "(C) re-decisão divergente suja" "$(log_metric "$tmp/redecide.jsonl")" "0/1"
+  _st_has "(C) re-decisão divergente suja" "$(log_metric "$tmp/redecide.jsonl")" "0/1"
   cp "$tmp/limpa.jsonl" "$tmp/mesma.jsonl"
   head -1 "$tmp/limpa.jsonl" >>"$tmp/mesma.jsonl"
-  has "(C) re-registro idêntico não suja" "$(log_metric "$tmp/mesma.jsonl")" "1/1"
+  _st_has "(C) re-registro idêntico não suja" "$(log_metric "$tmp/mesma.jsonl")" "1/1"
 
   # gate antes da decisão suja
   cat >"$tmp/pregate.jsonl" <<'EOF'
 {"ts":"t","event":"gate_warn","session_id":"s2","tool":"Edit","file_ext":".ts"}
 {"ts":"t","event":"decision","session_id":"s2","workflow":"fix","mode":"direct"}
 EOF
-  has "(C) edição antes de rotear suja" "$(log_metric "$tmp/pregate.jsonl")" "0/1"
+  _st_has "(C) edição antes de rotear suja" "$(log_metric "$tmp/pregate.jsonl")" "0/1"
 
   # sessão sem decision fica fora do universo
   cat >"$tmp/fora.jsonl" <<'EOF'
 {"ts":"t","event":"killswitch","session_id":"s3"}
 {"ts":"t","event":"decision","session_id":"s1","workflow":"fix","mode":"direct","agents":["golang-pro"]}
 EOF
-  has "(C) sessão sem decision sai do universo" "$(log_metric "$tmp/fora.jsonl")" "1/1"
+  _st_has "(C) sessão sem decision sai do universo" "$(log_metric "$tmp/fora.jsonl")" "1/1"
 
   # linha corrompida no meio não derruba a métrica (JSONL append-only real)
   cp "$tmp/limpa.jsonl" "$tmp/sujo.jsonl"
   echo 'nao é json' >>"$tmp/sujo.jsonl"
   out=$(log_metric "$tmp/sujo.jsonl" 2>&1) || true
-  has "(C) linha corrompida é descartada, métrica sobrevive" "$out" "1/1"
+  _st_has "(C) linha corrompida é descartada, métrica sobrevive" "$out" "1/1"
+}
 
+_selftest_juiz() { # <tmp> — instrumento (B): prompt do juiz e scorer
+  local tmp="$1"
   # (B) o prompt do juiz não pode vazar o gabarito
   judge_prompt "$tmp/jp.md" >/dev/null
   local leaked=0
   grep -q "expected" "$tmp/jp.md" && leaked=1
   grep -q "rationale" "$tmp/jp.md" && leaked=1
   grep -q "golang-pro, typescript-pro" "$tmp/jp.md" && leaked=1
-  t "(B) prompt do juiz não vaza expected/rationale" "0" "$leaked"
-  t "(B) prompt do juiz traz os 15 enunciados" \
+  _st_t "(B) prompt do juiz não vaza expected/rationale" "0" "$leaked"
+  _st_t "(B) prompt do juiz traz os 15 enunciados" \
     "$(bun "$PRESCRIBE" --cases | wc -l)" "$(awk '/^## Enunciados/{f=1} f&&/^[a-z0-9-]+\t/{n++} END{print n+0}' "$tmp/jp.md")"
-  has "(B) prompt do juiz contém a injeção real" "$(cat "$tmp/jp.md")" "<maestro-routing>"
+  _st_has "(B) prompt do juiz contém a injeção real" "$(cat "$tmp/jp.md")" "<maestro-routing>"
 
   # (B) o scorer casa o TSV do juiz com o expected
   bun "$PRESCRIBE" --json | \
     jq -r '.verdicts[] | [.id, .expected.workflow, .expected.mode, (if (.expected.agents|length)==0 then "-" else (.expected.agents|join(",")) end)] | @tsv' \
     >"$tmp/perfeito.tsv"
-  has "(B) TSV idêntico ao gabarito pontua 15/15" \
+  _st_has "(B) TSV idêntico ao gabarito pontua 15/15" \
     "$(bun "$PRESCRIBE" --score "$tmp/perfeito.tsv" | tail -1)" "15/15"
 
   # (B') concordância: um arquivo consigo mesmo é 15/15 por construção; com um
   # arquivo alterado numa linha, cai exatamente 1.
-  has "(B') arquivo × ele mesmo = concordância total" \
+  _st_has "(B') arquivo × ele mesmo = concordância total" \
     "$(bun "$PRESCRIBE" --agree "$tmp/perfeito.tsv" "$tmp/perfeito.tsv" | tail -1)" "15/15 exatos"
   # Troca o mode da 1a linha por um valor garantidamente diferente, seja ele qual for.
   # Antes era `sed s/direct/multi/`, que virou no-op quando o gabarito do caso 1 deixou
   # de ser `direct` — fixture frágil que passava por não mexer em nada.
   awk -F'\t' 'BEGIN{OFS="\t"} NR==1{$3=($3=="multi"?"direct":"multi")} {print}' \
     "$tmp/perfeito.tsv" >"$tmp/mexido.tsv"
-  has "(B') uma divergência derruba exatamente 1" \
+  _st_has "(B') uma divergência derruba exatamente 1" \
     "$(bun "$PRESCRIBE" --agree "$tmp/perfeito.tsv" "$tmp/mexido.tsv" | tail -1)" "14/15 exatos"
+}
 
+selftest() {
+  local tmp
+  ST_FAIL=0
+  tmp=$(mktemp -d) || die "mktemp falhou"
+  _selftest_metrica "$tmp"
+  _selftest_juiz "$tmp"
   rm -rf "$tmp"
-  return $fail
+  return $ST_FAIL
 }
 
 # ---------------------------------------------------------------------------

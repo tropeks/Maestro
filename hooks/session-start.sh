@@ -196,22 +196,8 @@ collect_gates() {
   return 0
 }
 
-parse_routing_table() {
-  [[ -f "$ROUTING_TABLE" && -r "$ROUTING_TABLE" ]] || { warn "routing table ilegível ou ausente"; return 1; }
-  local key val
-  while IFS=$'\t' read -r key val; do
-    case "$key" in
-      MODE)        GATE_MODE="$val" ;;
-      allow_EXT)   ALLOW_EXT=$(yaml_inline_list "$val" '^\.[A-Za-z0-9]{1,12}$') ;;
-      allow_PATHS) ALLOW_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
-      deny_PATHS)  DENY_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
-      deny_SELF)   DENY_SELF=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
-      HEUR)        HEURISTICS+="- $val"$'\n' ;;
-      ROUTE)       ROUTES+="- $val"$'\n' ;;
-      WORKFLOW)    WORKFLOWS+="- $val"$'\n' ;;
-      BIND)        bind_add "$val" ;;
-    esac
-  done < <(awk '
+_rt_awk() { # awk do routing table: emite KEY<TAB>valor por seção (arg 1 = arquivo)
+  awk '
     function clean(s) { sub(/[ \t]*#.*$/, "", s); gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     function tidy(s)  { gsub(/\t/, " ", s); gsub(/[{}]/, "", s); gsub(/  +/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     /^[^ \t#]/ {
@@ -255,7 +241,25 @@ parse_routing_table() {
       if (v != "") print "WORKFLOW\t" v
       next
     }
-  ' "$ROUTING_TABLE" 2>/dev/null)
+  ' "$1" 2>/dev/null
+}
+
+parse_routing_table() {
+  [[ -f "$ROUTING_TABLE" && -r "$ROUTING_TABLE" ]] || { warn "routing table ilegível ou ausente"; return 1; }
+  local key val
+  while IFS=$'\t' read -r key val; do
+    case "$key" in
+      MODE)        GATE_MODE="$val" ;;
+      allow_EXT)   ALLOW_EXT=$(yaml_inline_list "$val" '^\.[A-Za-z0-9]{1,12}$') ;;
+      allow_PATHS) ALLOW_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
+      deny_PATHS)  DENY_PATHS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
+      deny_SELF)   DENY_SELF=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,64}$') ;;
+      HEUR)        HEURISTICS+="- $val"$'\n' ;;
+      ROUTE)       ROUTES+="- $val"$'\n' ;;
+      WORKFLOW)    WORKFLOWS+="- $val"$'\n' ;;
+      BIND)        bind_add "$val" ;;
+    esac
+  done < <(_rt_awk "$ROUTING_TABLE")
   return 0
 }
 
@@ -335,6 +339,49 @@ ROSTER_FILTERED=0    # omitidos pelo filtro `experts`
 EXPERTS_KEEP=""      # experts declarados QUE existem no roster
 EXPERTS_UNKNOWN=""   # experts declarados que não existem — avisados e ignorados
 EXPERTS_APPLIED=0    # 1 = o filtro do .maestro.yaml valeu de fato
+_roster_awk() { # awk do roster: nome<TAB>modelo<TAB>descrição por agente (args = arquivos)
+  awk '
+    function clean(s) { gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); gsub(/[<>]/, "", s); return s }
+    FNR == 1 { st = 0; nm = ""; md = ""; ds = ""; off = 0 }
+    FNR == 1 && /^---[ \t]*$/ { st = 1; next }
+    st == 1 && /^---[ \t]*$/ {
+      if (nm != "" && !off) {
+        if (length(ds) > 100) { ds = substr(ds, 1, 100); sub(/[^ ]*$/, "", ds); ds = ds "…" }
+        print nm "\t" md "\t" ds
+      }
+      st = 2; next
+    }
+    st == 1 && /^name:/        { nm = clean(substr($0, 6));  next }
+    st == 1 && /^model:/       { md = clean(substr($0, 7));  next }
+    st == 1 && /^description:/ { ds = clean(substr($0, 13)); next }
+    st == 1 && /^roster:[ \t]*false[ \t]*$/ { off = 1; next }   # ordem 042: sob demanda, fora da injeção
+  ' "$@" 2>/dev/null
+}
+
+_roster_experts_filter() { # filtro do .maestro.yaml (S-303) sobre o roster lido (arg 1 = nomes, com espaços nas pontas)
+  local all="$1" e
+  if [[ -n "$P_EXPERTS" ]]; then
+    for e in $P_EXPERTS; do
+      if [[ "$all" == *" $e "* ]]; then
+        [[ " $EXPERTS_KEEP " == *" $e "* ]] || EXPERTS_KEEP+="$e "
+      else
+        EXPERTS_UNKNOWN+="$e "
+      fi
+    done
+    EXPERTS_KEEP="${EXPERTS_KEEP% }"; EXPERTS_UNKNOWN="${EXPERTS_UNKNOWN% }"
+    [[ -n "$EXPERTS_UNKNOWN" ]] \
+      && warn "experts do .maestro.yaml que não existem no roster, ignorado(s): ${EXPERTS_UNKNOWN// /, }"
+    if [[ -n "$EXPERTS_KEEP" ]]; then
+      EXPERTS_APPLIED=1
+    else
+      warn "nenhum expert declarado existe no roster; injetando o roster inteiro"
+    fi
+  elif (( P_EXPERTS_EMPTY == 1 )); then
+    # `experts: []` é decisão explícita do projeto, não erro de digitação.
+    EXPERTS_APPLIED=1
+  fi
+}
+
 parse_roster() {
   [[ -d "$AGENTS_DIR" ]] || return 0
   local files=() nm md ds
@@ -358,48 +405,14 @@ parse_roster() {
     # sim, é nosso: o harness não o expõe e ele É a decisão de tiering (ADR-004).
     # A NFR diz que o Maestro não pode causar o inchaço que combate.
     lines+=("- $nm ($md)")
-  done < <(awk '
-    function clean(s) { gsub(/\t/, " ", s); gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/^"|"$/, "", s); gsub(/[<>]/, "", s); return s }
-    FNR == 1 { st = 0; nm = ""; md = ""; ds = ""; off = 0 }
-    FNR == 1 && /^---[ \t]*$/ { st = 1; next }
-    st == 1 && /^---[ \t]*$/ {
-      if (nm != "" && !off) {
-        if (length(ds) > 100) { ds = substr(ds, 1, 100); sub(/[^ ]*$/, "", ds); ds = ds "…" }
-        print nm "\t" md "\t" ds
-      }
-      st = 2; next
-    }
-    st == 1 && /^name:/        { nm = clean(substr($0, 6));  next }
-    st == 1 && /^model:/       { md = clean(substr($0, 7));  next }
-    st == 1 && /^description:/ { ds = clean(substr($0, 13)); next }
-    st == 1 && /^roster:[ \t]*false[ \t]*$/ { off = 1; next }   # ordem 042: sob demanda, fora da injeção
-  ' "${files[@]}" 2>/dev/null)
+  done < <(_roster_awk "${files[@]}")
 
   ROSTER_TOTAL=${#names[@]}
   (( ROSTER_TOTAL > 0 )) || return 0
 
   # --- filtro do .maestro.yaml (S-303) --------------------------------------
-  local all=" ${names[*]} " e i
-  if [[ -n "$P_EXPERTS" ]]; then
-    for e in $P_EXPERTS; do
-      if [[ "$all" == *" $e "* ]]; then
-        [[ " $EXPERTS_KEEP " == *" $e "* ]] || EXPERTS_KEEP+="$e "
-      else
-        EXPERTS_UNKNOWN+="$e "
-      fi
-    done
-    EXPERTS_KEEP="${EXPERTS_KEEP% }"; EXPERTS_UNKNOWN="${EXPERTS_UNKNOWN% }"
-    [[ -n "$EXPERTS_UNKNOWN" ]] \
-      && warn "experts do .maestro.yaml que não existem no roster, ignorado(s): ${EXPERTS_UNKNOWN// /, }"
-    if [[ -n "$EXPERTS_KEEP" ]]; then
-      EXPERTS_APPLIED=1
-    else
-      warn "nenhum expert declarado existe no roster; injetando o roster inteiro"
-    fi
-  elif (( P_EXPERTS_EMPTY == 1 )); then
-    # `experts: []` é decisão explícita do projeto, não erro de digitação.
-    EXPERTS_APPLIED=1
-  fi
+  _roster_experts_filter " ${names[*]} "
+  local i
 
   for i in "${!names[@]}"; do
     if (( EXPERTS_APPLIED == 1 )) && [[ " $EXPERTS_KEEP " != *" ${names[i]} "* ]]; then
