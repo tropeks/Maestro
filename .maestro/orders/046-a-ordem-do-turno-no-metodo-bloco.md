@@ -37,27 +37,34 @@ verdadeiro, se a fatia estava bem cortada).
    `order-no-turno` (ordem sem o bloco, ou com rótulo faltando, ou `teto:` não inteiro) e
    `order-no-relatorio` (a ordem não cita o contrato do relatório). Mesmo molde dos códigos
    existentes: texto/JSON, ordenação estável, exit 1 se houver lacuna, só `log_event conform`.
-4. **Stop com critério mecânico e teto.** `hooks/gate-report.sh` (ou hook irmão, a decidir
-   no Ask-First) confere no fim da rodada, sem LLM: há ordem em curso com bloco Turno E a
-   última mensagem NÃO tem os cinco rótulos → `decision:block` com a lista do que falta.
-   **Teto duro:** no máximo `teto:` bloqueios por ordem (o valor da própria ordem, limitado a
-   3 por sessão), contados em arquivo por sessão; atingido, o hook libera e registra
-   `turno_teto` (metadado). Reentrada (`stop_hook_active`) libera na hora. Qualquer falha
-   (arquivo ilegível, ordem não resolvida, rótulo ambíguo) degrada para exit 0 sem stdout:
-   **o hook nunca prende o gerente** (INTENT Prioridade 1 vence a 3).
+4. **Stop com critério mecânico e teto — lido do LEDGER.** O critério do trilho é o recibo,
+   não o texto: há ordem em curso com bloco Turno E o ledger NÃO tem recibo `VÁLIDA` no tip
+   exato (rótulos `order-N` e o exigido pela área) → `decision:block` dizendo qual recibo
+   falta ou venceu. O hook LÊ o ledger, nunca executa comando. **Teto duro:** no máximo
+   `teto:` bloqueios por ordem (o valor da própria ordem, limitado a 3 por sessão), contados
+   em arquivo por sessão; atingido, o hook libera e registra `turno_teto` (metadado).
+   Reentrada (`stop_hook_active`) libera na hora. Qualquer falha (ledger ilegível, ordem não
+   resolvida, sem git) degrada para exit 0 sem stdout: **o hook nunca prende o gerente**
+   (INTENT Prioridade 1 vence a 3). O relatório de 5 rótulos (item 2) segue como CONVENÇÃO:
+   o hook não o confere.
 
 ## O que o trilho NÃO alcança — e fica escrito
 
-O hook confere PRESENÇA de rótulos, não VERDADE do conteúdo: um relatório com `provado: rc 0`
-inventado passa. O `fim:` só é mecânico quando alguém o roda; o Stop não o executa (rodar
-comando arbitrário num hook viola a fronteira de hooks/ e o NFR de 50 ms). Isso entra em
-ENGINEERING_SPEC como **honra declarada**, com a válvula `maestro order --turno-livre <id>`
+Decisão do Diretor, 02/10: **presença de rótulo é honra, não trilho.** O relatório fixo e o
+bloco `## Turno` são convenção declarada: nenhum hook confere o TEXTO do relatório, e um
+relatório com `provado: rc 0` inventado não é detectável. O que o trilho alcança é o
+RECIBO: o ledger diz, sem LLM e sem honra, se a prova vale no tip. O `fim:` da ordem só é
+mecânico quando alguém o roda; o Stop não o executa (comando arbitrário num hook viola a
+fronteira de hooks/ e o NFR de 50 ms), mas confere o recibo que o executor gravou. Isso entra
+no ENGINEERING_SPEC como **honra declarada**, com a válvula `maestro order --turno-livre <id>`
 (registrada, visível no `--status`) para a ordem cuja natureza não cabe em turno.
 
 ## Ask-First
 
-- Se o critério do hook exigir mais de 1 fork no caminho comum ou estourar 50 ms, PARE e
-  reporte a medição antes de escrever o patch.
+- Ler o recibo e compará-lo ao tip exige o fingerprint (`maestro-wtree`, um fork de git).
+  Se isso passar de 1 fork no caminho comum ou estourar 50 ms, PARE e reporte a medição
+  antes de escrever o patch: alternativa a propor é comparar só `wtree_after` com o tip
+  gravado, sem recalcular.
 - Se o hook novo precisar de nova chave no `log_event`: o vocabulário está em
   `hooks/lib/common.sh` (autoprotegido) e já deixa `conform` de fora — diga qual evento
   (`turno_teto`) e proponha o patch único junto, não depois.
@@ -75,8 +82,8 @@ no MESMO changeset: DATA_MODEL (ordem), API_SPEC (conform + hook), ENGINEERING_S
 ## Prova exigida
 
 - **Vermelho antes:** testes de conform (ordem sem `## Turno`, rótulo faltando, `teto:` não
-  inteiro, sem citação do relatório) e de hook (turno sem rótulos bloqueia; completo libera)
-  falham antes do conserto.
+  inteiro, sem citação do relatório) e de hook (ordem em curso SEM recibo válido no tip
+  bloqueia; com recibo VÁLIDA libera; recibo VENCIDA bloqueia) falham antes do conserto.
 - **Verde depois:** os mesmos passam; bloqueio nº `teto`+1 libera e grava `turno_teto`;
   `stop_hook_active` libera; arquivo corrompido libera com exit 0 e stdout vazio.
 - **Fail-open:** kill-switch `MAESTRO_OFF=1` na primeira linha; sem ordem em curso, o hook
