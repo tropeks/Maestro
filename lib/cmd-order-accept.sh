@@ -117,7 +117,7 @@ _order_accept_absorb() { # <proj> <wproj> <odir> <arquivo> <id> <sid> <absorbed_
     if [[ -n "$m_ef" && -f "$m_ef" ]] && grep -q '^exit=0$' "$m_ef" 2>/dev/null; then
       m_ew=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$m_ef" 2>/dev/null)
     fi
-    [[ -n "$m_ew" && -n "$m_tip" && "$m_ew" == "$m_tip" ]] \
+    maestro_tree_same "$proj" "$m_ew" "$m_tip" \
       || die validation "branch padrão '$def_br' não tem recibo válido (label '$def_br') no conteúdo ATUAL" \
            "grave no tip do $def_br: maestro evidence --record --label $def_br -- <suíte>" 1
     abs_tree="$m_tip"

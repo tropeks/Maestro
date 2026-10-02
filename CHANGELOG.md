@@ -6,6 +6,12 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **Recibo de ordem empilhada não vence mais pelo carimbo da anterior** (ordem 044). O
+  aceite da ordem A commita o carimbo em `.maestro/orders/` na main; o rebase da B trazia
+  esse carimbo para o tip e `wtree_after` ≠ `branch^{tree}`. A comparação agora ignora
+  `.maestro/**` dos dois lados (`lib/core-tree.sh`), falha fechada, sem tocar `bin/`.
+
 ## [1.18.1] — 2026-09-20
 
 Correção de encerramento: o defeito mordia justamente a passagem de bastão entre

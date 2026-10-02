@@ -14,6 +14,17 @@
 # nenhum fork. Convenção (firmada no lote do `order`, E24): parâmetro
 # posicional, nenhuma função fecha sobre local de outra.
 
+# ordem 044: comparação de árvore ignorando .maestro/** (core-tree.sh); sem a
+# lib, cai para igualdade exata — o comportamento de antes, nunca bloqueia.
+if ! declare -f maestro_tree_same >/dev/null 2>&1; then
+  if [[ -f "$REPO_DIR/lib/core-tree.sh" ]]; then
+    # shellcheck source=lib/core-tree.sh
+    source "$REPO_DIR/lib/core-tree.sh"
+  else
+    maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
+  fi
+fi
+
 # ---------------------------------------------------------- leitura genérica
 _ev_field() { # <arquivo> <campo> → valor bruto de "<campo>=..." (1ª ocorrência, janela de 20 linhas), vazio se ausente
   # Generico DE PROPÓSITO: não enumera nomes de campo. É o que faz o dono do

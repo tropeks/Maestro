@@ -295,6 +295,27 @@ NetForge (recibo verde, `--accept` depois, leitura direta do ledger exige
 `VÁLIDA`), provado FALHANDO contra o `bin/maestro-wtree` anterior a esta
 emenda e PASSANDO com a exclusão aplicada.
 
+#### Emenda v1.23 (ordem 044) — recibo de ordem empilhada: a comparação ignora `.maestro/**` dos DOIS lados
+A emenda v1.10 tirou `.maestro/**` do que o fingerprint mede, mas o fez
+**congelando** essas entradas no que o index tinha — o `wtree_after` do recibo
+carrega o `.maestro/` de quando foi gravado, enquanto `<branch>^{tree}` carrega o
+de agora. Ordem **empilhada** rompe a coincidência: o aceite da anterior commita
+o carimbo na main, o rebase que devolve o fast-forward o traz para dentro do tip,
+e o recibo da seguinte vence por uma mudança que a política declara não ser de
+conteúdo.
+
+Contrato: todo leitor que compara uma árvore de recibo (`wtree_after`) com outra
+árvore — o tip do branch (`order --status`, `--status --json`, o gate de
+verificações, `--accept --absorbed-by main`) ou o fingerprint ao vivo
+(`evidence --label`) — usa `maestro_tree_same` (`lib/core-tree.sh`): árvores
+idênticas saem sem fork; as diferentes perdem a entrada `.maestro` da raiz nos
+dois lados antes de comparar. Se o `git` não consegue resolver uma das árvores,
+a comparação **falha fechada** (o recibo não vale) — nunca aberta. Conteúdo
+alterado FORA de `.maestro/` continua vencendo o recibo. Recibos já gravados
+seguem valendo: o conserto está na leitura, não no formato (`bin/maestro-wtree`
+não muda). Teste: `tests/cli/test-order-044-recibo-empilhado.sh`, provado
+FALHANDO antes do conserto (3 leitores) e passando depois, com controle negativo.
+
 #### Emenda v1.5 (E10/S-1001) — desfecho no decision record
 `maestro outcome` acrescenta `outcome` (accepted|rework|reverted), `outcome_ts` e
 opcionalmente `suite` (pass|fail) ao record da sessão — a variável dependente do

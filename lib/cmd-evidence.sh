@@ -184,7 +184,7 @@ _ev_cmd_reasons() { # <label> <proj> <maxage> <age> <e_wb> <e_wa> <e_exit> <e_ma
   [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
     w_now=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_now="none"
   [[ "$w_now" == "none" || "$e_wa" == "none" ]] && reasons+="${reasons:+; }sem git para comparar conteúdo"
-  [[ "$w_now" != "none" && "$e_wa" != "none" && "$w_now" != "$e_wa" ]] \
+  [[ "$w_now" != "none" && "$e_wa" != "none" ]] && ! maestro_tree_same "$proj" "$w_now" "$e_wa" \
     && reasons+="${reasons:+; }conteúdo mudou desde a prova"
   [[ "$e_exit" != "0" ]] && reasons+="${reasons:+; }a execução provou FALHA (exit $e_exit)"
   if [[ "$e_match" == "no" ]]; then
