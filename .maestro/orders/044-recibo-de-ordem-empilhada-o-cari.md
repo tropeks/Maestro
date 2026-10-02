@@ -32,3 +32,5 @@ lados, falha fechada. Aplicado nos 5 comparadores (status, gate de verificaçõe
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 044` (você não fecha a própria ordem).
+
+> **Execução headless:** a prova é o teste em sandbox (`tests/cli/test-order-044-recibo-empilhado.sh`) mais a suíte, sem humano no laço. Nenhuma chamada externa.
