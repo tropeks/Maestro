@@ -158,14 +158,8 @@ _order_workproject_lib_load() {
     "reinstale o plugin (maestro doctor)" 2
 }
 _order_workproject_lib_load
-# ordem 044: comparação de árvore ignorando .maestro/** (core-tree.sh); sem a
-# lib, cai para igualdade exata — o comportamento de antes, nunca bloqueia.
-if [[ -f "$REPO_DIR/lib/core-tree.sh" ]]; then
-  # shellcheck source=lib/core-tree.sh
-  source "$REPO_DIR/lib/core-tree.sh"
-else
-  maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
-fi
+# ordem 044: árvore sem .maestro/** (core-tree.sh); sem a lib, igualdade exata.
+[[ -f "$REPO_DIR/lib/core-tree.sh" ]] && source "$REPO_DIR/lib/core-tree.sh" || maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
 # --------------------------------------------------------- estado derivado (dono, wproj)
 _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
   local dono="$1" wproj="$2" f="$3" br cand ev_f ev_w tip_tree dono8=""
@@ -179,8 +173,7 @@ _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1�
     ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
     [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
     ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
-    # ordem 044: igualdade fora de .maestro/** — o carimbo da ordem anterior
-    # (commitado na main, trazido por rebase) não vence o recibo.
+    # ordem 044: igualdade fora de .maestro/** (carimbo da anterior não vence o recibo)
     [[ -n "$ev_w" ]] && maestro_tree_same "$wproj" "$ev_w" "$tip_tree" && { printf '%s %s' "$cand" "$ev_w"; return 0; }
   done
   return 0
