@@ -35,3 +35,7 @@ aplicado por mão humana. Sem segunda prorrogação.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 045` (você não fecha a própria ordem).
+accepted_at: 2026-10-02T11:50:16-03:00
+accepted_session: desconhecido
+accepted_tree: ea5b57e5bfb58618bc6d5a72c4d3774b5d2c58d1
+accepted_intent: 6
