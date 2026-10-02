@@ -6,6 +6,14 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **A autoproteção do gate também vale para o Bash** (ordem 047, INTENT v6 §Limites). O
+  `pre-bash-guard` bloqueia (exit 2, qualquer modo) redirecionamento, `tee`, `sed -i`, `cp`,
+  `mv`, `install`, `dd of=`, `ln`, `truncate`, `perl -i` e `python`/`node` com alvo em
+  `self_paths` — mesma lista e mesma âncora (plugin ou worktree) do `pre-tool-gate`. O default
+  embutido do `pre-tool-gate` passa a listar `lib/`. Limites que seguem abertos (script
+  indireto, `git apply`, `eval`) estão declarados no ENGINEERING_SPEC.
+
 ## [1.19.0] — 2026-10-02
 
 Primeira release depois do encerramento do v1: manutenção por ordem, mais o comando

@@ -98,6 +98,20 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   4. senão → conforme `gate.mode` na config: **`warn`** (exit 0 + log `gate_warn` + mensagem) ou **`block`** (exit 2). Default inicial: `warn`; promoção a `block` após 1 semana de dados.
 - **Latência:** < 50ms.
 
+### `hooks/pre-bash-guard.sh` — autoproteção por Bash (ordem 047, v1.19+)
+Além da guarda destrutiva (S-502: autônomo bloqueia, direto avisa), o guard bloqueia **sempre**
+(exit 2, em qualquer modo, com record e com consent) o comando que ESCREVE em `self_paths`:
+redirecionamento (`>` `>>` `&>` `>|`, heredoc incluso), `tee`, `sed -i`/`--in-place`, `cp`/
+`install`/`ln` (destino, inclusive `-t`), `mv` e `truncate` (qualquer alvo), `dd of=`, e
+`python`/`node`/`nodejs`/`ruby`/`perl` com caminho protegido em QUALQUER posição (não se separa
+leitura de escrita dentro de um programa — falso positivo declarado). Caminho = relativo ao
+`cwd`, absoluto ou `~`, normalizado (`.`/`..`), ancorado na raiz do plugin ou num worktree do
+mesmo repo. Lista e raiz vêm de `$MAESTRO_GATE_POLICY` (`MAESTRO_GATE_DENY_SELF`,
+`MAESTRO_PLUGIN_ROOT`); ausente ou parcial, vale o fallback embutido e a raiz do hook. Origem
+de `cp`/`dd if=` fora de `self_paths` não bloqueia (ler é permitido). Mensagem aponta o molde do
+patch (clone fora do repo → `docs/patches/NNN-*.patch` → `git apply` humano); `maestro consent`
+não destrava. Módulo: `hooks/lib/self-paths.sh`. Teste: `tests/hooks/test-order-047-bash-self-paths.sh`.
+
 ### `hooks/pre-agent.sh` — evento PreToolUse, matcher `Agent|Task` (E23a/S-2301)
 - **Lê:** os primeiros 4096 bytes do stdin. `session_id` por regex
   (`CLAUDE_SESSION_ID` como fallback) e `subagent_type` do payload
