@@ -124,3 +124,7 @@ no MESMO changeset: DATA_MODEL (ordem), API_SPEC (conform + hook), ENGINEERING_S
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 046` (você não fecha a própria ordem).
+accepted_at: 2026-10-02T11:28:26-03:00
+accepted_session: desconhecido
+accepted_tree: eca214a9c6b19a421d51cfe3a2ef96fd0b593ddf
+accepted_intent: 6
