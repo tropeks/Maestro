@@ -37,34 +37,41 @@ verdadeiro, se a fatia estava bem cortada).
    `order-no-turno` (ordem sem o bloco, ou com rótulo faltando, ou `teto:` não inteiro) e
    `order-no-relatorio` (a ordem não cita o contrato do relatório). Mesmo molde dos códigos
    existentes: texto/JSON, ordenação estável, exit 1 se houver lacuna, só `log_event conform`.
-4. **Stop com critério mecânico e teto — lido do LEDGER.** O critério do trilho é o recibo,
-   não o texto: há ordem em curso com bloco Turno E o ledger NÃO tem recibo `VÁLIDA` no tip
-   exato (rótulos `order-N` e o exigido pela área) → `decision:block` dizendo qual recibo
-   falta ou venceu. O hook LÊ o ledger, nunca executa comando. **Teto duro:** no máximo
-   `teto:` bloqueios por ordem (o valor da própria ordem, limitado a 3 por sessão), contados
-   em arquivo por sessão; atingido, o hook libera e registra `turno_teto` (metadado).
-   Reentrada (`stop_hook_active`) libera na hora. Qualquer falha (ledger ilegível, ordem não
-   resolvida, sem git) degrada para exit 0 sem stdout: **o hook nunca prende o gerente**
-   (INTENT Prioridade 1 vence a 3). O relatório de 5 rótulos (item 2) segue como CONVENÇÃO:
-   o hook não o confere.
+4. **Stop de turno: o critério é o RECIBO no tip, lido do ledger.** Decisão do Capitão: recibo
+   verde no tip. É mecânico sem executar comando: o hook lê o ledger e compara o hash do
+   recibo (`wtree_after`) com a árvore do tip atual — a MESMA comparação do `order --status`
+   (`maestro_tree_same`, ordem 044). Há ordem em curso com bloco Turno E a evidência dela não
+   é VÁLIDA no tip → `decision:block` com a LISTA DO QUE FALTA: qual recibo (`order-N`, e o
+   exigido pela área) está ausente ou vencido. **Presença dos rótulos do relatório (item 2) é
+   checagem ADICIONAL**: entra na mesma lista de faltas, nunca é o critério — sozinha não
+   bloqueia, e recibo válido libera mesmo sem ela. **Teto duro:** no máximo `teto:` bloqueios
+   por ordem (o da ordem, limitado a **3 por sessão**, aprovado), contados em arquivo por
+   sessão; atingido, libera e registra `turno_teto` (metadado). Reentrada
+   (`stop_hook_active`) libera na hora. Qualquer falha (ledger ilegível, ordem não resolvida,
+   sem git) degrada para exit 0 sem stdout: **o hook nunca prende o gerente** (INTENT
+   Prioridade 1 vence a 3).
+   **Orçamento (decisão do Capitão):** o NFR de 50 ms vale para o caminho COMUM — sem ordem
+   em curso, zero fork de `git`, exit imediato. O Stop de turno com ordem em curso roda uma
+   vez por turno e pode gastar até **2 s**, MEDIDO e declarado (p50/p95 na ARCHITECTURE,
+   NFRs), com teste de teto. **Hook novo ou gate-report.sh: decide a medição** — se a
+   comparação de hash dentro do gate-report.sh empurra o caminho comum de 50 ms, vira hook
+   irmão; a ordem registra os números que decidiram.
 
 ## O que o trilho NÃO alcança — e fica escrito
 
-Decisão do Diretor, 02/10: **presença de rótulo é honra, não trilho.** O relatório fixo e o
-bloco `## Turno` são convenção declarada: nenhum hook confere o TEXTO do relatório, e um
-relatório com `provado: rc 0` inventado não é detectável. O que o trilho alcança é o
-RECIBO: o ledger diz, sem LLM e sem honra, se a prova vale no tip. O `fim:` da ordem só é
-mecânico quando alguém o roda; o Stop não o executa (comando arbitrário num hook viola a
-fronteira de hooks/ e o NFR de 50 ms), mas confere o recibo que o executor gravou. Isso entra
-no ENGINEERING_SPEC como **honra declarada**, com a válvula `maestro order --turno-livre <id>`
-(registrada, visível no `--status`) para a ordem cuja natureza não cabe em turno.
+O trilho é o RECIBO: o ledger diz, sem LLM e sem honra, se a prova vale no tip. Fica como
+**honra declarada** o que ele não alcança: o texto do relatório (um `provado: rc 0` inventado
+não é detectável — por isso rótulo é checagem adicional, não critério), se o `fim:` da ordem
+foi bem escolhido, e se a fatia coube no turno. O Stop não executa o `fim:` (comando
+arbitrário num hook viola a fronteira de hooks/); confere o recibo que o executor gravou.
+Entra no ENGINEERING_SPEC como honra declarada, com a válvula `maestro order --turno-livre
+<id>` (registrada, visível no `--status`) para a ordem cuja natureza não cabe em turno.
 
 ## Ask-First
 
-- Ler o recibo e compará-lo ao tip exige o fingerprint (`maestro-wtree`, um fork de git).
-  Se isso passar de 1 fork no caminho comum ou estourar 50 ms, PARE e reporte a medição
-  antes de escrever o patch: alternativa a propor é comparar só `wtree_after` com o tip
-  gravado, sem recalcular.
+- O caminho comum (sem ordem em curso) tem de ficar <50 ms e sem fork de `git`; o Stop de
+  turno pode ir a 2 s. Se a medição passar de 2 s no caso com ordem em curso, PARE e reporte
+  os números antes de escrever o patch.
 - Se o hook novo precisar de nova chave no `log_event`: o vocabulário está em
   `hooks/lib/common.sh` (autoprotegido) e já deixa `conform` de fora — diga qual evento
   (`turno_teto`) e proponha o patch único junto, não depois.
@@ -83,13 +90,16 @@ no MESMO changeset: DATA_MODEL (ordem), API_SPEC (conform + hook), ENGINEERING_S
 
 - **Vermelho antes:** testes de conform (ordem sem `## Turno`, rótulo faltando, `teto:` não
   inteiro, sem citação do relatório) e de hook (ordem em curso SEM recibo válido no tip
-  bloqueia; com recibo VÁLIDA libera; recibo VENCIDA bloqueia) falham antes do conserto.
+  bloqueia com a lista do que falta; recibo VENCIDA bloqueia; com recibo VÁLIDA libera, mesmo
+  sem os rótulos; rótulos faltando + recibo válido NÃO bloqueia) falham antes do conserto.
 - **Verde depois:** os mesmos passam; bloqueio nº `teto`+1 libera e grava `turno_teto`;
-  `stop_hook_active` libera; arquivo corrompido libera com exit 0 e stdout vazio.
+  `stop_hook_active` libera; ledger corrompido libera com exit 0 e stdout vazio; recibo
+  gravado antes de um rebase que só moveu `.maestro/` segue VÁLIDA (a 044 vale aqui).
 - **Fail-open:** kill-switch `MAESTRO_OFF=1` na primeira linha; sem ordem em curso, o hook
   não bloqueia nada nem forka `git`.
-- **Latência:** teste de NFR do Stop <50 ms dentro do teto calibrado (ordem 016); injeção
-  do SessionStart ≤ 8000 B.
+- **Latência, em dois números:** caminho comum <50 ms e zero fork de `git` (teto calibrado da
+  ordem 016); Stop de turno com ordem em curso ≤ 2 s, p50/p95 medidos e declarados;
+  injeção do SessionStart ≤ 8000 B.
 - Suíte verde; `doctor` sem mudança de veredito; `habits` dentro da catraca (a régua fecha em
   6/10 depois da 045 — função nova acima de 60 linhas reprova); recibo `order-46` e `suite`
   no tip exato, árvore limpa.
