@@ -105,6 +105,7 @@ _order_action_status() { # <proj> <wproj> <arquivo> <id> — imprime o boletim c
   # ordem 036: work_project resolvendo pro PRÓPRIO dono é typo — nota, não morte.
   local _wpnote; _wpnote=$(_order_work_project_note "$proj" "$of")
   [[ -n "$_wpnote" ]] && printf '  ATENÇÃO: %s\n' "$_wpnote"
+  grep -q '^turno_livre: ' "$of" 2>/dev/null && printf '  turno   : turno-livre (válvula registrada — o Stop não bloqueia esta ordem)\n'   # ordem 046
   printf '  prova   : '
   # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
   [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
