@@ -13,7 +13,20 @@
 #
 # Sourced por lib/cmd-conform.sh — REPO_DIR/die() já no escopo (bin/maestro).
 
+# shellcheck source=lib/core-order-turno.sh
+source "$REPO_DIR/lib/core-order-turno.sh"   # ordem 046: _turno_missing
+
 _conform_headless_re='^[[:space:]]{0,3}(>[[:space:]]*)?(#{1,6}[[:space:]]+)?(\*\*)?Execução headless'
+
+_conform_turno_gaps() { # <id> <arquivo> → lacunas do bloco Turno (ordem 046): order-no-turno / order-no-relatorio
+  local id="$1" f="$2" miss
+  miss=$(_turno_missing "$f" | tr '\n' ' ')
+  [[ "$miss" =~ (fatia|fim|teto|fora) ]] \
+    && printf '4\torder-no-turno\tordem %s\tpreencha o bloco "## Turno" (fatia, fim, teto inteiro, fora): rotulos faltando ou invalidos — %s\n' "$id" "$miss"
+  [[ "$miss" == *relatório* ]] \
+    && printf '4\torder-no-relatorio\tordem %s\tcite o contrato do relatorio de fim de turno no rotulo "relatório:" do bloco "## Turno"\n' "$id"
+  return 0
+}
 
 _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
   local proj="$1" odir f id wproj st
@@ -29,8 +42,9 @@ _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
     case "$st" in
       aceita|absorvida) continue ;;   # terminal — fora do escopo do conform
     esac
-    grep -Eq "$_conform_headless_re" "$f" && continue
-    printf '4\torder-no-headless\tordem %s\tadicione uma linha "Execução headless" (título, negrito ou blockquote) descrevendo como esta ordem prova SEM humano\n' "$id"
+    grep -Eq "$_conform_headless_re" "$f" \
+      || printf '4\torder-no-headless\tordem %s\tadicione uma linha "Execução headless" (título, negrito ou blockquote) descrevendo como esta ordem prova SEM humano\n' "$id"
+    _conform_turno_gaps "$id" "$f"
   done
   shopt -u nullglob
   return 0

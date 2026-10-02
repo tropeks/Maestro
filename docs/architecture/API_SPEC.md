@@ -184,6 +184,33 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   `pane release-agent` (mesmo teto). Sempre exit 0; nada em stdout (Stop hook com JSON no
   stdout vira decisão do Claude Code).
 
+### `hooks/stop-turno.sh` — evento Stop (ordem 046, INTENT v6 Prioridade 3)
+Segundo comando do Stop em `hooks/hooks.json` (`timeout: 5`), ao lado do `gate-report.sh`.
+O critério de fim de turno é o **recibo VÁLIDO no tip** da ordem em curso — lido do
+ledger pelo CLI (`maestro order --turno-check`), com a MESMA comparação de hash do
+`order --status` (`maestro_tree_same`, ordem 044). O hook **nunca executa o `fim:` da
+ordem**. Hook próprio, e não o `gate-report.sh`, por medição e por estrutura: o
+`gate-report.sh` sai cedo fora do herdr (`HERDR_ENV`) e já está no teto de 400 linhas.
+
+Fluxo (bash puro, sem jq): `MAESTRO_OFF=1` na 1ª linha → `stop_hook_active` libera →
+sem `.maestro/orders` libera → branch lido do `.git/HEAD` por `read` (zero fork; worktree
+segue o `gitdir:`) → ordem achada por glob `NNN-*.md` pelo número do branch → sem bloco
+`## Turno` libera → rodada que termina com `[spock] aguardando:` libera (o gate-report
+cuida) → **só então** chama `timeout 2 maestro order --turno-check` com o relatório da
+rodada num arquivo temporário. `rc 1` do CLI vira
+`{"decision":"block","reason":"…lista do que falta…"}` no stdout real; QUALQUER outro
+resultado (0, 124 de timeout, erro, CLI ausente) libera, exit 0, stdout vazio.
+
+**Orçamentos, medidos (forge, load 5,2/8 CPUs; N=31 e N=7):** caminho COMUM — sem ordem
+em curso ou ordem sem bloco — mediana 18 ms (min 11, max 26), zero fork de `git`,
+dentro do NFR de 50 ms; **Stop de turno** com ordem em curso — mediana 708 ms (min 571,
+max 939), teto declarado **2 s** (uma vez por turno). Teste: `tests/hooks/test-order-046-stop-turno.sh`.
+
+**Teto de bloqueios** (CLI, `lib/core-order-turno.sh`): no máximo o `teto:` da ordem,
+limitado a 3 por sessão; contador em `$MAESTRO_HOME/turno/<sessão>-<ordem>`; atingido,
+o CLI libera, imprime o aviso e registra `log_event turno_teto session_id n=<ordem>`.
+Recibo válido zera o contador.
+
 ### `hooks/log-stop.sh` — evento Stop (opcional, v1.1)
 - Fecha o ciclo no log (`event: session_end`), computa contagens da sessão.
 
@@ -408,6 +435,23 @@ setado, `$MAESTRO_WORK_ROOT/<nome>` — nunca relativo ao `$PWD`. Com o campo pr
   (provado por golden — `tests/fixtures/order036-golden-*.sh` — contra as ~118 ordens reais
   desta máquina).
 
+### `maestro order --turno-check` · `--turno-livre` (ordem 046)
+```
+maestro order --turno-check [--session <id>] [--report-file <arquivo>] [--project <dir>]
+maestro order --turno-livre <N> [--session <id>] [--project <dir>]
+```
+`--turno-check` é o critério do Stop de turno. Resolve a ordem pelo `branch:` do HEAD do
+projeto; **rc 0** libera (stdout vazio, ou o aviso de teto atingido) e **rc 1** bloqueia
+com `falta: …` por linha: recibo `order-N` ausente (com o comando que o grava) ou VENCIDA, e
+cada recibo de área exigido (`verifications:`) que não esteja VÁLIDA — o que `order --status`
+já deriva. Com `--report-file`, lista também os rótulos do relatório fixo
+(`feito` `provado` `aberto` `decisão` `próximo`) que faltam; **essa lista nunca bloqueia sozinha**.
+Libera sem olhar o ledger: sem branch/ordem, ordem com `turno_livre:` ou sem bloco `## Turno`
+válido (lacuna do `conform`, nunca trava o Stop). `--turno-livre` é a válvula escrita:
+carimba `turno_livre:`/`turno_livre_session:` no cabeçalho da ordem e `order --status`
+mostra `turno   : turno-livre`. `order --create` emite o esqueleto `## Turno` (placeholders
+`<…>` contam como vazio) quando o corpo não traz um.
+
 ### `maestro intent` (E22/S-2201)
 ```
 maestro intent [--show|--check|--init|--bump] [--project d] [--session s]
@@ -465,7 +509,7 @@ git do cwd) entrar no método e rodar headless. Seis famílias de lacuna, códig
 | (a) INTENT | `intent-missing` · `intent-sections` · `intent-hash` |
 | (b) `.maestro.yaml` | `yaml-missing` · `yaml-no-verifications` · `yaml-label-no-command` · `yaml-lab-unmarked` · `yaml-lab-only-area` |
 | (c) frescor | `brief-missing` · `brief-stale` · `readme-stale` · `doc-stale` |
-| (d) ordens | `order-no-headless` |
+| (d) ordens | `order-no-headless` · `order-no-turno` · `order-no-relatorio` (ordem 046) |
 | (e) daemon (ponte) | `ponte-unregistered` · `ponte-no-policy` · `ponte-unreadable` |
 | (f) CLAUDE.md | `claude-md-missing` |
 
@@ -488,6 +532,12 @@ mesmas lacunas e mesma ordem do texto; escapado com o mesmo helper de
 
 **Exit:** `0` só com zero lacunas (stdout vazio) · `1` com ≥1 lacuna · `2` uso (flag
 desconhecida, `<dir>` inexistente, `--check` ausente).
+
+**Família (d), ordem 046:** `order-no-turno` — ordem não terminal sem o bloco `## Turno`, ou
+com `fatia`/`fim`/`teto`/`fora` ausente, vazio, ainda no placeholder `<…>` do esqueleto, ou
+`teto:` que não é inteiro ≥ 1; `order-no-relatorio` — o rótulo `relatório:` do bloco ausente
+ou vazio (o contrato do relatório de fim de turno não é citado). Terminal
+(`aceita`|`absorvida`) fica fora, como no `order-no-headless`.
 
 **Não escreve nada, em lugar nenhum** — nem no projeto, nem em `~/.maestro/`, nem no
 `ponte.db`. Único rastro: `log_event conform n_lacunas=<n> familias=<lista|none>

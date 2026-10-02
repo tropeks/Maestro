@@ -1,0 +1,357 @@
+diff --git a/hooks/hooks.json b/hooks/hooks.json
+index 6637ed4..240610d 100644
+--- a/hooks/hooks.json
++++ b/hooks/hooks.json
+@@ -98,6 +98,11 @@
+           {
+             "type": "command",
+             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gate-report.sh"
++          },
++          {
++            "type": "command",
++            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-turno.sh",
++            "timeout": 5
+           }
+         ]
+       }
+diff --git a/hooks/lib/common.sh b/hooks/lib/common.sh
+index 8b05458..737e015 100755
+--- a/hooks/lib/common.sh
++++ b/hooks/lib/common.sh
+@@ -133,7 +133,7 @@ _maestro_year_month() {
+ # ---------------------------------------------------------------------------
+ _maestro_event_valid() {
+   case "${1:-}" in
+-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix) return 0 ;;
++    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto) return 0 ;;
+     *) return 1 ;;
+   esac
+ }
+diff --git a/hooks/stop-turno.sh b/hooks/stop-turno.sh
+new file mode 100755
+index 0000000..473a7b9
+--- /dev/null
++++ b/hooks/stop-turno.sh
+@@ -0,0 +1,79 @@
++#!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == "1" ]] && exit 0
++# maestro hooks/stop-turno.sh — evento Stop (ordem 046, INTENT v6 Prioridade 3).
++#
++# O fim de turno tem CRITÉRIO MECÂNICO: a ordem em curso tem recibo VÁLIDO no tip?
++# O hook não decide nada sozinho — chama `maestro order --turno-check`, que lê o
++# ledger e compara o hash do recibo com a árvore do tip (a mesma comparação do
++# `order --status`). Nunca executa o `fim:` da ordem. Rótulos do relatório são
++# checagem ADICIONAL (entram na lista de faltas; sozinhos não bloqueiam).
++#
++# Dois orçamentos, medidos e declarados (ARCHITECTURE, NFRs):
++#   caminho COMUM (sem ordem em curso, ou ordem sem bloco `## Turno`): <50 ms,
++#     bash puro, ZERO fork — HEAD lido do .git por `read`, ordem achada por glob;
++#   Stop de turno (ordem em curso COM bloco): roda uma vez por turno e pode gastar
++#     até 2 s — é o teto do `timeout` que cerca a chamada ao CLI.
++#
++# Por que hook PRÓPRIO e não o gate-report.sh: ele sai cedo fora do herdr
++# (HERDR_ENV) e já está no teto de 400 linhas (oversized-file); o Stop de turno
++# vale em QUALQUER terminal.
++#
++# REGRAS: sempre exit 0 (a Prioridade 1 vence a 3: o hook nunca prende o
++# gerente); qualquer falha libera; a ÚNICA saída em stdout é o JSON de block;
++# teto de bloqueios por ordem/sessão vive no CLI (_turno_gate, máx. 3).
++exec 3>&1
++exec 1>&2
++
++raw=""
++[[ -t 0 ]] || read -r -t 2 -N 262144 raw || :
++[[ "$raw" =~ \"stop_hook_active\"[[:space:]]*:[[:space:]]*true ]] && exit 0   # reentrada de um block: libera
++sid=""
++[[ "$raw" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_-]{1,64})\" ]] && sid="${BASH_REMATCH[1]}"
++[[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || sid="${CLAUDE_SESSION_ID:-}"
++[[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || exit 0
++
++proj="${CLAUDE_PROJECT_DIR:-$PWD}"
++[[ -d "$proj/.maestro/orders" ]] || exit 0
++
++# Branch atual SEM fork: .git é diretório, ou arquivo "gitdir: …" num worktree.
++gd="$proj/.git"
++if [[ -f "$gd" ]]; then read -r gl < "$gd" || exit 0; gd="${gl#gitdir: }"; fi
++head=""; [[ -r "$gd/HEAD" ]] && read -r head < "$gd/HEAD"
++[[ "$head" == "ref: refs/heads/"* ]] || exit 0
++br="${head#ref: refs/heads/}"
++[[ "$br" =~ /([0-9]{3})- ]] || exit 0
++n="${BASH_REMATCH[1]}"
++
++# A ordem do branch e o bloco `## Turno` (glob + leitura, sem fork).
++shopt -s nullglob
++files=("$proj/.maestro/orders/$n"-*.md)
++shopt -u nullglob
++of="${files[0]:-}"; [[ -n "$of" && -r "$of" ]] || exit 0
++has_turno=0
++while IFS= read -r line; do
++  [[ "$line" == "## Turno"* ]] && { has_turno=1; break; }
++done < "$of"
++(( has_turno == 1 )) || exit 0
++
++# Rodada que termina PERGUNTANDO ao Diretor é fim legítimo: o gate-report cuida.
++HERE="${BASH_SOURCE[0]%/*}"
++# shellcheck source=lib/transcript.sh
++source "$HERE/lib/transcript.sh" 2>/dev/null || exit 0
++tpath=""; [[ "$raw" =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] && tpath="${BASH_REMATCH[1]}"
++last=$(maestro_last_assistant_line "$tpath") || last=""
++[[ "$last" =~ \[[Ss]pock\][[:space:]]*[Aa]guardando[[:space:]]*: ]] && exit 0
++
++# Daqui em diante é o Stop de turno: relatório da rodada em arquivo, CLI com teto de 2 s.
++rf=$(mktemp "${TMPDIR:-/tmp}/maestro-turno.XXXXXX") || exit 0
++trap 'rm -f "$rf"' EXIT
++printf '%s' "${last//\\n/$'\n'}" > "$rf"
++bin="${CLAUDE_PLUGIN_ROOT:-$HERE/..}/bin/maestro"
++[[ -x "$bin" ]] || exit 0
++out=$(timeout 2 "$bin" order --turno-check --project "$proj" --session "$sid" --report-file "$rf" 2>/dev/null)
++rc=$?
++(( rc == 1 )) || exit 0          # 0 libera; 124 (timeout) e qualquer outro erro liberam também
++[[ -n "$out" ]] || exit 0
++reason="maestro: o turno desta ordem não tem recibo válido no tip. ${out}"
++reason="${reason//\\/\\\\}"; reason="${reason//\"/\\\"}"; reason="${reason//$'\n'/\\n}"
++printf '{"decision":"block","reason":"%s"}\n' "$reason" >&3
++exit 0
+diff --git a/lib/cmd-order-status.sh b/lib/cmd-order-status.sh
+index b240651..1f506af 100644
+--- a/lib/cmd-order-status.sh
++++ b/lib/cmd-order-status.sh
+@@ -105,6 +105,7 @@ _order_action_status() { # <proj> <wproj> <arquivo> <id> — imprime o boletim c
+   # ordem 036: work_project resolvendo pro PRÓPRIO dono é typo — nota, não morte.
+   local _wpnote; _wpnote=$(_order_work_project_note "$proj" "$of")
+   [[ -n "$_wpnote" ]] && printf '  ATENÇÃO: %s\n' "$_wpnote"
++  grep -q '^turno_livre: ' "$of" 2>/dev/null && printf '  turno   : turno-livre (válvula registrada — o Stop não bloqueia esta ordem)\n'   # ordem 046
+   printf '  prova   : '
+   # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
+   [[ "$st" == "aceita" ]] && _ptree=$(_order_terminal_field_appended "$proj" "$of" accepted_tree) || true
+diff --git a/lib/cmd-order.sh b/lib/cmd-order.sh
+index cc54d7b..1efa5cb 100644
+--- a/lib/cmd-order.sh
++++ b/lib/cmd-order.sh
+@@ -106,6 +106,7 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
+     [[ -n "$i_hash" ]] && printf 'intent_hash: %s\n' "$i_hash"
+     printf 'author_session: %s\n' "${sid:-desconhecido}"
+     printf -- '-->\n# Ordem %s — %s\n\n%s\n' "$oid" "$title" "$body"
++    grep -q '^## Turno' <<<"$body" || { _order_turno_lib_load; _order_turno_skeleton; }   # ordem 046
+     printf '\n## Contrato de execução\n'
+     printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
+     [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
+@@ -260,6 +261,33 @@ _order_accept_lib_load() { # carrega lib/cmd-order-accept.sh — uma vez, degrad
+ # molde de `_order_lib_load`/`_verif_lib_load`: módulo ausente derruba SÓ
+ # este comando (I-2, `die env`), nunca o CLI; `--status` SEM `--json` nunca
+ # paga o custo de sourcing de um módulo que não usa.
++_order_turno_lib_load() { # carrega lib/core-order-turno.sh — uma vez, degradando por comando (I-2)
++  declare -f _order_turno_check >/dev/null 2>&1 && return 0
++  [[ -f "$REPO_DIR/lib/core-order-turno.sh" ]] && source "$REPO_DIR/lib/core-order-turno.sh" && return 0
++  die env "lib/core-order-turno.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
++}
++_order_turno_cmd() { # --turno-check [--session s] [--report-file f] | --turno-livre N — ordem 046 (Stop de turno)
++  local act="$1" oid="" sid="" rf="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" of
++  shift
++  [[ "$act" == "--turno-livre" ]] && { oid="${1:-}"; shift || :; }
++  while (( $# )); do
++    case "$1" in
++      --session) sid="${2:-}"; shift ;;
++      --report-file) rf="${2:-}"; shift ;;
++      --project) proj="${2:-}"; shift ;;
++      *) die validation "flag desconhecida '$1'" "maestro order --turno-check [--session s] [--report-file f] | --turno-livre N" 1 ;;
++    esac
++    shift
++  done
++  # shellcheck source=hooks/lib/common.sh
++  source "$REPO_DIR/hooks/lib/common.sh"
++  _verif_lib_load; maestro_verif_load; _order_turno_lib_load
++  if [[ "$act" == "--turno-check" ]]; then _order_turno_check "$proj" "$sid" "$rf"; return $?; fi
++  [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
++  oid=$(printf '%03d' "$((10#$oid))")
++  of=$(_order_resolve_stamped "$proj/.maestro/orders" "$oid")
++  _order_turno_livre "$of" "$oid" "$sid"
++}
+ _order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
+   declare -f _order_action_status_json >/dev/null 2>&1 && return 0
+   if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
+@@ -290,6 +318,7 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
+ 
+ # ------------------------------------------------------------------ despacho
+ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
++  case "${1:-}" in --turno-check|--turno-livre) _order_turno_cmd "$@"; return $? ;; esac   # ordem 046
+   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
+   local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp=""
+   while (( $# )); do
+diff --git a/lib/core-conform-orders.sh b/lib/core-conform-orders.sh
+index 8277e16..e3f4dfb 100644
+--- a/lib/core-conform-orders.sh
++++ b/lib/core-conform-orders.sh
+@@ -13,8 +13,21 @@
+ #
+ # Sourced por lib/cmd-conform.sh — REPO_DIR/die() já no escopo (bin/maestro).
+ 
++# shellcheck source=lib/core-order-turno.sh
++source "$REPO_DIR/lib/core-order-turno.sh"   # ordem 046: _turno_missing
++
+ _conform_headless_re='^[[:space:]]{0,3}(>[[:space:]]*)?(#{1,6}[[:space:]]+)?(\*\*)?Execução headless'
+ 
++_conform_turno_gaps() { # <id> <arquivo> → lacunas do bloco Turno (ordem 046): order-no-turno / order-no-relatorio
++  local id="$1" f="$2" miss
++  miss=$(_turno_missing "$f" | tr '\n' ' ')
++  [[ "$miss" =~ (fatia|fim|teto|fora) ]] \
++    && printf '4\torder-no-turno\tordem %s\tpreencha o bloco "## Turno" (fatia, fim, teto inteiro, fora): rotulos faltando ou invalidos — %s\n' "$id" "$miss"
++  [[ "$miss" == *relatório* ]] \
++    && printf '4\torder-no-relatorio\tordem %s\tcite o contrato do relatorio de fim de turno no rotulo "relatório:" do bloco "## Turno"\n' "$id"
++  return 0
++}
++
+ _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
+   local proj="$1" odir f id wproj st
+   odir="$proj/.maestro/orders"
+@@ -29,8 +42,9 @@ _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
+     case "$st" in
+       aceita|absorvida) continue ;;   # terminal — fora do escopo do conform
+     esac
+-    grep -Eq "$_conform_headless_re" "$f" && continue
+-    printf '4\torder-no-headless\tordem %s\tadicione uma linha "Execução headless" (título, negrito ou blockquote) descrevendo como esta ordem prova SEM humano\n' "$id"
++    grep -Eq "$_conform_headless_re" "$f" \
++      || printf '4\torder-no-headless\tordem %s\tadicione uma linha "Execução headless" (título, negrito ou blockquote) descrevendo como esta ordem prova SEM humano\n' "$id"
++    _conform_turno_gaps "$id" "$f"
+   done
+   shopt -u nullglob
+   return 0
+diff --git a/lib/core-order-turno.sh b/lib/core-order-turno.sh
+new file mode 100644
+index 0000000..43dc4bd
+--- /dev/null
++++ b/lib/core-order-turno.sh
+@@ -0,0 +1,133 @@
++#!/usr/bin/env bash
++# maestro lib/core-order-turno.sh — ordem 046 (a ordem do turno no método).
++#
++# Três coisas, uma fonte: o BLOCO `## Turno` da ordem (fatia/fim/teto/fora/
++# relatório), o CRITÉRIO do Stop de turno (`order --turno-check`) e a válvula
++# `order --turno-livre`. O critério é o RECIBO no tip — o ledger decide, com a
++# mesma derivação do `order --status` (_order_status, maestro_tree_same da 044);
++# o hook só chama este comando e nunca executa o `fim:` da ordem. Rótulos do
++# relatório são checagem ADICIONAL: entram na lista de faltas, nunca bloqueiam
++# sozinhos. Honra declarada (o que o trilho não alcança): ENGINEERING_SPEC.
++#
++# Sourced por lib/cmd-order.sh e lib/core-conform-orders.sh; usa as funções de
++# lib/core-order-state.sh (já no escopo: _order_field, _order_status, ...).
++
++TURNO_LABELS="fatia fim teto fora relatório"
++TURNO_REPORT_LABELS="feito provado aberto decisão próximo"
++TURNO_CAP=3   # teto de bloqueios por sessão, qualquer que seja o `teto:` da ordem
++
++_turno_value() { # <arquivo> <rótulo> → valor do rótulo dentro de `## Turno` (placeholder `<…>` conta como vazio)
++  local v
++  v=$(awk -v l="$2" '
++    /^## Turno[[:space:]]*$/ { f=1; next }
++    /^## /                   { f=0 }
++    f { s=$0; sub(/^[[:space:]]*-?[[:space:]]*/, "", s)
++        if (index(s, l ":") == 1) { v=substr(s, length(l) + 2); sub(/^[[:space:]]+/, "", v); print v; exit } }' "$1" 2>/dev/null)
++  [[ "$v" == "<"* ]] && v=""
++  printf '%s' "$v"
++}
++
++_turno_missing() { # <arquivo> → rótulos ausentes/vazios/inválidos, um por linha (teto precisa ser inteiro ≥ 1)
++  local l v
++  for l in $TURNO_LABELS; do
++    v=$(_turno_value "$1" "$l")
++    [[ -n "$v" ]] || { printf '%s\n' "$l"; continue; }
++    [[ "$l" != "teto" || "$v" =~ ^[1-9][0-9]*$ ]] || printf '%s\n' "$l"
++  done
++}
++
++_turno_has_block() { # <arquivo> → rc 0 se fatia, fim, teto e fora estão válidos (o relatório é outra lacuna)
++  ! _turno_missing "$1" | grep -qE '^(fatia|fim|teto|fora)$'
++}
++
++_order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não traz `## Turno`
++  printf '\n## Turno\n'
++  printf -- '- fatia: <o que cabe num turno>\n'
++  printf -- '- fim: <comando que sai 0/1 — critério mecânico de término>\n'
++  printf -- '- teto: <rodadas máximas, inteiro>\n'
++  printf -- '- fora: <o que este turno NÃO faz>\n'
++  printf -- '- relatório: <onde está o contrato do relatório de fim de turno>\n'
++}
++
++_turno_report_missing() { # <relatório.txt> → rótulos do relatório fixo ausentes, um por linha
++  local f="$1" l
++  for l in $TURNO_REPORT_LABELS; do
++    grep -qiE "^[[:space:]]*[-*]*[[:space:]]*\**${l}\**[[:space:]]*:" "$f" 2>/dev/null || printf '%s\n' "$l"
++  done
++}
++
++_turno_find_order() { # <proj> <branch> → arquivo da ordem cujo branch: é o dado, vazio se nenhuma
++  local f
++  shopt -s nullglob
++  for f in "$1"/.maestro/orders/*.md; do
++    _order_valid_stamp "$f" && [[ "$(_order_field "$f" branch)" == "$2" ]] && { printf '%s' "$f"; break; }
++  done
++  shopt -u nullglob
++}
++
++_turno_receipt_gap() { # <wproj> <rótulo> → "falta: …" distinguindo recibo AUSENTE de VENCIDA
++  local ef; ef=$(maestro_evidence_file "$1" "$2" 2>/dev/null)
++  if [[ -f "$ef" ]]; then
++    printf 'falta: recibo %s VENCIDA — não é o conteúdo do tip (ou a execução falhou); regrave no tip\n' "$2"
++  else
++    printf 'falta: recibo %s ausente — maestro evidence --record --label %s -- <suíte>\n' "$2" "$2"
++  fi
++}
++
++_turno_proof_gaps() { # <dono> <wproj> <arquivo> → "falta: …" por recibo ausente/vencido, vazio se tudo VÁLIDO no tip
++  local dono="$1" wproj="$2" of="$3" st line
++  st=$(_order_status "$dono" "$wproj" "$of")
++  case "$st" in
++    aceita|absorvida) return 0 ;;
++    provada) ;;
++    *) _turno_receipt_gap "$wproj" "$(_order_evidence_label "$dono" "$wproj" "$of")" ;;
++  esac
++  while IFS= read -r line; do
++    [[ -n "$line" && "$line" != *": VÁLIDA" ]] && printf 'falta: recibo da área — %s\n' "$line"
++  done < <(_order_verif_report "$wproj" "$of")
++  return 0
++}
++
++_turno_count_file() { printf '%s/turno/%s-%s' "$MAESTRO_HOME" "$1" "$2"; }   # <sid> <id>
++
++_turno_gate() { # <arquivo> <sid> <id> <faltas> <relatório-faltas> → rc 1 (bloqueia, imprime) | rc 0 (teto atingido, libera)
++  local of="$1" sid="$2" oid="$3" gaps="$4" rep="$5" cap cf n
++  cap=$(_turno_value "$of" teto); (( cap > TURNO_CAP )) && cap=$TURNO_CAP
++  cf=$(_turno_count_file "$sid" "$oid")
++  n=$(cat "$cf" 2>/dev/null) || n=0
++  [[ "$n" =~ ^[0-9]+$ ]] || n=0
++  if (( n >= cap )); then
++    log_event turno_teto ${sid:+session_id="$sid"} n="$((10#$oid))" 2>/dev/null || :
++    printf 'liberado: teto de %s bloqueio(s) atingido (turno_teto) — o recibo segue faltando\n' "$cap"
++    return 0
++  fi
++  mkdir -p "${cf%/*}" 2>/dev/null && printf '%s' "$((n + 1))" > "$cf" 2>/dev/null || :
++  printf '%s\n' "$gaps"
++  [[ -n "$rep" ]] && printf 'falta rótulo do relatório de turno: %s\n' "$(tr '\n' ' ' <<<"$rep")"
++  printf 'bloqueio %s de %s — registre o recibo no tip (maestro evidence --record) e relate de novo\n' "$((n + 1))" "$cap"
++  return 1
++}
++
++_order_turno_check() { # <proj> <sid> <relatório.txt|""> → rc 0 libera (stdout vazio ou aviso de teto) | rc 1 bloqueia (stdout = faltas)
++  local proj="$1" sid="${2:-desconhecido}" rf="${3:-}" br of oid wproj gaps rep=""
++  br=$(git -C "$proj" symbolic-ref --quiet --short HEAD 2>/dev/null) || return 0
++  [[ -d "$proj/.maestro/orders" ]] || return 0
++  of=$(_turno_find_order "$proj" "$br"); [[ -n "$of" ]] || return 0
++  grep -q '^turno_livre: ' "$of" 2>/dev/null && return 0
++  _turno_has_block "$of" || return 0   # ordem antiga/sem bloco: lacuna do conform, nunca trava o Stop
++  oid=$(_order_field "$of" id)
++  wproj=$(_order_work_project "$proj" "$of")
++  gaps=$(_turno_proof_gaps "$proj" "$wproj" "$of")
++  if [[ -z "$gaps" ]]; then rm -f "$(_turno_count_file "$sid" "$oid")" 2>/dev/null; return 0; fi
++  [[ -n "$rf" && -r "$rf" ]] && rep=$(_turno_report_missing "$rf")
++  _turno_gate "$of" "$sid" "$oid" "$gaps" "$rep"
++}
++
++_order_turno_livre() { # <arquivo> <id> <sid> — carimba a válvula na ordem (visível no --status)
++  local of="$1" oid="$2" sid="$3" stamp
++  grep -q '^turno_livre: ' "$of" 2>/dev/null && { printf 'ordem %s: já estava turno-livre\n' "$oid"; return 0; }
++  stamp=$(printf 'turno_livre: %s\nturno_livre_session: %s' "$(date -Iseconds)" "${sid:-desconhecido}")
++  awk -v ins="$stamp" '!done && $0 == "-->" { print ins; done=1 } { print }' "$of" > "$of.tmp.$$" \
++    && mv -f "$of.tmp.$$" "$of" || { rm -f "$of.tmp.$$" 2>/dev/null; die env "falha ao gravar $of" "" 2; }
++  printf 'ordem %s: turno-livre registrado — o Stop não a bloqueia; a válvula fica visível no --status\n' "$oid"
++}

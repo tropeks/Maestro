@@ -106,6 +106,7 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
     [[ -n "$i_hash" ]] && printf 'intent_hash: %s\n' "$i_hash"
     printf 'author_session: %s\n' "${sid:-desconhecido}"
     printf -- '-->\n# Ordem %s — %s\n\n%s\n' "$oid" "$title" "$body"
+    grep -q '^## Turno' <<<"$body" || { _order_turno_lib_load; _order_turno_skeleton; }   # ordem 046
     printf '\n## Contrato de execução\n'
     printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
     [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
@@ -260,6 +261,33 @@ _order_accept_lib_load() { # carrega lib/cmd-order-accept.sh — uma vez, degrad
 # molde de `_order_lib_load`/`_verif_lib_load`: módulo ausente derruba SÓ
 # este comando (I-2, `die env`), nunca o CLI; `--status` SEM `--json` nunca
 # paga o custo de sourcing de um módulo que não usa.
+_order_turno_lib_load() { # carrega lib/core-order-turno.sh — uma vez, degradando por comando (I-2)
+  declare -f _order_turno_check >/dev/null 2>&1 && return 0
+  [[ -f "$REPO_DIR/lib/core-order-turno.sh" ]] && source "$REPO_DIR/lib/core-order-turno.sh" && return 0
+  die env "lib/core-order-turno.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+}
+_order_turno_cmd() { # --turno-check [--session s] [--report-file f] | --turno-livre N — ordem 046 (Stop de turno)
+  local act="$1" oid="" sid="" rf="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" of
+  shift
+  [[ "$act" == "--turno-livre" ]] && { oid="${1:-}"; shift || :; }
+  while (( $# )); do
+    case "$1" in
+      --session) sid="${2:-}"; shift ;;
+      --report-file) rf="${2:-}"; shift ;;
+      --project) proj="${2:-}"; shift ;;
+      *) die validation "flag desconhecida '$1'" "maestro order --turno-check [--session s] [--report-file f] | --turno-livre N" 1 ;;
+    esac
+    shift
+  done
+  # shellcheck source=hooks/lib/common.sh
+  source "$REPO_DIR/hooks/lib/common.sh"
+  _verif_lib_load; maestro_verif_load; _order_turno_lib_load
+  if [[ "$act" == "--turno-check" ]]; then _order_turno_check "$proj" "$sid" "$rf"; return $?; fi
+  [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
+  oid=$(printf '%03d' "$((10#$oid))")
+  of=$(_order_resolve_stamped "$proj/.maestro/orders" "$oid")
+  _order_turno_livre "$of" "$oid" "$sid"
+}
 _order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
   declare -f _order_action_status_json >/dev/null 2>&1 && return 0
   if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
@@ -290,6 +318,7 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
 
 # ------------------------------------------------------------------ despacho
 cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
+  case "${1:-}" in --turno-check|--turno-livre) _order_turno_cmd "$@"; return $? ;; esac   # ordem 046
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
   local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp=""
   while (( $# )); do

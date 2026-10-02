@@ -1835,6 +1835,18 @@ do filtro de extensão duplicado.
   vocabulário fechado, nenhuma chave aceita `/`), podem ir para o repo privado de
   telemetria §11. Records, briefs, evidência, consentimentos e work orders continuam locais.
 
+#### Emenda v1.24 (ordem 046) — o turno da ordem
+Cabeçalho da ordem ganha dois campos opcionais, escritos só por `maestro order --turno-livre`:
+`turno_livre: <ISO-8601>` e `turno_livre_session: <id>` — a válvula (ordem que não cabe em
+turno; o Stop não a bloqueia). O **corpo** da ordem ganha a seção `## Turno` com os rótulos
+`fatia`, `fim`, `teto` (inteiro ≥ 1), `fora` e `relatório` (ENGINEERING_SPEC, "O turno da
+ordem"); ordem anterior a esta emenda segue legível e vira lacuna no `conform`, nunca erro.
+Estado novo e efêmero: `$MAESTRO_HOME/turno/<sessão>-<ordem>` — o contador de bloqueios do
+Stop (inteiro em texto; recibo válido o apaga). Evento novo no vocabulário de §4:
+**`turno_teto`** (`session_id`, `n` = número da ordem) — o teto de bloqueios foi atingido e o
+Stop liberou. `hooks/lib/common.sh::_maestro_event_valid` o aceita no mesmo changeset; o
+`EVENTS` de `src/cli.ts` ainda não o lista (mesmo débito declarado de `route_fix`/`conform`).
+
 ## Flags para o orchestrator
 
 Nenhuma.
