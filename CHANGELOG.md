@@ -6,6 +6,10 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.20.0] — 2026-10-02
+
+Manutenção por ordem: o turno entra no método e a dívida do `habits` é paga.
+
 ### Added
 - **A ordem do turno no método** (ordem 046, INTENT v6 Prioridade 3). Bloco `## Turno` na
   ordem (`fatia`/`fim`/`teto`/`fora`/`relatório`), esqueleto emitido por `order --create`;
@@ -13,7 +17,15 @@ from the decision log and tag messages when this file was introduced.
   (`hooks/stop-turno.sh`): o critério é o recibo VÁLIDO no tip, lido do ledger — bloqueia com
   a lista do que falta, até `teto:` (máx. 3 por sessão), e libera em qualquer falha. Rótulos
   do relatório são checagem adicional. Válvula `order --turno-livre`. Orçamentos medidos:
-  caminho comum 18 ms, Stop de turno 708 ms (teto 2 s).
+  caminho comum 18 ms, Stop de turno 708 ms (teto 2 s). Novo evento `turno_teto`.
+
+### Changed
+- **Dívida do `habits` paga** (ordem 045). `oversized-function` 13 → 6 e `deep-nesting` 11 → 10;
+  a régua desce no mesmo changeset (`.maestro-habits.tsv`) e as colunas de prazo saem porque o
+  alvo foi atingido. Seis funções decompostas sem mudar comportamento (`check_roster`,
+  `cmd_consent`, `cmd_conduct`, `parse_routing_table`, `parse_roster` e a de verificação dos
+  matchers de hooks), mais o selftest do `run-eval` e um `deep-nesting` de teste. Função nova
+  acima de 60 linhas agora reprova.
 
 ## [1.19.0] — 2026-10-02
 
