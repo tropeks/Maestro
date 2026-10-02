@@ -61,6 +61,13 @@ author_session: fixture
 # Ordem 001 — teste
 
 Sem seção de execução headless nenhuma.
+
+## Turno
+- fatia: fixture
+- fim: true
+- teto: 1
+- fora: nada
+- relatório: ENGINEERING_SPEC
 EOF
 git -C "$D" add -A && git -C "$D" commit -q -m "ordem sem headless"
 run_conform "$D" "$H"

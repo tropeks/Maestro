@@ -124,6 +124,34 @@ morreu ou esqueceu a linha não declara nada, e é o que fica invisível mais te
 **Assimetria de custo, declarada pelo Capitão:** *"falso positivo custa um olhar
 meu; falso negativo custou 6h hoje"*. Na dúvida, avisar.
 
+## O turno da ordem e o relatório de fim de turno (ordem 046)
+
+A ordem diz o QUE entregar; o bloco `## Turno` diz o que cabe num turno e quando ele
+termina. Cinco rótulos, uma linha cada, dentro da seção `## Turno` (esqueleto emitido por
+`maestro order --create`):
+
+- `fatia:` o que cabe num turno · `fim:` o critério de término — comando que sai 0/1, nunca
+  "quando estiver bom" · `teto:` rodadas máximas, **inteiro ≥ 1** (o Stop usa no máximo 3 por
+  sessão) · `fora:` o que este turno NÃO faz · `relatório:` onde está o contrato abaixo.
+
+**Relatório fixo de fim de turno** — cinco rótulos, nesta ordem, no fim da última mensagem
+da rodada (relatório é ESTADO, não jornada): `feito:` · `provado:` (o comando e o rc, ou
+"não provado") · `aberto:` · `decisão:` (o que exige o Diretor, ou "nenhuma") · `próximo:`.
+Este é o contrato citado no rótulo `relatório:` de cada ordem.
+
+**O que é trilho e o que é honra** (Prioridade 3 do INTENT, decisão do Capitão, 2026-10-02):
+
+| | trilho (mecânico, sem LLM) | honra declarada (nenhum hook alcança) |
+|---|---|---|
+| presença | `conform --check` acusa ordem sem `## Turno` / sem `relatório:` | — |
+| fim de turno | o **Stop** lê o ledger: recibo VÁLIDO no tip, e os recibos de área exigidos; sem eles, bloqueia com a lista do que falta, até o teto | o `fim:` foi bem escolhido; a fatia coube no turno |
+| relatório | os rótulos faltantes entram na lista de faltas (checagem ADICIONAL — sozinhos não bloqueiam) | o TEXTO do relatório é verdadeiro: um `provado: rc 0` inventado não é detectável |
+
+O Stop **não executa** o `fim:` (comando arbitrário num hook viola a fronteira de `hooks/`);
+confere o recibo que o executor gravou. Válvula escrita e visível: `maestro order
+--turno-livre <N>`, para a ordem cuja natureza não cabe em turno. Falha de qualquer parte
+degrada para liberar — a Prioridade 1 vence a 3.
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md

@@ -395,6 +395,7 @@ Sem outros usos de IA. `ai-architect` **não é necessário** — o AI Touchpoin
 
   Isto está escrito para a discussão não se repetir: ela já custou duas rodadas na ordem 016 e uma na 020.
 
+- **Stop de turno (ordem 046) — dois orçamentos, medidos e declarados** (decisão do Capitão, 2026-10-02): o NFR de 50 ms vale no caminho COMUM (sem ordem em curso, ou ordem sem bloco `## Turno`: bash puro, zero fork de `git`); o Stop de turno com ordem em curso roda UMA vez por turno e pode gastar até **2 s** (teto do `timeout` que cerca o CLI). Medido nesta forge (load 5,2 em 8 CPUs): caminho comum mediana 18 ms (min 11, max 26); Stop de turno mediana 708 ms (min 571, max 939; N=7). Hook próprio (`hooks/stop-turno.sh`) em vez de estender o `gate-report.sh`: este sai cedo fora do herdr e já está no teto de 400 linhas. Teste: `tests/hooks/test-order-046-stop-turno.sh`.
 - Medição de latência (guarda destrutiva, gate) só é válida com load average de 1 minuto ≤ 2,0 (decisão do supervisor, nesta forge de 8 CPUs) — acima disso o veredito é `inconclusivo sob carga`, nunca `regressão`. O limiar é ABSOLUTO, não por CPU: um runner de CI com menos núcleos (ex. 4) mede um load absoluto baixo mesmo perto de saturação relativa, e um limiar por-CPU desligaria o teto estrito de latência em silêncio bem na máquina de referência onde o NFR é cobrado de verdade (`tests/lib/latency.sh` traz a evidência completa)
 
 ## Flags para o orchestrator

@@ -6,6 +6,15 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Added
+- **A ordem do turno no método** (ordem 046, INTENT v6 Prioridade 3). Bloco `## Turno` na
+  ordem (`fatia`/`fim`/`teto`/`fora`/`relatório`), esqueleto emitido por `order --create`;
+  `conform --check` ganha `order-no-turno` e `order-no-relatorio`; **Stop de turno**
+  (`hooks/stop-turno.sh`): o critério é o recibo VÁLIDO no tip, lido do ledger — bloqueia com
+  a lista do que falta, até `teto:` (máx. 3 por sessão), e libera em qualquer falha. Rótulos
+  do relatório são checagem adicional. Válvula `order --turno-livre`. Orçamentos medidos:
+  caminho comum 18 ms, Stop de turno 708 ms (teto 2 s).
+
 ## [1.19.0] — 2026-10-02
 
 Primeira release depois do encerramento do v1: manutenção por ordem, mais o comando

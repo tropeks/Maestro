@@ -80,9 +80,11 @@ Entra no ENGINEERING_SPEC como honra declarada, com a válvula `maestro order --
 
 ## Como sai
 
-`lib/`, `tests/`, `docs/` direto, no branch. `hooks/` (Stop, `common.sh`) e `bin/`
-(`order --create`, `--turno-livre`) por **UM patch** em `docs/patches/046-*.patch`, aplicado
-pelo Capitão com um `git apply`, testado em sandbox antes e depois — o molde da 045. Emendas
+`tests/` e `docs/` direto, no branch. **`lib/` também é autoprotegida** (`self_paths` do
+`config/routing-table.yaml`; o `Write` barrou) — então `lib/`, `hooks/` (Stop, `common.sh`,
+`hooks.json`) saem num **UM patch** em `docs/patches/046-*.patch`, aplicado pelo Capitão com um
+`git apply`, testado em sandbox antes e depois — o molde da 045. `bin/` não muda: o despacho do
+turno vive em `lib/cmd-order.sh`. Emendas
 no MESMO changeset: DATA_MODEL (ordem), API_SPEC (conform + hook), ENGINEERING_SPEC
 (relatório, honra declarada), INTENT se a Prioridade 3 pedir nota.
 
@@ -109,7 +111,8 @@ no MESMO changeset: DATA_MODEL (ordem), API_SPEC (conform + hook), ENGINEERING_S
 - fatia: contrato escrito (DATA_MODEL/API_SPEC/ENGINEERING_SPEC) e teste vermelho de conform
 - fim: `bash tests/cli/test-order-046-turno.sh` sai 1 pelos motivos certos, depois 0
 - teto: 6
-- fora: o hook Stop e o patch de `bin/` — turno próprio, depois do conform verde
+- fora: o hook Stop e o patch — turno próprio, depois do conform verde
+- relatório: ENGINEERING_SPEC, "O turno da ordem e o relatório de fim de turno"
 
 > **Execução headless:** a prova é o conjunto de testes em sandbox (conform e hook) mais a
 > suíte, sem humano no laço até a aplicação do patch. Nenhuma chamada externa.
