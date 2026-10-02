@@ -196,6 +196,23 @@ FLAT="${FLAT//\\/}"            # escapes: r\m -rf  →  rm -rf
 while [[ "$FLAT" == *"  "* ]]; do FLAT="${FLAT//  / }"; done
 LOW="${FLAT,,}"
 
+# ── 3c. autoproteção (ordem 047, ADR-003 v1.2): ESCRITA por Bash em self_paths ──
+# Write/Edit já barravam; `echo x > lib/a`, `sed -i`, `cp`, `mv`, `tee`, `python -c`
+# passavam. Léxico, sem classificar intenção; bloqueia SEMPRE (modo direto, record
+# válido, consent ops — nada rebaixa), como a denylist do pre-tool-gate. Falha ao
+# carregar o módulo degrada para liberar (Prioridade 1). Barato-primeiro: só o
+# comando que cita uma raiz de self_paths sai do `case` (zero fork).
+case "$FLAT" in
+  *agents/*|*bin/*|*src/*|*hooks/*|*lib/*|*config/*|*.claude-plugin/*)
+    # shellcheck source=lib/self-paths.sh
+    if source "$SCRIPT_DIR/lib/self-paths.sh" 2>/dev/null \
+       && maestro_bash_self_write "$FLAT" "$G_ROOT" "${SCRIPT_DIR%/hooks}"; then
+      maestro_bash_self_message
+      log_event gate_block ${SID:+session_id="$SID"} cmd=self_path_write gate_mode=block
+      exit 2
+    fi ;;
+esac
+
 # Categorias acumuladas. Vocabulário fechado: são elas, e só elas, que vão
 # para o log (`cmd=` aceita ^[a-z0-9:_-]{1,48}$).
 G_CATS=""

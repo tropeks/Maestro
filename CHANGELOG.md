@@ -8,7 +8,8 @@ from the decision log and tag messages when this file was introduced.
 
 ## [1.20.0] — 2026-10-02
 
-Manutenção por ordem: o turno entra no método e a dívida do `habits` é paga.
+Manutenção por ordem: o turno entra no método, a dívida do `habits` é paga e a
+autoproteção do gate passa a valer também para o Bash.
 
 ### Added
 - **A ordem do turno no método** (ordem 046, INTENT v6 Prioridade 3). Bloco `## Turno` na
@@ -26,6 +27,14 @@ Manutenção por ordem: o turno entra no método e a dívida do `habits` é paga
   `cmd_consent`, `cmd_conduct`, `parse_routing_table`, `parse_roster` e a de verificação dos
   matchers de hooks), mais o selftest do `run-eval` e um `deep-nesting` de teste. Função nova
   acima de 60 linhas agora reprova.
+
+### Fixed
+- **A autoproteção do gate também vale para o Bash** (ordem 047, INTENT v6 §Limites). O
+  `pre-bash-guard` bloqueia (exit 2, qualquer modo) redirecionamento, `tee`, `sed -i`, `cp`,
+  `mv`, `install`, `dd of=`, `ln`, `truncate`, `perl -i` e `python`/`node` com alvo em
+  `self_paths` — mesma lista e mesma âncora (plugin ou worktree) do `pre-tool-gate`. O default
+  embutido do `pre-tool-gate` passa a listar `lib/`. Limites que seguem abertos (script
+  indireto, `git apply`, `eval`) estão declarados no ENGINEERING_SPEC.
 
 ## [1.19.0] — 2026-10-02
 

@@ -120,6 +120,22 @@ worktree. O PreToolUse dispara em subagente, com o `session_id` da sessão-mãe 
 VALE, o `self_paths` do routing-table: `config/accept-proof.pub` (âncora do aceite por
 identidade, ordem 041) estava só no default do hook, que a política compilada substitui.
 
+**Emenda v1.5 (ordem 047, 2026-10-02) — a autoproteção também vale para o Bash:** o gate só
+interceptava Write/Edit. `echo x > lib/a.sh`, `tee`, `sed -i`, `cp`, `mv`, `install`,
+`dd of=`, `ln`, `truncate`, `perl -i` e `python`/`node` com alvo em `self_paths` passavam
+no `pre-bash-guard` (reproduzido nas ordens 044 e 045, que gravaram em `lib/` por heredoc e
+por python). O guard passa a bloquear (exit 2, `gate_block cmd=self_path_write`) quando o
+comando tem uma FORMA DE ESCRITA e o alvo dela é um caminho de `self_paths` — critério
+LÉXICO, sem classificar intenção, com a MESMA lista (política compilada; fallback embutido
+com `lib/`) e a MESMA âncora (raiz do plugin ou worktree do repo, ordem 043). Vale em
+qualquer modo, com record válido e com consent: nada rebaixa. Falha ao carregar o módulo
+libera (Prioridade 1). Custo medido: caminho comum +0 ms, comando que cita uma raiz de
+`self_paths` +6 ms (mediana, A/B intercalado), dentro dos 50 ms. **Junto:** o default
+embutido do `pre-tool-gate` (política parcial) não listava `lib/` e o session-start
+listava — alinhado. **O que continua passando** (honra declarada, ENGINEERING_SPEC, "Limites
+da autoproteção"): script gravado fora de `self_paths` e executado depois, `git apply` de
+patch que toca `self_paths`, `eval`, caminho montado por variável, `cd lib && …`, symlink.
+
 ### ADR-008 — Sinal observável de override manual
 **Status:** Aceito (v1.1, review Opus).
 **Contexto:** a métrica principal (% de override manual) não era produzida por nenhum caminho observável.

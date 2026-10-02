@@ -152,6 +152,26 @@ confere o recibo que o executor gravou. Válvula escrita e visível: `maestro or
 --turno-livre <N>`, para a ordem cuja natureza não cabe em turno. Falha de qualquer parte
 degrada para liberar — a Prioridade 1 vence a 3.
 
+## Limites da autoproteção (ordem 047) — trilho e honra
+
+A autoproteção de `self_paths` (`agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml
+config/accept-proof.pub .claude-plugin/`) é trilho em DOIS lugares: `pre-tool-gate` (Write/Edit/
+MultiEdit) e `pre-bash-guard` (formas de escrita por Bash, ordem 047). Cobertas, cada uma com
+teste: `>` `>>` `&>` `>|`, heredoc, `tee`, `sed -i`, `perl -i`, `cp`, `mv`, `install`, `dd of=`,
+`ln`, `truncate`, `python`/`node`/`ruby`/`perl` com alvo protegido; em caminho relativo,
+absoluto, `./`, `../` e de worktree. **Honra declarada — o guard lê o comando, não o programa:**
+
+| não coberto | por quê |
+|---|---|
+| script gravado FORA de `self_paths` e executado depois (`bash /tmp/x.sh`) | o alvo está dentro do arquivo, que o guard não lê |
+| `git apply docs/patches/…` | o caminho do comando é `docs/`; o patch é que toca `bin/` |
+| `eval`, `D=li; echo x > ${D}b/…`, `cd lib && echo x > a.sh` | o caminho não aparece inteiro no texto |
+| symlink para dentro de `self_paths` | não se resolve link |
+| ferramenta de escrita fora da lista (`rsync`, `awk -i inplace`, editor) | a lista é fechada |
+
+O caminho legítimo é o molde das ordens 045/046: clone sandbox FORA do repo do plugin, patch em
+`docs/patches/`, `git apply` por mão humana. Nenhuma dessas lacunas é consentível.
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md
