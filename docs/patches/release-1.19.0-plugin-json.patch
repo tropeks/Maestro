@@ -1,0 +1,12 @@
+diff --git a/.claude-plugin/plugin.json b/.claude-plugin/plugin.json
+index 3a4169c..4e6e8bf 100644
+--- a/.claude-plugin/plugin.json
++++ b/.claude-plugin/plugin.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "maestro",
+-  "version": "1.18.1",
++  "version": "1.19.0",
+   "description": "Camada de roteamento MoE para Claude Code: hooks deterministicos + routing table + roster de agentes. Trilhos deterministicos, IA nas bordas.",
+   "author": {
+     "name": "Romulo"

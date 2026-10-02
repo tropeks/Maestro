@@ -6,11 +6,35 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.19.0] — 2026-10-02
+
+Primeira release depois do encerramento do v1: manutenção por ordem, mais o comando
+`conform` que a forge ainda não tinha.
+
+### Added
+- **`maestro conform --check [<dir>] [--json]`** (ordem 042). Lista as lacunas para o
+  projeto entrar no método e rodar headless, em seis famílias (INTENT, `.maestro.yaml`,
+  frescor, ordens, daemon, CLAUDE.md). Sem LLM, sem rede, não escreve nada além de
+  `log_event conform`; exit 0 conforme · 1 lacuna · 2 uso. Agente Conformador sob demanda
+  (`roster: false` — fora da injeção do SessionStart).
+- **Aceite por identidade** (ordem 041): assinatura do Diretor gravada no registro e
+  conferida na leitura (`config/accept-proof.pub`).
+- **`work_project`** (ordem 036): a ordem separa o repo DONO do repo do TRABALHO.
+- **`agents/` abre para `effort` e `omitClaudeMd`**, e só para eles (ordem 039).
+- Spikes de calibração do motor System 1 local, medidos com o mesmo instrumento do Jev
+  (ordens 034 e 035).
+
 ### Fixed
 - **Recibo de ordem empilhada não vence mais pelo carimbo da anterior** (ordem 044). O
   aceite da ordem A commita o carimbo em `.maestro/orders/` na main; o rebase da B trazia
   esse carimbo para o tip e `wtree_after` ≠ `branch^{tree}`. A comparação agora ignora
   `.maestro/**` dos dois lados (`lib/core-tree.sh`), falha fechada, sem tocar `bin/`.
+- **Autoproteção do gate reconhece o worktree do plugin fora do projeto** (ordem 043);
+  `config/accept-proof.pub` entra na denylist.
+- O detector de aguardo olha a rodada corrente, não 8 KB de transcrito (ordem 038).
+- `order --status` exige carimbo; `10#` nunca sobre vazio; `--create` não pendura nem corta
+  calado (ordem 037).
+- Prazo da dívida do `habits` prorrogado UMA vez, até 2026-10-09; a ordem 045 a paga.
 
 ## [1.18.1] — 2026-09-20
 
