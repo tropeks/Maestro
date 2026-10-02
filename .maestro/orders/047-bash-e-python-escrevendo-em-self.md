@@ -124,3 +124,7 @@ ENGINEERING_SPEC (limites declarados), CHANGELOG.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 047` (você não fecha a própria ordem).
+accepted_at: 2026-10-02T13:56:26-03:00
+accepted_session: desconhecido
+accepted_tree: 336989e2ae497205112c7928ca041f8c31eaa8f8
+accepted_intent: 6
