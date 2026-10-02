@@ -20,6 +20,12 @@
 # devia testar não se confirmou.
 #
 # ---------------------------------------------------------------------------
+# PRORROGAÇÃO ÚNICA (2026-10-02, decisão do Diretor): 1790737199 → 1791601199
+# (2026-10-09T23:59:59-03:00), +7 dias, UMA vez. O prazo venceu em 29/09 com
+# deep-nesting 11 > 10 e oversized-function 13 > 6 e derrubava a suíte em duas
+# asserções de `habits --all`, sem relação com a ordem em curso (044). A dívida
+# é paga pela ordem 045; não há segunda prorrogação — vencendo de novo, vale a 045.
+# ---------------------------------------------------------------------------
 # oversized-file SAI DESTA FASE para bin/maestro — decisão do supervisor,
 # 2026-09-14, com a razão gravada porque exceção que ninguém releu vira
 # esquecimento:
@@ -62,7 +68,7 @@
 #                           movidas — cmd_docs 147, cmd_intent 143, cmd_brief 86
 #                           viraram 20 funções, nenhuma acima de 47 linhas.
 #                           22 → 13 num lote. Faltam 7 para o alvo.
-deep-nesting	11	1790737199	10
+deep-nesting	11	1791601199	10
 oversized-file	13
-oversized-function	13	1790737199	6
+oversized-function	13	1791601199	6
 skipped-test	1
