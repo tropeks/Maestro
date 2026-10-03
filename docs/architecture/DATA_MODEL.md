@@ -566,6 +566,10 @@ não loga. Nunca o título, o hash ou o caminho.
 **Emenda E23b (S-2302):** evento novo `verify`, com `n` = número de verificações
 obrigatórias FALTANTES no changeset. Nunca rótulo, área ou caminho.
 
+**Ordem 048 — débito do `conform` PAGO.** `conform` entra em `_maestro_event_valid` e as chaves
+`n_lacunas`/`familias`/`rc` em `_maestro_set_key_regex` (tabela abaixo); `EVENTS` em
+`src/cli.ts` ganha `conform`, `turno_teto` e `route_fix`. O parágrafo seguinte fica como histórico.
+
 **Emenda E27 (S-2701) — `conform`, DÉBITO DECLARADO (mesmo padrão de `route_fix`,
 emenda v1.19/ordem 030 acima).** `maestro conform --check` (ordem 042) grava
 `log_event conform n_lacunas=<inteiro> familias=<lista fechada ou "none"> rc=<0|1>` a
@@ -611,6 +615,9 @@ por uma checagem explícita de `*/*` no `log_event`.
 | `phase` | `^(planned\|started\|received\|accepted)$` | E23a |
 | `channel` | `^(stable\|main)$` | E23c |
 | `axis` | `^(mode\|agents\|workflow)$` | ordem 030 |
+| `n_lacunas` | `^[0-9]{1,9}$` | ordem 048 (`conform`) |
+| `familias` | `none` ou lista CSV das 6 famílias (`intent,yaml,frescor,ordens,daemon,claude-md`) | ordem 048 (`conform`) |
+| `rc` | `^[01]$` | ordem 048 (`conform`) |
 | `n_lacunas` | `^[0-9]{1,9}$` | E27 (ordem 042 — débito, ver §4 acima) |
 | `familias` | `^(none\|(intent\|yaml\|frescor\|ordens\|daemon\|claude-md)(,(intent\|yaml\|frescor\|ordens\|daemon\|claude-md)){0,5})$` | E27 (ordem 042 — débito) |
 | `rc` | `^[01]$` | E27 (ordem 042 — débito) |
@@ -701,6 +708,16 @@ Carimbo ilegível → aviso de regravação, nunca crash. O doctor valida cabeç
 `# classification: confidential` (narrativa livre + paths locais)
 
 ### 8. Ledger de evidência — `~/.maestro/evidence/<slug>-<hash8>-<rótulo>` (E13/S-1301)
+
+**Emenda ordem 048 — recibo de suíte POR ORDEM.** O recibo é por projeto e rótulo, então um
+único `suite` era sobrescrito pela ordem seguinte (a 1ª ficava VENCIDA). O rótulo por ordem é
+`<rótulo>-N` (`suite-48`, N = número da ordem, ≤3 dígitos, `--label` ≤24). **O schema do
+arquivo NÃO muda** — só a chave (o rótulo no nome do arquivo). Leitura: `order --status`/
+`--accept`/`--json` (`_order_verif_report`) usam `<rótulo>-N` da ordem se existir, senão o
+`<rótulo>` legado; `evidence`/`--check`/`outcome`/`verify` lidos com um branch `…/NNN-…` usam
+`<rótulo>-NNN` se existir, senão o legado. `suite` sem sufixo continua valendo (na `main` e como
+fallback): nenhum recibo existente deixa de ser lido. `suite-N` herda o comando declarado em
+`commands.suite` para o `cmd_match`.
 
 Recibo de execução amarrado a conteúdo (padrão gstack-evidence, MIT):
 

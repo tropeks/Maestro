@@ -517,15 +517,23 @@ out=$(env MAESTRO_HOME="$H12" MAESTRO_OFF=1 bash "$HOOK" <"$IN" 2>&1); rc=$?
   || bad "MAESTRO_OFF=1: silencioso, exit 0, sem gate-policy.sh (rc=$rc out='$out')"
 
 H13=$(new_home); P13=$(new_proj)
-t0=$(date +%s%N)
-for _ in 1 2 3 4 5; do
-  env MAESTRO_HOME="$H13" CLAUDE_PROJECT_DIR="$P13" bash "$HOOK" <"$IN" >/dev/null 2>&1
-done
-t1=$(date +%s%N)
-ms=$(( (t1 - t0) / 5 / 1000000 ))
-if [[ $ms -lt 100 ]]; then ok "NFR: overhead ${ms}ms < 100ms"
-elif [[ $ms -lt 300 ]]; then echo "warn overhead ${ms}ms (>100ms; máquina carregada?)"
-else bad "NFR: overhead ${ms}ms"; fi
+# ordem 048: NFR de overhead pelo portão de carga (fonte única, tests/lib/latency.sh).
+# Abaixo do limiar de carga o teto é ESTRITO (reprova); acima, estouro é
+# inconclusivo (rc 0 com marca), nunca FAIL. Orçamento sobrescrevível só p/ depurar.
+source "$REPO/tests/lib/latency.sh"
+SS_BUDGET="${MAESTRO_SESSION_START_BUDGET_MS:-100}"
+SS_WRAP="$SANDBOX/ss-nfr.sh"
+printf '#!/usr/bin/env bash\nexec env MAESTRO_HOME=%q CLAUDE_PROJECT_DIR=%q bash %q\n' "$H13" "$P13" "$HOOK" >"$SS_WRAP"
+chmod +x "$SS_WRAP"
+maestro_latency_read_load
+maestro_latency_measure "$SS_WRAP" "$IN"
+maestro_latency_report "session-start" "$MIN" "$MED" "$MAX" "$SS_BUDGET"
+case "$MAESTRO_LATENCY_VERDICT" in
+  ok) ok "NFR: overhead mediana ${MED}ms < teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]" ;;
+  inconclusivo)
+    echo "INCONCLUSIVO sob carga — NFR: overhead mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — não conta como falha" ;;
+  fail) bad "NFR: overhead mediana ${MED}ms >= teto ${MAESTRO_LATENCY_TETO}ms [$MAESTRO_LATENCY_TETO_MOTIVO]; load ${MAESTRO_LATENCY_LOAD1M}/${MAESTRO_LATENCY_NCPU} CPUs — sem carga para culpar" ;;
+esac
 
 # =============================================================================
 [[ $fail -eq 0 ]] && echo "test-session-start: OK" || echo "test-session-start: FALHAS" >&2
