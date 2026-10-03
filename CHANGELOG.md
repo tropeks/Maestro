@@ -6,6 +6,14 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **8 FAIL pré-existentes da suíte** (ordem 054): `test-order-029-gatilho` (6) e
+  `test-order-038-rodada-corrente` (2) herdavam `HERDR_ENV`/`HERDR_PANE_ID` do shell. O gate
+  (`hooks/gate-report.sh`) só age dentro do herdr, então num turno headless (fora do herdr) saía
+  no-op e os casos com socket reprovavam; dentro do herdr, o teste reportava `blocked` ao pane REAL
+  da sessão via `HERDR_BIN_PATH`. Os dois testes agora fixam `HERDR_ENV=1`, um pane de teste e um
+  `HERDR_BIN_PATH` inexistente. Só `tests/` mudou: nenhum hook ou CLI foi tocado.
+
 ## [1.20.0] — 2026-10-02
 
 Manutenção por ordem: o turno entra no método, a dívida do `habits` é paga e a

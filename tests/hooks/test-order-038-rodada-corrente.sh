@@ -54,7 +54,7 @@ stop() {
   local h; h=$(mktemp -d "$tmp/h.XXXXXX")
   printf '{"session_id":"s038","stop_hook_active":false,"transcript_path":"%s"}' "$1" \
     | MAESTRO_HOME="$h" CLAUDE_PROJECT_DIR="$tmp/proj" PONTE_MCP_SOCKET="$sock" \
-      bash "$GATE" 2>/dev/null
+      HERDR_ENV=1 HERDR_PANE_ID=t054:p1 HERDR_BIN_PATH="$tmp/sem-herdr" bash "$GATE" 2>/dev/null
 }
 mkdir -p "$tmp/proj"
 enche() { printf 'Terminei e relatei. Nada pendente nesta rodada. %s' "$(printf 'x%.0s' {1..200})"; }
@@ -133,6 +133,7 @@ printf '{"session_id":"s038perf","stop_hook_active":false,"transcript_path":"%s"
 
 h6=$(mktemp -d "$tmp/h.XXXXXX")
 export MAESTRO_HOME="$h6" CLAUDE_PROJECT_DIR="$tmp/proj" PONTE_MCP_SOCKET="$sock"
+export HERDR_ENV=1 HERDR_PANE_ID=t054:p1 HERDR_BIN_PATH="$tmp/sem-herdr"  # ver 029: gate só age no herdr
 maestro_latency_read_load
 maestro_latency_probe "$GATE"
 maestro_latency_measure "$GATE" "$payload"

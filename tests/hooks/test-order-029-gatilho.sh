@@ -28,10 +28,14 @@ import socket,sys
 s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])
 PY
 
+# O gate (hooks/gate-report.sh) só age dentro do herdr (HERDR_ENV=1 + HERDR_PANE_ID) e
+# reporta ao herdr de verdade por HERDR_BIN_PATH. O teste fixa as TRÊS variáveis, em vez de
+# herdar do shell: fora do herdr (turno headless) o gate saía no-op e os casos com socket
+# reprovavam; dentro, o teste reportava `blocked` ao pane REAL da sessão (ordem 054).
 stop() { # $1=texto da rodada  $2=socket  $3=MAESTRO_HOME  → stdout do hook
   printf '{"session_id":"s029","stop_hook_active":false,"last_assistant_message":"%s"}' "$1" \
     | MAESTRO_HOME="$3" CLAUDE_PROJECT_DIR="$tmp/proj" PONTE_MCP_SOCKET="$2" \
-      bash "$GATE" 2>/dev/null
+      HERDR_ENV=1 HERDR_PANE_ID=t054:p1 HERDR_BIN_PATH="$tmp/sem-herdr" bash "$GATE" 2>/dev/null
 }
 mkdir -p "$tmp/proj"
 
