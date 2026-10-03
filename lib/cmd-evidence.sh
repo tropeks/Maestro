@@ -80,15 +80,35 @@ _ev_cmd_measure_probe() { # → probe_ms (mediana de N invocações no-op via MA
   return 0
 }
 
+_ev_decl() { # <proj> <rótulo> → comando declarado; `suite-N` (recibo por ordem) herda o de `suite` (ordem 048)
+  local d; d=$(maestro_verif_cmd "$1" "$2") || d=""
+  [[ -z "$d" && "$2" =~ ^([a-z][a-z0-9-]*)-[0-9]{1,3}$ ]] && d=$(maestro_verif_cmd "$1" "${BASH_REMATCH[1]}")
+  printf '%s' "$d"
+  return 0
+}
+
 _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
   maestro_verif_load
-  decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+  decl=$(_ev_decl "$proj" "$label")
   if [[ -n "$decl" ]]; then
     [[ "$decl" == "$cmd_str" ]] && cmd_match="yes" || cmd_match="no"
   fi
   printf '%s\x1f%s\n' "$decl" "$cmd_match"
+  return 0
+}
+
+_ev_resolve_label() { # <proj> <rótulo> → rótulo a LER: `<rótulo>-N` se o branch é `order/NNN-…` e o recibo existe; senão o próprio (ordem 048)
+  local proj="$1" label="$2" br n ef
+  [[ "$label" =~ -[0-9]{1,3}$ || ${#label} -gt 20 ]] && { printf '%s' "$label"; return 0; }
+  br=$(git -C "$proj" symbolic-ref --short -q HEAD 2>/dev/null) || br=""
+  if [[ "$br" =~ ^order/([0-9]{1,3})- ]]; then
+    n=$((10#${BASH_REMATCH[1]}))
+    ef=$(maestro_evidence_file "$proj" "$label-$n")
+    [[ -f "$ef" ]] && { printf '%s-%s' "$label" "$n"; return 0; }
+  fi
+  printf '%s' "$label"
   return 0
 }
 
@@ -215,12 +235,13 @@ _ev_cmd_qualifiers() { # <e_load> <load_limiar> <e_inc> → "load_qualif<US>inc_
 }
 
 _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime veredito; rc conforme --check
-  local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef
-  ef=$(maestro_evidence_file "$proj" "$label")
+  local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef rl
+  rl=$(_ev_resolve_label "$proj" "$label")   # ordem 048: suite-N da ordem do branch (também na dica)
+  ef=$(maestro_evidence_file "$proj" "$rl")
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
   maestro_verif_load
   if [[ ! -f "$ef" || ! -r "$ef" ]]; then
-    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
+    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$rl")"
     (( check == 1 )) && return 1 || return 0
   fi
   local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
@@ -232,7 +253,7 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime 
   fi
   local age=$(( $(maestro_now_epoch) - e_epoch ))
   (( age < 0 )) && age=0
-  local decl_r; decl_r=$(maestro_verif_cmd "$proj" "$label") || decl_r=""
+  local decl_r; decl_r=$(_ev_decl "$proj" "$label")
   local reasons; reasons=$(_ev_cmd_reasons "$label" "$proj" "$maxage" "$age" \
     "$e_wb" "$e_wa" "$e_exit" "$e_match" "$e_hash" "$decl_r")
   local load_qualif inc_qualif
@@ -244,7 +265,7 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime 
   fi
   if [[ -n "$decl_r" ]]; then
     printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave: %s\n' "$label" "$reasons" "$inc_qualif" \
-      "$(verif_record_hint "$proj" "$label")"
+      "$(verif_record_hint "$proj" "$rl")"
   else
     printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave.\n' "$label" "$reasons" "$inc_qualif"
   fi

@@ -58,19 +58,16 @@ maestro_ensure_dirs() {
 # ---------------------------------------------------------------------------
 # Tempo — nunca depende de `date` existir/funcionar (review P1-2).
 # Ordem deliberada: printf builtin %(...)T (bash 4.2+) → EPOCHSECONDS (bash 5)
-# → date(1) → 0. O builtin vem PRIMEIRO porque `date` custa um fork (~3ms
-# medidos) e o hook chama isso em todo evento — o NFR é 100ms/hook.
+# → date(1) → 0. Builtin primeiro: `date` custa um fork (~3ms) por evento (NFR 100ms/hook).
 # ---------------------------------------------------------------------------
-# Estado situacional por projeto (brief E8 + grafo E11) mora em lib próprio —
-# a catraca do E9 cobrou quando este arquivo cruzou 400 linhas. Ausência
-# degrada: hooks que não usam brief/grafo seguem inteiros.
+# Estado situacional (brief E8 + grafo E11) mora em lib próprio (catraca do E9: 400
+# linhas). Ausência degrada: hooks que não usam brief/grafo seguem inteiros.
 # shellcheck source=project-state.sh
 [[ -f "${BASH_SOURCE[0]%/*}/project-state.sh" ]] && source "${BASH_SOURCE[0]%/*}/project-state.sh"
 
 # maestro_lang_ext <arquivo> — token de linguagem (py, sh, ...) ou vazio.
-# Custo zero (E24 Lote 0/0.2): extensão reconhecida devolve na hora sem ler o
-# arquivo; sem extensão lê só a 1a linha (builtin `read`, sem fork/head) e
-# mapeia o shebang. Sensor único — hook e CLI sourceiam DAQUI, por I-4.
+# Custo zero (E24): extensão reconhecida devolve sem ler o arquivo; sem extensão
+# lê só a 1a linha (builtin `read`) e mapeia o shebang. Sensor único (I-4).
 maestro_lang_ext() {
   local f="$1" base="${1##*/}" ext line=""
   ext="${base##*.}"
@@ -133,7 +130,7 @@ _maestro_year_month() {
 # ---------------------------------------------------------------------------
 _maestro_event_valid() {
   case "${1:-}" in
-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto) return 0 ;;
+    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto|conform) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -168,6 +165,9 @@ _maestro_set_key_regex() {
     decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
     settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
     phase)      _maestro_re='^(planned|started|received|accepted)$' ;;   # E23a: funil de delegação
+    n_lacunas)  _maestro_re='^[0-9]{1,9}$' ;;   # ordem 048: conform — nº de lacunas
+    familias)   _maestro_re='^(none|(intent|yaml|frescor|ordens|daemon|claude-md)(,(intent|yaml|frescor|ordens|daemon|claude-md))*)$' ;;
+    rc)         _maestro_re='^[01]$' ;;   # ordem 048: conform — 0 conforme, 1 com lacunas
     channel)    _maestro_re='^(stable|main)$' ;;   # E23c: canal do auto-update
     *)          _maestro_re=""; return 1 ;;
   esac
