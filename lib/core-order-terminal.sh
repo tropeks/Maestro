@@ -79,3 +79,13 @@ _order_terminal_field_appended() { # <proj> <arquivo> <chave> → valor de campo
   fi
   grep "^$k: " "$f" 2>/dev/null | tail -1 | sed "s/^$k: //"
 }
+_order_receipt_label() { # <wproj> <rótulo> <id> → `<rótulo>-N` se o recibo da ORDEM existe, senão o legado `<rótulo>` (ordem 048)
+  local n ef
+  if n=$(_order_num "${3:-}") && [[ ${#2} -le 20 ]]; then
+    ef=$(maestro_evidence_file "$1" "$2-$n" 2>/dev/null) && [[ -f "$ef" ]] && { printf '%s-%s' "$2" "$n"; return 0; }
+  fi
+  printf '%s' "$2"
+}
+_order_receipt_file() { # <wproj> <rótulo> <id> → arquivo do recibo da ordem (suite-N) ou o legado
+  maestro_evidence_file "$1" "$(_order_receipt_label "$@")" 2>/dev/null || :
+}

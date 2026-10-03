@@ -83,6 +83,7 @@ verif_record_hint() { # <projeto> <rótulo> → comando sugerido para registrar 
   local proj="$1" label="$2" decl
   maestro_verif_load
   decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
+  [[ -z "$decl" && "$label" =~ ^([a-z][a-z0-9-]*)-[0-9]{1,3}$ ]] && decl=$(maestro_verif_cmd "$proj" "${BASH_REMATCH[1]}")   # ordem 048: suite-N herda commands.suite
   printf 'maestro evidence --record --label %s -- %s' "$label" "${decl:-<comando>}"
   return 0
 }

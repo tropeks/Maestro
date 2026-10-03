@@ -23,15 +23,8 @@
 #
 # Não escreve nada, em lugar nenhum: nem no projeto, nem em ~/.maestro/, nem
 # no ponte.db. O único rastro é `log_event conform` (n_lacunas/familias/rc) —
-# DÉBITO DECLARADO (mesmo padrão de route_fix, DATA_MODEL §4 emenda v1.19/
-# ordem 030): `hooks/` está CONGELADA nesta ordem (contrato de execução), então
-# `_maestro_event_valid`/`_maestro_set_key_regex` (hooks/lib/common.sh) ainda
-# NÃO reconhecem `conform`/`n_lacunas`/`familias` — a chamada abaixo já está
-# correta e é descartada em silêncio (comportamento padrão de log_event para
-# vocabulário desconhecido) até um patch futuro em hooks/lib/common.sh (mesmo
-# mecanismo desta ordem: docs/patches/, aplicado pelo Capitão). DATA_MODEL
-# §4 já documenta o evento — é a emenda que esta ordem pode fazer sem tocar
-# zona congelada.
+# (ordem 048: o vocabulário `conform`/`n_lacunas`/`familias`/`rc` já está em
+# hooks/lib/common.sh e DATA_MODEL §4 — o débito da ordem 042 foi pago.)
 
 _CONFORM_FAMILIA_NOME=(intent yaml frescor ordens daemon claude-md)   # índice 1..6
 
