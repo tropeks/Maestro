@@ -16,7 +16,8 @@ from the decision log and tag messages when this file was introduced.
 - **Recibo de suíte por ordem** (ordem 048, papercut 48). `suite-N` (ex. `suite-48`) deixa duas
   ordens provadas em paralelo ambas VÁLIDAS; `order --status|--accept|--json` e `evidence`/
   `outcome`/`verify` resolvem a chave certa e `suite` legado segue lido como fallback. Formato do
-  recibo inalterado.
+  recibo inalterado. Só branches `order/NNN-…` resolvem `suite-N`; na `main`, `outcome --suite`
+  resolve apenas `suite`; a dica de regravação nomeia `suite-N` quando o recibo da ordem existe.
 - `tests/hooks/test-session-start.sh`: o NFR de overhead usa o portão de carga de
   `tests/lib/latency.sh` (sob carga, estouro é inconclusivo; sem carga, teto estrito) (papercut 49).
 - `conform` (+ `n_lacunas`/`familias`/`rc`) entra no vocabulário de eventos de `hooks/lib/common.sh`

@@ -75,11 +75,44 @@ G checkout -q order/001-ordem-um
   || bad "evidence --check --label suite no branch da ordem 1"
 G checkout -q main
 
-# o aceite não é exercido (é do Capitão); o gate de aceite usa o MESMO leitor
-err=$("$BIN" order --accept 2 --project "$P" 2>&1 >/dev/null)
-grep -q 'suite: NENHUMA\|suite: VENCIDA' <<<"$err" \
-  && bad "gate de aceite da ordem 2 acusa a suíte ($err)" \
-  || ok "gate de aceite não acusa a suíte da ordem 2"
+# o gate de aceite usa o MESMO leitor: com suite-2 VÁLIDO no tip, o aceite da ordem 2 PASSA (rc 0)
+err=$("$BIN" order --accept 2 --project "$P" 2>&1); rc=$?
+[[ $rc -eq 0 ]] && grep -q '^accepted_at: ' "$P"/.maestro/orders/002-*.md \
+  && ok "aceite da ordem 2 passa (rc 0, carimbo gravado) com suite-2 VÁLIDO" \
+  || bad "aceite da ordem 2 com suite-2 VÁLIDO (rc=$rc: $err)"
+
+# P2-2: só `order/NNN-` vira suite-N; fix/2fa-login e release/1.20.0 leem o legado
+for br in fix/2fa-login release/1.20.0 order/005-sem-recibo-proprio; do
+  G checkout -q -b "$br" main
+  echo "x $br" >> "$P/src/auth/jwt.py"; G add -A; G commit -qm "x"
+  "$BIN" evidence --record --label suite --project "$P" -- true >/dev/null
+  "$BIN" evidence --check --label suite --project "$P" >/dev/null 2>&1 \
+    && ok "branch $br lê o suite legado (não prende em suite-N alheio)" \
+    || bad "branch $br leu recibo de outra ordem ($("$BIN" evidence --label suite --project "$P"))"
+  G checkout -q main
+done
+
+# P2-1: suite-N VENCIDO -> a recusa manda gravar suite-N -> regravo -> VÁLIDA
+G checkout -q order/001-ordem-um
+echo "mais" >> "$P/src/auth/jwt.py"; G add -A; G commit -qm "mais 1"
+"$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null
+G checkout -q main
+err=$("$BIN" order --accept 1 --project "$P" 2>&1 >/dev/null)
+grep -q 'suite: VENCIDA.*--label suite-1 -- true' <<<"$err" \
+  && ok "hint de recusa manda gravar suite-1 (rótulo da ordem)" || bad "hint de recusa ($err)"
+G checkout -q order/001-ordem-um
+"$BIN" evidence --record --label suite-1 --project "$P" -- true >/dev/null
+G checkout -q main
+"$BIN" order --status 1 --project "$P" 2>&1 | grep -q 'suite: VÁLIDA' \
+  && ok "regravado suite-1 -> VÁLIDA (ciclo fecha)" || bad "ciclo VENCIDA->hint->regrava não fechou"
+
+# P3a: --label suite-N explícito checa o hash contra commands.suite
+G checkout -q order/001-ordem-um
+sed -i 's/^  suite: true/  suite: echo outro/' "$P/.maestro.yaml"
+"$BIN" evidence --check --label suite-1 --project "$P" 2>&1 | grep -q 'comando do recibo ≠ commands' \
+  && ok "suite-N explícito compara o hash com commands.suite" || bad "suite-N explícito não checou o hash do comando"
+G checkout -q -- .maestro.yaml
+G checkout -q main
 
 # ------------------------------------------------------------------ item 2
 echo "-- 2. session-start: portão de carga"
