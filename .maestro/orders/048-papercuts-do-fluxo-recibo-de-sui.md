@@ -67,3 +67,7 @@ DATA_MODEL (se o schema mudar), CHANGELOG.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 048` (você não fecha a própria ordem).
+accepted_at: 2026-10-03T11:13:00-03:00
+accepted_session: desconhecido
+accepted_tree: 5e046d22306a32734d71c82e7a4f46e4b84ee9b3
+accepted_intent: 6
