@@ -82,3 +82,7 @@ ENGINEERING_SPEC. Um papercut em `maestro papercut --add` se a causa for uma arm
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 054` (você não fecha a própria ordem).
+accepted_at: 2026-10-03T14:39:20-03:00
+accepted_session: desconhecido
+accepted_tree: 2f9fafb2a1ff2d5ac4e8ec5b5b78a99d285b89cb
+accepted_intent: 6
