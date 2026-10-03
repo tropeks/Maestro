@@ -91,3 +91,7 @@ armadilha de versão da CLI.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 055` (você não fecha a própria ordem).
+accepted_at: 2026-10-03T19:49:20-03:00
+accepted_session: desconhecido
+accepted_tree: 8d31e776a0cdc0cc9a182bc5d66a5b1eea5e0d54
+accepted_intent: 6
