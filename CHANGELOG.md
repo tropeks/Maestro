@@ -6,6 +6,11 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-10-03
+
+Papercuts do fluxo: o recibo de suíte passa a ser por ordem, o NFR do session-start respeita
+o portão de carga e `conform` entra no vocabulário de eventos.
+
 ### Fixed
 - **8 FAIL pré-existentes da suíte** (ordem 054): `test-order-029-gatilho` (6) e
   `test-order-038-rodada-corrente` (2) herdavam `HERDR_ENV`/`HERDR_PANE_ID` do shell. O gate
