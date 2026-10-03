@@ -345,7 +345,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
   br=$(_order_field "$f" branch)
   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
   for lb in $labels; do
-    ef=$(maestro_evidence_file "$proj" "$lb" 2>/dev/null) || ef=""
+    ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
     if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
     elif ! grep -q '^exit=0$' "$ef" 2>/dev/null; then st='VENCIDA (a execução falhou)'
     else
@@ -367,7 +367,7 @@ _order_verif_gate() { # <wproj> <arquivo> <id> — recusa (exit 1) o aceite sem 
     [[ -n "$st" ]] || continue
     [[ "$st" == *": VÁLIDA" ]] && continue
     lb="${st%%:*}"
-    falta+="  ${st} — $(verif_record_hint "$proj" "$lb")"$'\n'
+    falta+="  ${st} — $(verif_record_hint "$proj" "$(_order_receipt_label "$proj" "$lb" "$id")")"$'\n'
   done <<<"$rep"
   [[ -n "$falta" ]] || return 0
   printf 'ordem %s toca área com verificação obrigatória e falta prova:\n%s' "$id" "$falta" >&2

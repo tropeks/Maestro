@@ -1,0 +1,215 @@
+diff --git a/hooks/lib/common.sh b/hooks/lib/common.sh
+index 737e015..8cf0ecb 100755
+--- a/hooks/lib/common.sh
++++ b/hooks/lib/common.sh
+@@ -58,19 +58,16 @@ maestro_ensure_dirs() {
+ # ---------------------------------------------------------------------------
+ # Tempo — nunca depende de `date` existir/funcionar (review P1-2).
+ # Ordem deliberada: printf builtin %(...)T (bash 4.2+) → EPOCHSECONDS (bash 5)
+-# → date(1) → 0. O builtin vem PRIMEIRO porque `date` custa um fork (~3ms
+-# medidos) e o hook chama isso em todo evento — o NFR é 100ms/hook.
++# → date(1) → 0. Builtin primeiro: `date` custa um fork (~3ms) por evento (NFR 100ms/hook).
+ # ---------------------------------------------------------------------------
+-# Estado situacional por projeto (brief E8 + grafo E11) mora em lib próprio —
+-# a catraca do E9 cobrou quando este arquivo cruzou 400 linhas. Ausência
+-# degrada: hooks que não usam brief/grafo seguem inteiros.
++# Estado situacional (brief E8 + grafo E11) mora em lib próprio (catraca do E9: 400
++# linhas). Ausência degrada: hooks que não usam brief/grafo seguem inteiros.
+ # shellcheck source=project-state.sh
+ [[ -f "${BASH_SOURCE[0]%/*}/project-state.sh" ]] && source "${BASH_SOURCE[0]%/*}/project-state.sh"
+
+ # maestro_lang_ext <arquivo> — token de linguagem (py, sh, ...) ou vazio.
+-# Custo zero (E24 Lote 0/0.2): extensão reconhecida devolve na hora sem ler o
+-# arquivo; sem extensão lê só a 1a linha (builtin `read`, sem fork/head) e
+-# mapeia o shebang. Sensor único — hook e CLI sourceiam DAQUI, por I-4.
++# Custo zero (E24): extensão reconhecida devolve sem ler o arquivo; sem extensão
++# lê só a 1a linha (builtin `read`) e mapeia o shebang. Sensor único (I-4).
+ maestro_lang_ext() {
+   local f="$1" base="${1##*/}" ext line=""
+   ext="${base##*.}"
+@@ -133,7 +130,7 @@ _maestro_year_month() {
+ # ---------------------------------------------------------------------------
+ _maestro_event_valid() {
+   case "${1:-}" in
+-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto) return 0 ;;
++    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto|conform) return 0 ;;
+     *) return 1 ;;
+   esac
+ }
+@@ -168,6 +165,9 @@ _maestro_set_key_regex() {
+     decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
+     settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
+     phase)      _maestro_re='^(planned|started|received|accepted)$' ;;   # E23a: funil de delegação
++    n_lacunas)  _maestro_re='^[0-9]{1,9}$' ;;   # ordem 048: conform — nº de lacunas
++    familias)   _maestro_re='^(none|(intent|yaml|frescor|ordens|daemon|claude-md)(,(intent|yaml|frescor|ordens|daemon|claude-md))*)$' ;;
++    rc)         _maestro_re='^[01]$' ;;   # ordem 048: conform — 0 conforme, 1 com lacunas
+     channel)    _maestro_re='^(stable|main)$' ;;   # E23c: canal do auto-update
+     *)          _maestro_re=""; return 1 ;;
+   esac
+diff --git a/lib/cmd-conform.sh b/lib/cmd-conform.sh
+index f7fdbfb..11164fe 100644
+--- a/lib/cmd-conform.sh
++++ b/lib/cmd-conform.sh
+@@ -23,15 +23,8 @@
+ #
+ # Não escreve nada, em lugar nenhum: nem no projeto, nem em ~/.maestro/, nem
+ # no ponte.db. O único rastro é `log_event conform` (n_lacunas/familias/rc) —
+-# DÉBITO DECLARADO (mesmo padrão de route_fix, DATA_MODEL §4 emenda v1.19/
+-# ordem 030): `hooks/` está CONGELADA nesta ordem (contrato de execução), então
+-# `_maestro_event_valid`/`_maestro_set_key_regex` (hooks/lib/common.sh) ainda
+-# NÃO reconhecem `conform`/`n_lacunas`/`familias` — a chamada abaixo já está
+-# correta e é descartada em silêncio (comportamento padrão de log_event para
+-# vocabulário desconhecido) até um patch futuro em hooks/lib/common.sh (mesmo
+-# mecanismo desta ordem: docs/patches/, aplicado pelo Capitão). DATA_MODEL
+-# §4 já documenta o evento — é a emenda que esta ordem pode fazer sem tocar
+-# zona congelada.
++# (ordem 048: o vocabulário `conform`/`n_lacunas`/`familias`/`rc` já está em
++# hooks/lib/common.sh e DATA_MODEL §4 — o débito da ordem 042 foi pago.)
+
+ _CONFORM_FAMILIA_NOME=(intent yaml frescor ordens daemon claude-md)   # índice 1..6
+
+diff --git a/lib/cmd-evidence.sh b/lib/cmd-evidence.sh
+index 1c30d69..32a8b39 100644
+--- a/lib/cmd-evidence.sh
++++ b/lib/cmd-evidence.sh
+@@ -80,11 +80,18 @@ _ev_cmd_measure_probe() { # → probe_ms (mediana de N invocações no-op via MA
+   return 0
+ }
+
++_ev_decl() { # <proj> <rótulo> → comando declarado; `suite-N` (recibo por ordem) herda o de `suite` (ordem 048)
++  local d; d=$(maestro_verif_cmd "$1" "$2") || d=""
++  [[ -z "$d" && "$2" =~ ^([a-z][a-z0-9-]*)-[0-9]{1,3}$ ]] && d=$(maestro_verif_cmd "$1" "${BASH_REMATCH[1]}")
++  printf '%s' "$d"
++  return 0
++}
++
+ _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
+   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
+   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
+   maestro_verif_load
+-  decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
++  decl=$(_ev_decl "$proj" "$label")
+   if [[ -n "$decl" ]]; then
+     [[ "$decl" == "$cmd_str" ]] && cmd_match="yes" || cmd_match="no"
+   fi
+@@ -92,6 +99,19 @@ _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: d
+   return 0
+ }
+
++_ev_resolve_label() { # <proj> <rótulo> → rótulo a LER: `<rótulo>-N` se o branch é `order/NNN-…` e o recibo existe; senão o próprio (ordem 048)
++  local proj="$1" label="$2" br n ef
++  [[ "$label" =~ -[0-9]{1,3}$ || ${#label} -gt 20 ]] && { printf '%s' "$label"; return 0; }
++  br=$(git -C "$proj" symbolic-ref --short -q HEAD 2>/dev/null) || br=""
++  if [[ "$br" =~ ^order/([0-9]{1,3})- ]]; then
++    n=$((10#${BASH_REMATCH[1]}))
++    ef=$(maestro_evidence_file "$proj" "$label-$n")
++    [[ -f "$ef" ]] && { printf '%s-%s' "$label" "$n"; return 0; }
++  fi
++  printf '%s' "$label"
++  return 0
++}
++
+ EV_RUN_RC=0            # saída do último _ev_cmd_run — ver nota de convenção acima
+ EV_RUN_INCONCLUSIVE=0  # idem: nº de linhas com a palavra do protocolo de latência compartilhado
+
+@@ -215,12 +235,13 @@ _ev_cmd_qualifiers() { # <e_load> <load_limiar> <e_inc> → "load_qualif<US>inc_
+ }
+
+ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime veredito; rc conforme --check
+-  local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef
+-  ef=$(maestro_evidence_file "$proj" "$label")
++  local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef rl
++  rl=$(_ev_resolve_label "$proj" "$label")   # ordem 048: suite-N da ordem do branch (também na dica)
++  ef=$(maestro_evidence_file "$proj" "$rl")
+   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
+   maestro_verif_load
+   if [[ ! -f "$ef" || ! -r "$ef" ]]; then
+-    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$label")"
++    echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$rl")"
+     (( check == 1 )) && return 1 || return 0
+   fi
+   local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
+@@ -232,7 +253,7 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime
+   fi
+   local age=$(( $(maestro_now_epoch) - e_epoch ))
+   (( age < 0 )) && age=0
+-  local decl_r; decl_r=$(maestro_verif_cmd "$proj" "$label") || decl_r=""
++  local decl_r; decl_r=$(_ev_decl "$proj" "$label")
+   local reasons; reasons=$(_ev_cmd_reasons "$label" "$proj" "$maxage" "$age" \
+     "$e_wb" "$e_wa" "$e_exit" "$e_match" "$e_hash" "$decl_r")
+   local load_qualif inc_qualif
+@@ -244,7 +265,7 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime
+   fi
+   if [[ -n "$decl_r" ]]; then
+     printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave: %s\n' "$label" "$reasons" "$inc_qualif" \
+-      "$(verif_record_hint "$proj" "$label")"
++      "$(verif_record_hint "$proj" "$rl")"
+   else
+     printf 'evidência (%s): VENCIDA — %s%s. Re-rode e regrave.\n' "$label" "$reasons" "$inc_qualif"
+   fi
+diff --git a/lib/cmd-verify.sh b/lib/cmd-verify.sh
+index f6e596c..3af79d8 100644
+--- a/lib/cmd-verify.sh
++++ b/lib/cmd-verify.sh
+@@ -83,6 +83,7 @@ verif_record_hint() { # <projeto> <rótulo> → comando sugerido para registrar
+   local proj="$1" label="$2" decl
+   maestro_verif_load
+   decl=$(maestro_verif_cmd "$proj" "$label") || decl=""
++  [[ -z "$decl" && "$label" =~ ^([a-z][a-z0-9-]*)-[0-9]{1,3}$ ]] && decl=$(maestro_verif_cmd "$proj" "${BASH_REMATCH[1]}")   # ordem 048: suite-N herda commands.suite
+   printf 'maestro evidence --record --label %s -- %s' "$label" "${decl:-<comando>}"
+   return 0
+ }
+diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
+index 02b6137..b3bcb6e 100644
+--- a/lib/core-order-state.sh
++++ b/lib/core-order-state.sh
+@@ -345,7 +345,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
+   br=$(_order_field "$f" branch)
+   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
+   for lb in $labels; do
+-    ef=$(maestro_evidence_file "$proj" "$lb" 2>/dev/null) || ef=""
++    ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
+     if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
+     elif ! grep -q '^exit=0$' "$ef" 2>/dev/null; then st='VENCIDA (a execução falhou)'
+     else
+@@ -367,7 +367,7 @@ _order_verif_gate() { # <wproj> <arquivo> <id> — recusa (exit 1) o aceite sem
+     [[ -n "$st" ]] || continue
+     [[ "$st" == *": VÁLIDA" ]] && continue
+     lb="${st%%:*}"
+-    falta+="  ${st} — $(verif_record_hint "$proj" "$lb")"$'\n'
++    falta+="  ${st} — $(verif_record_hint "$proj" "$(_order_receipt_label "$proj" "$lb" "$id")")"$'\n'
+   done <<<"$rep"
+   [[ -n "$falta" ]] || return 0
+   printf 'ordem %s toca área com verificação obrigatória e falta prova:\n%s' "$id" "$falta" >&2
+diff --git a/lib/core-order-terminal.sh b/lib/core-order-terminal.sh
+index e528e88..e9ed832 100644
+--- a/lib/core-order-terminal.sh
++++ b/lib/core-order-terminal.sh
+@@ -79,3 +79,13 @@ _order_terminal_field_appended() { # <proj> <arquivo> <chave> → valor de campo
+   fi
+   grep "^$k: " "$f" 2>/dev/null | tail -1 | sed "s/^$k: //"
+ }
++_order_receipt_label() { # <wproj> <rótulo> <id> → `<rótulo>-N` se o recibo da ORDEM existe, senão o legado `<rótulo>` (ordem 048)
++  local n ef
++  if n=$(_order_num "${3:-}") && [[ ${#2} -le 20 ]]; then
++    ef=$(maestro_evidence_file "$1" "$2-$n" 2>/dev/null) && [[ -f "$ef" ]] && { printf '%s-%s' "$2" "$n"; return 0; }
++  fi
++  printf '%s' "$2"
++}
++_order_receipt_file() { # <wproj> <rótulo> <id> → arquivo do recibo da ordem (suite-N) ou o legado
++  maestro_evidence_file "$1" "$(_order_receipt_label "$@")" 2>/dev/null || :
++}
+diff --git a/src/cli.ts b/src/cli.ts
+index 8843183..e0ae491 100644
+--- a/src/cli.ts
++++ b/src/cli.ts
+@@ -69,6 +69,9 @@ const EVENTS = [
+   "delegation", // E23a — funil planned/started/received/accepted
+   "intent", // E22 — direção versionada
+   "verify", // E23b — verificações obrigatórias por área
++  "route_fix", // ordem 030 — correção de rota
++  "turno_teto", // ordem 046 — teto de bloqueios do Stop de turno
++  "conform", // ordem 042/048 — maestro conform --check
+ ] as const;
+
+ // -------------------------------------------------------------------- erros

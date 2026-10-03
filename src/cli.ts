@@ -69,6 +69,9 @@ const EVENTS = [
   "delegation", // E23a — funil planned/started/received/accepted
   "intent", // E22 — direção versionada
   "verify", // E23b — verificações obrigatórias por área
+  "route_fix", // ordem 030 — correção de rota
+  "turno_teto", // ordem 046 — teto de bloqueios do Stop de turno
+  "conform", // ordem 042/048 — maestro conform --check
 ] as const;
 
 // -------------------------------------------------------------------- erros

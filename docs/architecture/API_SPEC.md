@@ -614,6 +614,15 @@ maestro conduct --session <session_id>
 - `--record [--label l] -- <cmd>`: roda o comando no projeto e grava o recibo
   (DATA_MODEL §8); o exit do CLI espelha o do comando. Leitura (default) imprime
   VÁLIDA/VENCIDA nomeando o motivo; `--check` sai 1 quando não-válida.
+- **Emenda ordem 048 — chave do recibo por ordem.** `--record --label suite-N` grava o
+  recibo da ordem N (não sobrescreve o de outra ordem); `suite-N` herda `commands.suite` para
+  `cmd_match`. Leitores resolvem a chave certa: `order --status|--accept|--json` pela ordem
+  (`suite-N`, senão `suite`), `evidence [--check]`/`outcome --suite`/`verify` pelo número do
+  branch atual (`order/NNN-…` → `suite-NNN`, senão `suite`). `suite` sem sufixo segue lido
+  como fallback e na `main`. Formato do recibo inalterado. A resolução por branch só vale em
+  `order/NNN-…` (`fix/2fa-login`, `release/1.20.0` leem `suite`); na `main`, `outcome --suite`
+  resolve SÓ `suite`. A dica de regravação (`evidence` VENCIDA, recusa do aceite) nomeia `suite-N`
+  quando o recibo da ordem existe — regravar pela dica fecha o ciclo VENCIDA→VÁLIDA.
 - Consumidor: `outcome --suite pass` cita evidência válida ou avisa "palavra de honra"
   (`suite_evidence` no record). Live-dispatch E2E em `tests/e2e/` (tier manual/pago).
 - **Emenda E23b/S-2302 — o recibo casa o comando.** `--record` grava
