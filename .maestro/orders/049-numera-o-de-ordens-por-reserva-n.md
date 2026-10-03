@@ -43,3 +43,7 @@ author_session: desconhecido
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 049` (você não fecha a própria ordem).
+accepted_at: 2026-10-03T15:41:37-03:00
+accepted_session: desconhecido
+accepted_tree: 216c5ef429fcd1b744d52a2d13ff03a4abaceef2
+accepted_intent: 6
