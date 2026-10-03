@@ -29,7 +29,7 @@ _conform_turno_gaps() { # <id> <arquivo> → lacunas do bloco Turno (ordem 046):
 }
 
 _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
-  local proj="$1" odir f id wproj st
+  local proj="$1" odir f id wproj st seen=" "
   odir="$proj/.maestro/orders"
   [[ -d "$odir" ]] || return 0
   _order_lib_load
@@ -37,6 +37,9 @@ _conform_check_orders() { # <proj> → TSV de lacunas da família (d) ordens
   for f in "$odir"/*.md; do
     _order_valid_stamp "$f" || continue   # issue #13: sem carimbo válido não é ordem
     id=$(_order_field "$f" id)
+    # ordem 049: dois arquivos com o mesmo id é ERRO (nunca ordem duplicada em silêncio)
+    [[ "$seen" == *" $id "* ]] && printf '4\torder-id-duplicado\tordem %s\tdois arquivos com o mesmo id em .maestro/orders/ — renomeie/ajuste um (a numeração por reserva evita a colisão nova)\n' "$id"
+    seen+="$id "
     wproj=$(_order_work_project_list_wproj "$proj" "$f")
     st=$(_order_status "$proj" "$wproj" "$f")
     case "$st" in

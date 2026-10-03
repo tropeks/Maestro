@@ -135,7 +135,7 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
 }
 _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "steps:min:cents"> <doc> <work_project>
   local proj="$1" sid="$2" title="$3" branch="$4" frozen="$5" odoc="$7" wp="${8:-}"
-  local b_steps="" b_min="" b_cents="" v extra="" odir="$proj/.maestro/orders" n next=1 f oid
+  local b_steps="" b_min="" b_cents="" v extra="" odir="$proj/.maestro/orders" oid
   IFS=: read -r b_steps b_min b_cents <<<"$6"
   [[ -n "$title" ]] || die validation "--title obrigatório" "o título é o contrato em uma linha" 1
   [[ -t 0 ]] && die validation "corpo ausente" "passe objetivo/critérios/Ask-First via stdin (heredoc)" 1
@@ -158,13 +158,8 @@ _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "ste
     extra+="work_project: $wp"$'\n'
   fi
   mkdir -p "$odir" 2>/dev/null || die env "não consigo criar $odir" "cheque permissões" 2
-  shopt -s nullglob
-  for f in "$odir"/[0-9][0-9][0-9]-*.md "$odir"/[0-9][0-9][0-9].md; do
-    n="${f##*/}"; n="${n%%[-.]*}"; n=$((10#$n))
-    (( n >= next )) && next=$(( n + 1 ))
-  done
-  shopt -u nullglob
-  oid=$(printf '%03d' "$next")
+  _order_reserve_lib_load   # ordem 049: o número vem da RESERVA no ledger (árvore + worktrees + branches), não só da árvore
+  oid=$(_order_reserve_next "$proj") || exit $?
   [[ -n "$branch" ]] || branch="order/$oid-$(_order_slug "$title")"
   [[ "$branch" =~ ^[A-Za-z0-9/_-]{1,80}$ ]] || die validation "branch inválido" "" 1
   [[ -n "$frozen" ]]  && extra+="frozen: $frozen"$'\n'
@@ -175,9 +170,18 @@ _order_action_create() { # <proj> <sid> <título> <branch> <frozen> <budget "ste
   _order_create_write "$proj" "$oid" "$title" "$branch" "$frozen" "$extra" "$odoc" "$sid" "$wp"
 }
 
+_order_reserve_lib_load() { # carrega lib/core-order-reserve.sh — uma vez, degradando por comando (I-2)
+  declare -f _order_reserve_next >/dev/null 2>&1 && return 0
+  [[ -f "$REPO_DIR/lib/core-order-reserve.sh" ]] && source "$REPO_DIR/lib/core-order-reserve.sh" && return 0
+  die env "lib/core-order-reserve.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+}
+
 # --------------------------------------------------------------- ação: --list
 _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
-  [[ -d "$2" ]] || { echo "nenhuma ordem em $2 (crie: maestro order --create)"; return 0; }
+  if [[ ! -d "$2" ]]; then   # ordem 049: reserva sem árvore ainda é mostrada
+    echo "nenhuma ordem em $2 (crie: maestro order --create)"
+    _order_reserve_lib_load; _order_reserve_list "$1" "$2"; return 0
+  fi
   local proj="$1" odir="$2" f any=0 iv_now mark id _skip="" _seen=" " _dupe=""
   _intent_lib_load   # ordem 015: _intent_* não é mais residente
   iv_now=$(_intent_version "$(_intent_file "$proj")")
@@ -206,8 +210,12 @@ _order_action_list() { # <proj> <odir> — lista ordens com estado derivado
   done
   shopt -u nullglob
   (( any == 0 )) && echo "nenhuma ordem em $odir"
-  [[ -n "$_dupe" ]] && printf 'ATENÇÃO: id de ordem duplicado — %s (dois arquivos com o mesmo id; renomeie/ajuste um)\n' "$_dupe"
+  _order_reserve_lib_load; _order_reserve_list "$proj" "$odir"   # ordem 049: reservas sem ordem, ativas ou expiradas
   [[ -n "$_skip" ]] && printf '(ignorado(s) em %s sem carimbo de ordem: %s)\n' "$odir" "$_skip"
+  if [[ -n "$_dupe" ]]; then   # ordem 049: colisão detectada depois é ERRO, não aviso
+    printf 'ERRO: id de ordem duplicado — %s (dois arquivos com o mesmo id; renomeie/ajuste um)\n' "$_dupe"
+    return 1
+  fi
   return 0
 }
 
@@ -308,8 +316,12 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
   # erro de bash, com o estado saindo inventado ("aberta"). Degrada com a
   # MESMA linguagem do --list, citando o caminho, rc previsível, nunca stderr
   # de implementação.
-  local odir="$1" oid="$2" of
-  of=$(ls "$odir/$oid"-*.md "$odir/$oid.md" 2>/dev/null | head -1 || true)   # pipefail: glob vazio sai 2
+  local odir="$1" oid="$2" of cands
+  cands=$(ls "$odir/$oid"-*.md "$odir/$oid.md" 2>/dev/null || true)
+  of=$(head -1 <<<"$cands")
+  # ordem 049: dois arquivos com o mesmo id é ERRO — nunca "o primeiro vence" em silêncio
+  (( $(grep -c . <<<"$cands") > 1 )) && die validation "id de ordem duplicado — $oid: $(tr '\n' ' ' <<<"$cands")" \
+    "renomeie/ajuste um dos arquivos (maestro order --list acusa)" 1
   [[ -n "$of" && -f "$of" ]] || die validation "ordem $oid não existe" "maestro order --list" 1
   _order_valid_stamp "$of" || die validation "$of sem carimbo de ordem" \
     "não é uma ordem válida (maestro order --list mostra o que é ordem de verdade)" 1
@@ -355,7 +367,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
 
   case "$action" in
     create) _order_action_create "$proj" "$sid" "$title" "$branch" "$frozen" "$b_steps:$b_min:$b_cents" "$odoc" "$wp"; return 0 ;;
-    list)   _order_action_list "$proj" "$odir"; return 0 ;;
+    list)   _order_action_list "$proj" "$odir"; return $? ;;
   esac
 
   [[ "$oid" =~ ^[0-9]{1,3}$ ]] || die validation "id de ordem inválido" "use o NNN do --list" 1
