@@ -69,7 +69,7 @@ _order_json_prova_frag() { # <proj> <wproj> <arquivo> <id> <estado_derivado> →
   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
     p_estado="valida"; p_arvore="$_ptree"
     p_detalhe=$(printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0' "${_ptree:0:12}" "$((10#$oid))")
-  elif [[ "$st" == "provada" ]]; then
+  elif _order_state_proven "$st"; then   # ordem 050
     # ordem 036 (§5.5): sai da PRÓPRIA derivação, não pergunta a `maestro
     # evidence` — mesmo motivo do texto (lib/cmd-order-status.sh). Efeito
     # colateral NOMEADO (risco #3 do desenho): `prova.estado` de uma ordem
@@ -127,7 +127,11 @@ _order_json_verificacao_frag() { # <wproj> <arquivo> <estado_derivado> → array
 _order_json_acao_frag() { # <proj> <wproj> <arquivo> <estado_derivado> → terminal/suspensa/pede_aceite/motivo — MESMOS casos de _order_show_next
   local proj="$1" wproj="$2" of="$3" st="$4" pede=0 motivo=""
   case "$st" in
-    provada) pede=1; motivo="revisar e aceitar" ;;
+    provada|em_validacao|validada|reprovada)   # ordem 050
+      if [[ "$st" == reprovada ]]; then motivo="reparo: validação reprovada — corrigir, provar e pedir --validate de novo"
+      elif _order_validation_accept_ready "$proj" "$st"; then pede=1; motivo="revisar e aceitar"
+      elif [[ "$st" == provada ]]; then motivo="pedir a validação (maestro order --validate)"
+      else motivo="aguardando o recibo de validação"; fi ;;
     aceita)
       local _mv; _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")
       if [[ -n "$_mv" ]]; then pede=1; motivo="branch andou depois do aceite (reaceite se for o caso)"

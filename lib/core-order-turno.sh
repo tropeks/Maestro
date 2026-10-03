@@ -79,7 +79,7 @@ _turno_proof_gaps() { # <dono> <wproj> <arquivo> → "falta: …" por recibo aus
   st=$(_order_status "$dono" "$wproj" "$of")
   case "$st" in
     aceita|absorvida) return 0 ;;
-    provada) ;;
+    provada|em_validacao|validada|reprovada) ;;   # ordem 050: a validação não entra no critério do turno
     *) _turno_receipt_gap "$wproj" "$(_order_evidence_label "$dono" "$wproj" "$of")" ;;
   esac
   while IFS= read -r line; do

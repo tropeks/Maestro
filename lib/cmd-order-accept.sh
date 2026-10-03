@@ -130,7 +130,7 @@ _order_accept_absorb() { # <proj> <wproj> <odir> <arquivo> <id> <sid> <absorbed_
     m_wproj=$(_order_work_project "$proj" "$m_of")   # ordem 036: a ABSORVENTE pode ter o SEU PRÓPRIO work_project
     m_st=$(_order_status "$proj" "$m_wproj" "$m_of")
     case "$m_st" in
-      provada) abs_tree=$(_order_proof_tree "$proj" "$m_wproj" "$m_of") ;;
+      provada|em_validacao|validada|reprovada) abs_tree=$(_order_proof_tree "$proj" "$m_wproj" "$m_of") ;;   # ordem 050: prova local vale nos 4
       aceita)  abs_tree=$(_order_terminal_field_appended "$proj" "$m_of" accepted_tree) ;;
       *) die validation "ordem $absorbed_by está '$m_st', não 'provada' nem 'aceita'" \
            "a absorvente tem de provar o PRÓPRIO trabalho antes de absorver outra — prove $absorbed_by: maestro evidence --record --label order-$((10#$absorbed_by)) -- <suíte>" 1 ;;
@@ -230,8 +230,11 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> �
     printf 'ordem %s REACEITA — o branch andou depois do aceite anterior (%s), e o conteúdo de agora tem prova própria\n' "$oid" "${_mv% }"
     return 0
   fi
-  [[ "$st" == "provada" ]] || die validation "ordem $oid está '$st', não 'provada'" \
+  _order_state_proven "$st" || die validation "ordem $oid está '$st', não 'provada'" \
     "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
+  # ordem 050: com MAESTRO_ACCEPT_REQUIRE_VALIDATION ligado (e `validation:` no yaml), só `validada` passa.
+  _order_validation_accept_ready "$proj" "$st" || die validation "ordem $oid está '$st' — aceite exige validação verde (validada)" \
+    "$([[ "$st" == reprovada ]] && echo "reparo: corrija, prove no novo tip e peça maestro order --validate $oid de novo" || echo "maestro order --validate $oid e espere o recibo validation-$((10#$oid)) verde")" 1
   _order_intent_gate "$proj" "$of" "$oid" "$reviewed"   # E22 — SEMPRE contra o INTENT do DONO (R3)
   _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
   ptree=$(_order_proof_tree "$proj" "$wproj" "$of")

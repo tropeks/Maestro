@@ -60,7 +60,13 @@ _order_show_context() { # <proj> <wproj> <arquivo> [status] → blocos direção
 _order_show_next() { # <proj> <wproj> <arquivo> <id> <status> <branch> → bloco final ("próximo"/"encerrada")
   local proj="$1" wproj="$2" of="$3" oid="$4" st="$5" br="$6"
   case "$st" in
-    provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
+    provada|em_validacao|validada|reprovada)   # ordem 050
+      if [[ "$st" == reprovada ]]; then
+        echo '  REPARO  : a validação reprovou esta árvore — corrija, prove no novo tip e peça maestro order --validate '"$oid"
+      elif ! _order_validation_accept_ready "$proj" "$st"; then
+        if [[ "$st" == provada ]]; then echo '  próximo : pedir a validação — maestro order --validate '"$oid"
+        else echo "  próximo : aguardar o recibo validation-$((10#$oid)) no ledger (validação em curso)"; fi
+      else echo '  próximo : revisar e aceitar — maestro order --accept '"$oid"; fi ;;
     aceita)   # S-1805: avisa se o branch andou DEPOIS do aceite (compara CAMINHO, não árvore)
       local _at2 _tip2 _mudou=""
       # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
@@ -127,7 +133,7 @@ _order_action_status() { # <proj> <wproj> <arquivo> <id> — imprime o boletim c
     fi
   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
     printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
-  elif [[ "$st" == "provada" ]]; then
+  elif _order_state_proven "$st"; then   # ordem 050: provada e os três estados de validação
     # ordem 036 (§5.5): sai da PRÓPRIA derivação, não pergunta a `maestro
     # evidence` — a pergunta do `evidence` ("a árvore de trabalho DESTE
     # checkout bate?") não é a pergunta da ordem ("o tip do branch bate?"),

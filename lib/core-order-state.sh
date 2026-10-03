@@ -160,6 +160,11 @@ _order_workproject_lib_load() {
 _order_workproject_lib_load
 # ordem 044: árvore sem .maestro/** (core-tree.sh); sem a lib, igualdade exata.
 [[ -f "$REPO_DIR/lib/core-tree.sh" ]] && source "$REPO_DIR/lib/core-tree.sh" || maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
+# ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
+# árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
+if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
+else _order_validation_state() { printf 'provada'; }; _order_state_proven() { [[ "$1" == provada ]]; }
+  _order_validation_accept_ready() { [[ "$2" == provada ]]; }; _order_accept_require_validation() { return 1; }; fi
 # --------------------------------------------------------- estado derivado (dono, wproj)
 _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
   local dono="$1" wproj="$2" f="$3" br cand ev_f ev_w tip_tree dono8=""
@@ -248,10 +253,10 @@ _order_status() { # <dono> <wproj> <arquivo> → status derivado no stdout
     # ledger é o que sobrevive aos dois e distingue: sem recibo, 'aberta'
     # continua certo; com recibo válido, é 'provada' (árvore CONGELADA do
     # recibo, decisão do diretor — não abre estado novo no enum).
-    [[ -n "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
+    [[ -n "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")" ]] && { _order_validation_state "$dono" "$wproj" "$f"; return 0; }
     printf 'aberta'; return 0
   fi
-  [[ -n "$(_order_evidence_match "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
+  [[ -n "$(_order_evidence_match "$dono" "$wproj" "$f")" ]] && { _order_validation_state "$dono" "$wproj" "$f"; return 0; }
   printf 'em_execucao'
   return 0
 }

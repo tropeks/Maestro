@@ -339,6 +339,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --list)    action="list" ;;
       --status)  action="status"; oid="${2:-}"; shift ;;
       --accept)  action="accept"; oid="${2:-}"; shift ;;
+      --validate) action="validate"; oid="${2:-}"; shift ;;   # ordem 050: pede a validação da árvore provada
       --title)   title="${2:-}"; shift ;;
       --branch)  branch="${2:-}"; shift ;;
       --frozen)  frozen="${2:-}"; shift ;;
@@ -353,7 +354,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --session) sid="${2:-}"; shift ;;
       --project) proj="${2:-}"; shift ;;
       *) die validation "flag desconhecida '$1'" \
-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
+           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed] | --validate N" 1 ;;
     esac
     shift
   done
@@ -383,6 +384,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
     status)
       if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$wproj" "$of" "$oid"
       else _order_status_lib_load; _order_action_status "$proj" "$wproj" "$of" "$oid"; fi ;;
+    validate) _order_action_validate "$proj" "$wproj" "$of" "$oid" "$sid" ;;   # ordem 050
     accept)
       _order_accept_lib_load
       if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$wproj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
