@@ -1,5 +1,5 @@
 diff --git a/hooks/lib/common.sh b/hooks/lib/common.sh
-index 737e015..296c0a2 100755
+index 737e015..43647bf 100755
 --- a/hooks/lib/common.sh
 +++ b/hooks/lib/common.sh
 @@ -133,7 +133,7 @@ _maestro_year_month() {
@@ -11,11 +11,21 @@ index 737e015..296c0a2 100755
      *) return 1 ;;
    esac
  }
-@@ -168,6 +168,9 @@ _maestro_set_key_regex() {
-     decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
-     settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
+@@ -159,15 +159,14 @@ _maestro_set_key_regex() {
+     outcome)    _maestro_re='^(accepted|rework|reverted|killed)$' ;;   # E25/S-2501: descartar é desfecho
+     suite)      _maestro_re='^(pass|fail)$' ;;
+     cap)        _maestro_re='^(steps|minutes)$' ;;
+-    n)          _maestro_re='^[0-9]{1,9}$' ;;
+-    flags_n)    _maestro_re='^[0-9]{1,9}$' ;;
+-    approach)   _maestro_re='^(yes|no)$' ;;
++    n|flags_n|n_lacunas) _maestro_re='^[0-9]{1,9}$' ;;   # n_lacunas: ordem 048 (conform)
++    approach|decided|settled) _maestro_re='^(yes|no)$' ;;   # decided/settled: session_end (decision record? desfecho?)
+     from)       _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;   # E19: versão do plugin
+     to)         _maestro_re='^[0-9]+(\.[0-9]+){1,3}$' ;;
+     via)        _maestro_re='^(auto|manual|rollback)$' ;;
+-    decided)    _maestro_re='^(yes|no)$' ;;   # session_end: havia decision record?
+-    settled)    _maestro_re='^(yes|no)$' ;;   # session_end: havia desfecho registrado?
      phase)      _maestro_re='^(planned|started|received|accepted)$' ;;   # E23a: funil de delegação
-+    n_lacunas)  _maestro_re='^[0-9]{1,9}$' ;;   # ordem 048: conform — nº de lacunas
 +    familias)   _maestro_re='^(none|(intent|yaml|frescor|ordens|daemon|claude-md)(,(intent|yaml|frescor|ordens|daemon|claude-md))*)$' ;;
 +    rc)         _maestro_re='^[01]$' ;;   # ordem 048: conform — 0 conforme, 1 com lacunas
      channel)    _maestro_re='^(stable|main)$' ;;   # E23c: canal do auto-update
@@ -87,12 +97,25 @@ index 1c30d69..8b7cabe 100644
    maestro_verif_load
    if [[ ! -f "$ef" || ! -r "$ef" ]]; then
 diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
-index 02b6137..1534bb7 100644
+index 02b6137..1caa253 100644
 --- a/lib/core-order-state.sh
 +++ b/lib/core-order-state.sh
-@@ -336,6 +336,14 @@ _order_verif_areas() { # <wproj> <arquivo> → áreas tocadas pelo branch (uma p
-   maestro_verif_touched "$proj" "$base" "$br"
-   return 0
+@@ -345,7 +345,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
+   br=$(_order_field "$f" branch)
+   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
+   for lb in $labels; do
+-    ef=$(maestro_evidence_file "$proj" "$lb" 2>/dev/null) || ef=""
++    ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
+     if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
+     elif ! grep -q '^exit=0$' "$ef" 2>/dev/null; then st='VENCIDA (a execução falhou)'
+     else
+diff --git a/lib/core-order-terminal.sh b/lib/core-order-terminal.sh
+index e528e88..858fc32 100644
+--- a/lib/core-order-terminal.sh
++++ b/lib/core-order-terminal.sh
+@@ -79,3 +79,11 @@ _order_terminal_field_appended() { # <proj> <arquivo> <chave> → valor de campo
+   fi
+   grep "^$k: " "$f" 2>/dev/null | tail -1 | sed "s/^$k: //"
  }
 +_order_receipt_file() { # <wproj> <rótulo> <id> → arquivo do recibo: `<rótulo>-N` da ORDEM se existe, senão o legado `<rótulo>` (ordem 048)
 +  local n ef=""
@@ -102,18 +125,6 @@ index 02b6137..1534bb7 100644
 +  [[ -n "$ef" && -f "$ef" ]] || ef=$(maestro_evidence_file "$1" "$2" 2>/dev/null) || ef=""
 +  printf '%s' "$ef"
 +}
- _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: estado" por rótulo exigido
-   local proj="$1" f="$2" areas="${3-}" labels lb tip br ef ev_w ev_m st
-   [[ -n "$areas" || $# -ge 3 ]] || areas=$(_order_verif_areas "$proj" "$f")
-@@ -345,7 +353,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
-   br=$(_order_field "$f" branch)
-   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
-   for lb in $labels; do
--    ef=$(maestro_evidence_file "$proj" "$lb" 2>/dev/null) || ef=""
-+    ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
-     if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
-     elif ! grep -q '^exit=0$' "$ef" 2>/dev/null; then st='VENCIDA (a execução falhou)'
-     else
 diff --git a/src/cli.ts b/src/cli.ts
 index 8843183..e0ae491 100644
 --- a/src/cli.ts
