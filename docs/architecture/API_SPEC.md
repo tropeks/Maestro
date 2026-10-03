@@ -380,6 +380,13 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   session-start compila frozen zones de ordens pendentes na política do gate:
   autônomo bloqueia na zona, direto avisa; aceite descongela.
 
+**Emenda ordem 050 — `--validate N`.** Em projeto com `validation:` no `.maestro.yaml`, `maestro order
+--validate N` grava o pedido de validação (fora da árvore) para a árvore provada de uma ordem `provada`
+(→ `em_validacao`; idempotente em `em_validacao`/`validada`; exit 1 em `reprovada`, em ordem não provada e em
+projeto sem `validation:`). Com `MAESTRO_ACCEPT_REQUIRE_VALIDATION` ligado, `--accept` exige `validada`
+(exit 1 com a dica do próximo passo); desligado, comportamento anterior. Estados e recibo `validation-<n>`:
+DATA_MODEL §9, emenda v1.25.
+
 **Emenda E22/S-2202 (2026-09-05) — a ordem cita a direção.** `--create` carimba
 `intent_version:`/`intent_hash:` quando há direção citável (DATA_MODEL §13) e anuncia
 `direção: INTENT vN carimbada na ordem`; sem direção citável cria assim mesmo e imprime

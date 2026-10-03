@@ -1,0 +1,274 @@
+diff --git a/lib/cmd-order-accept.sh b/lib/cmd-order-accept.sh
+index 4c26493..5e35f16 100644
+--- a/lib/cmd-order-accept.sh
++++ b/lib/cmd-order-accept.sh
+@@ -130,7 +130,7 @@ _order_accept_absorb() { # <proj> <wproj> <odir> <arquivo> <id> <sid> <absorbed_
+     m_wproj=$(_order_work_project "$proj" "$m_of")   # ordem 036: a ABSORVENTE pode ter o SEU PRÓPRIO work_project
+     m_st=$(_order_status "$proj" "$m_wproj" "$m_of")
+     case "$m_st" in
+-      provada) abs_tree=$(_order_proof_tree "$proj" "$m_wproj" "$m_of") ;;
++      provada|em_validacao|validada|reprovada) abs_tree=$(_order_proof_tree "$proj" "$m_wproj" "$m_of") ;;   # ordem 050: prova local vale nos 4
+       aceita)  abs_tree=$(_order_terminal_field_appended "$proj" "$m_of" accepted_tree) ;;
+       *) die validation "ordem $absorbed_by está '$m_st', não 'provada' nem 'aceita'" \
+            "a absorvente tem de provar o PRÓPRIO trabalho antes de absorver outra — prove $absorbed_by: maestro evidence --record --label order-$((10#$absorbed_by)) -- <suíte>" 1 ;;
+@@ -230,8 +230,11 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> 
+     printf 'ordem %s REACEITA — o branch andou depois do aceite anterior (%s), e o conteúdo de agora tem prova própria\n' "$oid" "${_mv% }"
+     return 0
+   fi
+-  [[ "$st" == "provada" ]] || die validation "ordem $oid está '$st', não 'provada'" \
++  _order_state_proven "$st" || die validation "ordem $oid está '$st', não 'provada'" \
+     "aceite exige prova mecânica no ledger (evidência verde no tip do branch)" 1
++  # ordem 050: com MAESTRO_ACCEPT_REQUIRE_VALIDATION ligado (e `validation:` no yaml), só `validada` passa.
++  _order_validation_accept_ready "$proj" "$st" || die validation "ordem $oid está '$st' — aceite exige validação verde (validada)" \
++    "$([[ "$st" == reprovada ]] && echo "reparo: corrija, prove no novo tip e peça maestro order --validate $oid de novo" || echo "maestro order --validate $oid e espere o recibo validation-$((10#$oid)) verde")" 1
+   _order_intent_gate "$proj" "$of" "$oid" "$reviewed"   # E22 — SEMPRE contra o INTENT do DONO (R3)
+   _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
+   ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
+diff --git a/lib/cmd-order-json.sh b/lib/cmd-order-json.sh
+index 4dbc11a..d4d2720 100644
+--- a/lib/cmd-order-json.sh
++++ b/lib/cmd-order-json.sh
+@@ -69,7 +69,7 @@ _order_json_prova_frag() { # <proj> <wproj> <arquivo> <id> <estado_derivado> →
+   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
+     p_estado="valida"; p_arvore="$_ptree"
+     p_detalhe=$(printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0' "${_ptree:0:12}" "$((10#$oid))")
+-  elif [[ "$st" == "provada" ]]; then
++  elif _order_state_proven "$st"; then   # ordem 050
+     # ordem 036 (§5.5): sai da PRÓPRIA derivação, não pergunta a `maestro
+     # evidence` — mesmo motivo do texto (lib/cmd-order-status.sh). Efeito
+     # colateral NOMEADO (risco #3 do desenho): `prova.estado` de uma ordem
+@@ -127,7 +127,11 @@ _order_json_verificacao_frag() { # <wproj> <arquivo> <estado_derivado> → array
+ _order_json_acao_frag() { # <proj> <wproj> <arquivo> <estado_derivado> → terminal/suspensa/pede_aceite/motivo — MESMOS casos de _order_show_next
+   local proj="$1" wproj="$2" of="$3" st="$4" pede=0 motivo=""
+   case "$st" in
+-    provada) pede=1; motivo="revisar e aceitar" ;;
++    provada|em_validacao|validada|reprovada)   # ordem 050
++      if [[ "$st" == reprovada ]]; then motivo="reparo: validação reprovada — corrigir, provar e pedir --validate de novo"
++      elif _order_validation_accept_ready "$proj" "$st"; then pede=1; motivo="revisar e aceitar"
++      elif [[ "$st" == provada ]]; then motivo="pedir a validação (maestro order --validate)"
++      else motivo="aguardando o recibo de validação"; fi ;;
+     aceita)
+       local _mv; _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")
+       if [[ -n "$_mv" ]]; then pede=1; motivo="branch andou depois do aceite (reaceite se for o caso)"
+diff --git a/lib/cmd-order-status.sh b/lib/cmd-order-status.sh
+index 1f506af..a9553ca 100644
+--- a/lib/cmd-order-status.sh
++++ b/lib/cmd-order-status.sh
+@@ -60,7 +60,13 @@ _order_show_context() { # <proj> <wproj> <arquivo> [status] → blocos direção
+ _order_show_next() { # <proj> <wproj> <arquivo> <id> <status> <branch> → bloco final ("próximo"/"encerrada")
+   local proj="$1" wproj="$2" of="$3" oid="$4" st="$5" br="$6"
+   case "$st" in
+-    provada) echo '  próximo : revisar e aceitar — maestro order --accept '"$oid" ;;
++    provada|em_validacao|validada|reprovada)   # ordem 050
++      if [[ "$st" == reprovada ]]; then
++        echo '  REPARO  : a validação reprovou esta árvore — corrija, prove no novo tip e peça maestro order --validate '"$oid"
++      elif ! _order_validation_accept_ready "$proj" "$st"; then
++        if [[ "$st" == provada ]]; then echo '  próximo : pedir a validação — maestro order --validate '"$oid"
++        else echo "  próximo : aguardar o recibo validation-$((10#$oid)) no ledger (validação em curso)"; fi
++      else echo '  próximo : revisar e aceitar — maestro order --accept '"$oid"; fi ;;
+     aceita)   # S-1805: avisa se o branch andou DEPOIS do aceite (compara CAMINHO, não árvore)
+       local _at2 _tip2 _mudou=""
+       # ordem 021: registro fora da árvore é a fonte; arquivo conta na migração.
+@@ -127,7 +133,7 @@ _order_action_status() { # <proj> <wproj> <arquivo> <id> — imprime o boletim c
+     fi
+   elif [[ -n "$_ptree" && "$_ptree" != "desconhecida" ]]; then
+     printf 'VÁLIDA na aceitação — árvore %s, recibo order-%s exit 0\n' "${_ptree:0:12}" "$((10#$oid))"
+-  elif [[ "$st" == "provada" ]]; then
++  elif _order_state_proven "$st"; then   # ordem 050: provada e os três estados de validação
+     # ordem 036 (§5.5): sai da PRÓPRIA derivação, não pergunta a `maestro
+     # evidence` — a pergunta do `evidence` ("a árvore de trabalho DESTE
+     # checkout bate?") não é a pergunta da ordem ("o tip do branch bate?"),
+diff --git a/lib/cmd-order.sh b/lib/cmd-order.sh
+index 6a80569..e5fedc1 100644
+--- a/lib/cmd-order.sh
++++ b/lib/cmd-order.sh
+@@ -339,6 +339,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
+       --list)    action="list" ;;
+       --status)  action="status"; oid="${2:-}"; shift ;;
+       --accept)  action="accept"; oid="${2:-}"; shift ;;
++      --validate) action="validate"; oid="${2:-}"; shift ;;   # ordem 050: pede a validação da árvore provada
+       --title)   title="${2:-}"; shift ;;
+       --branch)  branch="${2:-}"; shift ;;
+       --frozen)  frozen="${2:-}"; shift ;;
+@@ -353,7 +354,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
+       --session) sid="${2:-}"; shift ;;
+       --project) proj="${2:-}"; shift ;;
+       *) die validation "flag desconhecida '$1'" \
+-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed]" 1 ;;
++           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed] | --validate N" 1 ;;
+     esac
+     shift
+   done
+@@ -383,6 +384,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
+     status)
+       if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$wproj" "$of" "$oid"
+       else _order_status_lib_load; _order_action_status "$proj" "$wproj" "$of" "$oid"; fi ;;
++    validate) _order_action_validate "$proj" "$wproj" "$of" "$oid" "$sid" ;;   # ordem 050
+     accept)
+       _order_accept_lib_load
+       if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$wproj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
+diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
+index b3bcb6e..047e999 100644
+--- a/lib/core-order-state.sh
++++ b/lib/core-order-state.sh
+@@ -160,6 +160,11 @@ _order_workproject_lib_load() {
+ _order_workproject_lib_load
+ # ordem 044: árvore sem .maestro/** (core-tree.sh); sem a lib, igualdade exata.
+ [[ -f "$REPO_DIR/lib/core-tree.sh" ]] && source "$REPO_DIR/lib/core-tree.sh" || maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
++# ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
++# árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
++if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
++else _order_validation_state() { printf 'provada'; }; _order_state_proven() { [[ "$1" == provada ]]; }
++  _order_validation_accept_ready() { [[ "$2" == provada ]]; }; _order_accept_require_validation() { return 1; }; fi
+ # --------------------------------------------------------- estado derivado (dono, wproj)
+ _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1º candidato provado (S-1802), vazio se nenhum
+   local dono="$1" wproj="$2" f="$3" br cand ev_f ev_w tip_tree dono8=""
+@@ -248,10 +253,10 @@ _order_status() { # <dono> <wproj> <arquivo> → status derivado no stdout
+     # ledger é o que sobrevive aos dois e distingue: sem recibo, 'aberta'
+     # continua certo; com recibo válido, é 'provada' (árvore CONGELADA do
+     # recibo, decisão do diretor — não abre estado novo no enum).
+-    [[ -n "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
++    [[ -n "$(_order_evidence_frozen_tree "$dono" "$wproj" "$f")" ]] && { _order_validation_state "$dono" "$wproj" "$f"; return 0; }
+     printf 'aberta'; return 0
+   fi
+-  [[ -n "$(_order_evidence_match "$dono" "$wproj" "$f")" ]] && { printf 'provada'; return 0; }
++  [[ -n "$(_order_evidence_match "$dono" "$wproj" "$f")" ]] && { _order_validation_state "$dono" "$wproj" "$f"; return 0; }
+   printf 'em_execucao'
+   return 0
+ }
+diff --git a/lib/core-order-turno.sh b/lib/core-order-turno.sh
+index 43dc4bd..4726f28 100644
+--- a/lib/core-order-turno.sh
++++ b/lib/core-order-turno.sh
+@@ -79,7 +79,7 @@ _turno_proof_gaps() { # <dono> <wproj> <arquivo> → "falta: …" por recibo aus
+   st=$(_order_status "$dono" "$wproj" "$of")
+   case "$st" in
+     aceita|absorvida) return 0 ;;
+-    provada) ;;
++    provada|em_validacao|validada|reprovada) ;;   # ordem 050: a validação não entra no critério do turno
+     *) _turno_receipt_gap "$wproj" "$(_order_evidence_label "$dono" "$wproj" "$of")" ;;
+   esac
+   while IFS= read -r line; do
+diff --git a/lib/core-order-validation.sh b/lib/core-order-validation.sh
+new file mode 100644
+index 0000000..439ab7e
+--- /dev/null
++++ b/lib/core-order-validation.sh
+@@ -0,0 +1,117 @@
++#!/usr/bin/env bash
++# maestro lib/core-order-validation.sh — ordem 050 (INTENT v56, "a linha de
++# produção", pontos 1 a 4 da v55): estados de VALIDAÇÃO da ordem e o gate do
++# `--accept`.
++#
++# O desenvolvimento não espera a CI; o que depende da CI é validação. Entre
++# `provada` (recibo local verde no tip) e `aceita` entram três estados,
++# DERIVADOS de recibos por árvore — nunca autodeclarados:
++#
++#   provada       recibo local verde no tip, sem pedido de validação para ele
++#   em_validacao  pedido gravado para ESTA árvore, sem recibo de validação nela
++#   validada      recibo `validation-N` verde NA MESMA árvore do pedido
++#   reprovada     recibo `validation-N` vermelho na mesma árvore: é o sinal de
++#                 REPARO (sem novo tip provado, não anda)
++#
++# Duas coisas moram fora da árvore, no ledger (~/.maestro):
++#   pedido  — `maestro order --validate N` grava `<order-state>/<proj>-NNN.validate`
++#             (schema, id, tree = árvore PROVADA, requested_at/session);
++#   recibo  — `validation-N` no ledger de evidência do projeto do TRABALHO
++#             (mesmo formato maestro-evidence-v1: exit= e wtree_after=),
++#             gravado pelo runner, nunca por esta ordem.
++# Árvore mudou depois (novo tip) → pedido e recibo deixam de casar com a árvore
++# provada e a ordem volta a `provada` (mesma regra do recibo local, ordem 044:
++# `maestro_tree_same`). Novo tip com recibo local verde ⇒ `provada` de novo.
++#
++# OPT-IN por projeto: sem chave `validation:` no `.maestro.yaml` do DONO nada
++# disto deriva e a ordem segue `provada → aceita` (byte a byte). O GATE do
++# aceite é outro interruptor, MAESTRO_ACCEPT_REQUIRE_VALIDATION (env >
++# `accept_require_validation:` do yaml > desligado — mesma precedência da
++# ordem 041): desligado, `--accept` passa de qualquer estado provado, como hoje.
++#
++# Sourced por lib/core-order-state.sh (NA HORA: `_order_status` consulta o
++# derivado em toda leitura). Convenção do núcleo: `dono` (R3, pedido/flag/yaml)
++# e `wproj` (R1/R2, git/recibo) chegam por parâmetro posicional, nessa ordem.
++
++_order_validation_enabled() { # <dono> → rc 0 se o .maestro.yaml do DONO declara `validation:`
++  [[ -f "$1/.maestro.yaml" ]] && grep -q '^validation:' "$1/.maestro.yaml" 2>/dev/null
++}
++_order_accept_require_validation() { # <dono> → rc 0 se o gate está LIGADO e o projeto declara `validation:`
++  local proj="$1" v yline
++  if [[ -n "${MAESTRO_ACCEPT_REQUIRE_VALIDATION+x}" ]]; then
++    v="$MAESTRO_ACCEPT_REQUIRE_VALIDATION"
++  elif [[ -f "$proj/.maestro.yaml" ]]; then
++    yline=$(awk '/^accept_require_validation:/ { sub(/^accept_require_validation:[ \t]*/, ""); sub(/[ \t]*#.*$/, ""); print; exit }' \
++      "$proj/.maestro.yaml" 2>/dev/null) || yline=""
++    v="$yline"
++  else
++    v=""
++  fi
++  case "${v,,}" in
++    1 | true | yes | on) _order_validation_enabled "$proj" ;;   # projeto sem `validation:` mantém provada → aceita
++    *) return 1 ;;
++  esac
++}
++_order_validation_request_file() { # <dono> <id> → caminho do pedido (registro fora da árvore)
++  printf '%s.validate' "$(maestro_order_state_file "$1" "$2")"
++}
++_order_validation_receipt_file() { # <wproj> <id> → caminho do recibo `validation-N` no ledger
++  local n; n=$(_order_num "${2:-}") || return 0
++  maestro_evidence_file "$1" "validation-$n" 2>/dev/null || :
++}
++_order_validation_state() { # <dono> <wproj> <arquivo> → provada|em_validacao|validada|reprovada (chamado SÓ com a prova local já verde)
++  local dono="$1" wproj="$2" f="$3" oid rq rtree ptree rf ev_w
++  _order_validation_enabled "$dono" || { printf 'provada'; return 0; }
++  oid=$(_order_field "$f" id)
++  rq=$(_order_validation_request_file "$dono" "$oid")
++  [[ -f "$rq" ]] || { printf 'provada'; return 0; }
++  rtree=$(_order_state_field "$rq" tree)
++  ptree=$(_order_proof_tree "$dono" "$wproj" "$f")
++  # pedido de OUTRA árvore (o tip andou) não vale: volta a provada
++  [[ -n "$rtree" && -n "$ptree" ]] && maestro_tree_same "$wproj" "$rtree" "$ptree" || { printf 'provada'; return 0; }
++  rf=$(_order_validation_receipt_file "$wproj" "$oid")
++  [[ -n "$rf" && -f "$rf" ]] || { printf 'em_validacao'; return 0; }
++  ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$rf" 2>/dev/null)
++  [[ -n "$ev_w" ]] && maestro_tree_same "$wproj" "$ev_w" "$ptree" || { printf 'em_validacao'; return 0; }   # recibo de outra árvore não vale
++  if grep -q '^exit=0$' "$rf" 2>/dev/null; then printf 'validada'; else printf 'reprovada'; fi
++}
++_order_state_proven() { # <estado> → rc 0 se o estado carrega a prova LOCAL verde no tip (provada e os três de validação)
++  case "$1" in provada | em_validacao | validada | reprovada) return 0 ;; *) return 1 ;; esac
++}
++_order_validation_accept_ready() { # <dono> <estado> → rc 0 se o `--accept` passa deste estado (gate desligado = como hoje)
++  case "$2" in
++    validada) return 0 ;;
++    provada | em_validacao | reprovada) ! _order_accept_require_validation "$1" ;;
++    *) return 1 ;;
++  esac
++}
++_order_action_validate() { # <dono> <wproj> <arquivo> <id> <sid> — grava o PEDIDO de validação para a árvore provada
++  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" st ptree rq tmp
++  _order_validation_enabled "$proj" \
++    || die validation "projeto sem 'validation:' no .maestro.yaml — não há o que validar" \
++         "declare a chave validation: no .maestro.yaml do projeto dono (ordem 050)" 1
++  st=$(_order_status "$proj" "$wproj" "$of")
++  case "$st" in
++    provada) ;;
++    em_validacao) printf 'ordem %s já está em validação — aguarda o recibo validation-%s no ledger\n' "$oid" "$((10#$oid))"; return 0 ;;
++    validada) printf 'ordem %s já está validada neste tip\n' "$oid"; return 0 ;;
++    reprovada)
++      die validation "ordem $oid está 'reprovada' neste tip — é REPARO, não pedido novo" \
++        "corrija, prove no novo tip (maestro evidence --record --label order-$((10#$oid)) -- <suíte>) e peça --validate de novo" 1 ;;
++    *) die validation "ordem $oid está '$st', não 'provada'" \
++         "validação exige a prova local verde no tip do branch" 1 ;;
++  esac
++  ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
++  [[ -n "$ptree" && "$ptree" != "desconhecida" ]] || die validation "ordem $oid não tem árvore provada legível" "" 1
++  rq=$(_order_validation_request_file "$proj" "$oid")
++  mkdir -p "${rq%/*}" 2>/dev/null || die env "não consigo criar ${rq%/*}" "cheque permissões" 2
++  tmp="$rq.tmp.$$"
++  { printf 'schema=maestro-order-validation-request-v1\n'
++    printf 'id=%s\ntree=%s\nrequested_at=%s\nrequested_session=%s\n' \
++      "$((10#$oid))" "$ptree" "$(date -Iseconds)" "${sid:-desconhecido}"
++  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$rq" 2>/dev/null \
++    || { rm -f "$tmp" 2>/dev/null; die env "ordem $oid: falha ao gravar o pedido de validação (~/.maestro/order-state)" "rode --validate de novo" 2; }
++  log_event order_validate ${sid:+session_id="$sid"} n="$((10#$oid))"
++  printf 'ordem %s: validação PEDIDA — árvore %s; em_validacao até o recibo validation-%s (verde = validada, vermelho = reprovada)\n' \
++    "$oid" "${ptree:0:12}" "$((10#$oid))"
++}

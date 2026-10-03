@@ -1666,6 +1666,33 @@ fazem parte de `tests/run-all.sh` (que isola `MAESTRO_HOME` de propósito; este 
 ledger REAL, só leitura, nunca escreve).
 `# classification: public` (a ordem é conteúdo do repo do usuário).
 
+#### Emenda v1.25 (ordem 050) — estados de validação entre `provada` e `aceita`
+
+INTENT v56 (a linha de produção; v55 pontos 1-4): o desenvolvimento não espera a CI; o que
+depende da CI é validação. `estado` ganha `em_validacao`, `validada` e `reprovada`, **sempre
+derivados de recibos por árvore, nunca autodeclarados**, e só em projeto que declara a chave
+`validation:` no `.maestro.yaml` do DONO (opt-in; sem a chave, `provada → aceita` como antes):
+
+- `provada` = recibo local verde no tip (inalterado) e **nenhum pedido de validação para essa árvore**.
+- **Pedido** (`maestro order --validate N`): registro fora da árvore `~/.maestro/order-state/<proj>-NNN.validate`
+  (`schema=maestro-order-validation-request-v1`, `id`, `tree` = árvore PROVADA, `requested_at`, `requested_session`).
+- `em_validacao` = pedido cuja `tree` é a árvore provada atual, sem recibo de validação nela.
+- **Recibo de validação** = recibo do ledger (§8) de rótulo `validation-<n>` (mesmo formato; gravado pelo
+  runner, nunca pelo executor). `exit=0` na MESMA árvore do pedido → `validada`; `exit≠0` → `reprovada`.
+- Árvore mudou depois (novo tip) → pedido e recibo deixam de casar (`maestro_tree_same`, ordem 044) e a ordem
+  volta a `provada` (com recibo local no novo tip) ou `em_execucao` (sem). `reprovada` sem novo tip provado é o
+  sinal de **reparo**; `--validate` sobre `reprovada` recusa (exit 1).
+- **Gate do aceite**: `MAESTRO_ACCEPT_REQUIRE_VALIDATION` (env > `accept_require_validation:` do yaml > desligado,
+  mesma precedência da ordem 041). Ligado e com `validation:` no projeto, `--accept` só passa de `validada`;
+  desligado, passa de qualquer estado com prova local, como antes (golden idêntico). `--absorbed-by` aceita
+  absorvente em qualquer dos quatro estados com prova local.
+- O critério de fim do turno de desenvolvimento (ordem 046) continua sendo o recibo local no tip; validação não entra.
+- `order --list`/`--status`/`--status --json`/`conform` conhecem os estados: `--json` `estado` ganha os três
+  valores; `pede_aceite:true` só quando `--accept` passaria hoje.
+
+Prova: `tests/cli/test-order-050-validacao.sh` — mesmo padrão PENDENTE/reprova-de-verdade: sem
+`docs/patches/050-estados-de-validacao.patch` aplicado, PENDENTE; com ele, cobra de verdade.
+
 ### 10. Auto-update — `~/.maestro/config.yaml` · `update-state` · `update-snoozed` (E19)
 
 Config **por máquina** (não por projeto — atualizar o plugin é decisão de quem opera o
