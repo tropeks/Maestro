@@ -76,8 +76,8 @@ recibos anteriores da 050 foram gravados com a catraca vermelha e estão **VENCI
    saída exata do guard e o comando que o disparou. **Não contorne** (nada de `git apply` por fora, de
    escrever o arquivo por outro caminho nem de `MAESTRO_OFF`). Se houver conflito inesperado, também
    PARE e relate com a lista dos arquivos em conflito.
-2. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4b2a0c8`
-   ou o que o Capitão tiver por cima) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
+2. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD`: o sha **muda com o rebase** e
+   o que vale é o conteúdo do patch do Capitão, já conferido no passo 1) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
    por vez**, sozinha neste worktree).
 3. Confirme `maestro habits` **antes** das corridas: `oversized-file` 13 e `oversized-function` 6, iguais
    ao baseline (a régua não sobe). Se ainda houver slop acima do baseline, PARE e relate — não grave
