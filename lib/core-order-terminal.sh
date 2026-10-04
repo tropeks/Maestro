@@ -102,3 +102,27 @@ _order_moved_since_accept() { # <dono> <wproj> <arquivo> → caminhos mudados de
   git -C "$wproj" diff --name-only "$at" "$tip" 2>/dev/null \
     | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ' || true
 }
+
+# --- campos e carimbo do cabeçalho (ordem 056; movidos de core-order-state.sh, comportamento idêntico) ---
+# Janela = cabeçalho, 20 linhas. Puros e SEM fork: o Stop de turno chama estes dois dezenas de vezes.
+_order_field() { # <arquivo> <chave> → valor do campo, ou vazio
+  # Ordem 056: bash puro, zero fork (era um awk por chamada; o Stop de turno chamava 18×).
+  # Mesma semântica do awk -F': ': janela de 20 linhas, 1º campo igual à chave, saída com \n.
+  local line n=0 k="$2"
+  [[ -r "$1" ]] || return 0
+  while (( n < 20 )) && IFS= read -r line; do
+    n=$((n + 1))
+    [[ "$line" == "$k: "* ]] && { printf '%s\n' "${line:${#k}+2}"; return 0; }
+  done < "$1"
+  return 0
+}
+_order_valid_stamp() { # <arquivo> → rc 0 se carimbo de ordem válido (issue #13: nem todo .md é ordem)
+  local line n=0 hdr=0 idok=0
+  [[ -r "$1" ]] || return 1
+  while (( n < 20 )) && IFS= read -r line; do
+    n=$((n + 1))
+    [[ "$line" == "<!-- maestro-order v1"* ]] && hdr=1
+    [[ "$line" =~ ^id:\ [0-9]{1,3}(:\ .*)?$ ]] && idok=1
+  done < "$1"
+  (( hdr && idok ))
+}
