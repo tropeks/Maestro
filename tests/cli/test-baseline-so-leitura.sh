@@ -35,11 +35,35 @@ cat > "$tmp/bin/ssh" <<'STUB'
 #!/usr/bin/env bash
 cmd="${*: -1}"
 printf '%s\n' "$cmd" >> "$STUB_LOG"
-printf '0.50 0.40 0.30 1/200 999\n8\nMemTotal: 16384000 kB\nMemAvailable: 8192000 kB\n1\n0\n'
+printf ' 10:00:00 up 1 day,  3 users,  load average: 0,50, 0,40, 0,30\n8\n'
+printf '               total       usada       livre    compart.  buff/cache  disponível\n'
+printf 'Mem.:          16000        4000        8000         100        4000        8000\n'
+printf 'actions.runner.x.service loaded active running GitHub Actions Runner\n---\n1\n'
 STUB
-chmod +x "$tmp/bin/ssh"
-export STUB_LOG="$tmp/ssh.log"; : > "$STUB_LOG"
+# gh falso: só aceita "pr list" e "run list"; qualquer outra coisa = veneno (rc 9 e registro)
+cat > "$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+case "$1 $2" in
+  "pr list")  echo '[{"number":1,"mergedAt":"2026-01-01T10:10:00Z","headRefOid":"abc"}]' ;;
+  "run list") echo '[{"headSha":"abc","updatedAt":"2026-01-01T10:00:00Z"}]' ;;
+  *) exit 9 ;;
+esac
+STUB
+chmod +x "$tmp/bin/ssh" "$tmp/bin/gh"
+export STUB_LOG="$tmp/ssh.log" GH_LOG="$tmp/gh.log"; : > "$STUB_LOG"; : > "$GH_LOG"
 export PATH="$tmp/bin:$PATH" MAESTRO_BASELINE_LAB_SSH="lab-fake"
+
+# banco da Ponte de fixture (aberto pelo painel só em modo read-only)
+export MAESTRO_PONTE_DB="$tmp/home/ponte.db"
+PN=$(basename "$P")
+sqlite3 "$MAESTRO_PONTE_DB" "
+  CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT);
+  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);
+  INSERT INTO manager_run VALUES('r1','$PN','order/001-x','2026-01-01T00:00:00Z'),('r2','$PN','order/001-x','2026-01-02T00:00:00Z');
+  INSERT INTO decision VALUES('permission','$PN','order/001-x','Bash','2026-01-01T01:00:00Z'),
+    ('permission','$PN','order/001-x','Bash','2026-01-01T02:00:00Z'),('permission','$PN','order/001-x','Edit','2026-01-02T01:00:00Z'),
+    ('question','$PN','order/001-x',NULL,'2026-01-02T01:00:00Z');"
 
 snap() { # hash de tudo que não pode mudar: repo (com .git), ledger, runner
   ( cd "$tmp" && find proj home bin -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64 )
@@ -63,8 +87,32 @@ jq -e '.metricas[3].turnos==1 and .metricas[3].permissoes==1' <<<"$j" >/dev/null
 jq -e '.selecao|test("1 encontrado")' <<<"$w" >/dev/null && ok "--since/--next seleciona os aceites" || bad "janela de aceites errada"
 
 # o runner só recebe comandos de leitura
-if [[ -s "$STUB_LOG" ]] && ! grep -Eq '(^|[ ;|&])(rm|mv|cp|kill|systemctl|tee|dd|chmod|chown|sed -i|>)' "$STUB_LOG" \
-   && ! grep -q '>' "$STUB_LOG"; then ok "ssh só com comandos de leitura"; else bad "comando não-leitura no runner: $(cat "$STUB_LOG")"; fi
+fora=$(tr ';|' '\n\n' < "$STUB_LOG" | sed 's/^ *//;s/ *$//' | grep -Ev '^(uptime|nproc|free -m|systemctl list-units --no-legend --type=service|grep -i runner|echo ---|pgrep -fc "\[R\]unner.Worker"|true)?$')
+if [[ -s "$STUB_LOG" && -z "$fora" ]] && ! grep -Eq 'sudo|>|systemctl (start|stop|restart|enable|disable|kill)' "$STUB_LOG"; then
+  ok "ssh só com a lista fechada de leitura"; else bad "comando fora da lista no runner: $fora"; fi
+
+# decisão 1: sem MAESTRO_BASELINE_LAB_SSH o host é lab-ci
+: > "$STUB_LOG"; env -u MAESTRO_BASELINE_LAB_SSH bash "$TOOL" --project "$P" --format json >/dev/null 2>&1
+grep -q . "$STUB_LOG" && ok "host padrão lab-ci (ssh invocado sem a variável)" || bad "ssh não invocado sem a variável"
+
+# decisão 2: gh só "pr list" e "run list"
+[[ -s "$GH_LOG" ]] && ! grep -Evq '^(pr list|run list) ' "$GH_LOG" && ok "gh só com pr list e run list" || bad "gh fora da lista: $(cat "$GH_LOG")"
+jq -e '.metricas[1].status=="ok" and .metricas[1].mediana_s==600' <<<"$j" >/dev/null && ok "métrica 2: CI verde→merge = 600 s" || bad "métrica 2 errada: $(jq -c '.metricas[1]' <<<"$j")"
+
+# decisão 3: permissões da Ponte por run e por projeto
+jq -e '.metricas[3].ponte.status=="ok" and (.metricas[3].ponte.permissoes_por_run|map({(.run):.n})|add)=={"r1":2,"r2":1}
+       and .metricas[3].ponte.permissoes_por_projeto[0].n==3 and (.metricas[3].ponte.quais[0]|.alvo=="Bash" and .n==2)' <<<"$j" >/dev/null \
+  && ok "métrica 4: permissões da Ponte por run (2,1), por projeto (3) e quais" || bad "métrica 4 Ponte errada: $(jq -c '.metricas[3].ponte' <<<"$j")"
+
+# decisão 4: ordem legada (id<=32) sem carimbo fica numa linha própria, fora da mediana
+jq -e '.metricas[0].legadas_sem_carimbo=={quantidade:0,ids:[]} and .metricas[0].mediana_parada_em_pronta_s==1000' <<<"$j" >/dev/null \
+  && ok "legadas: nenhuma na fixture, mediana só das com carimbo" || bad "legadas/mediana: $(jq -c '.metricas[0]|{legadas_sem_carimbo,mediana_parada_em_pronta_s}' <<<"$j")"
+printf 'schema=maestro-evidence-v1\nlabel=order-2\nepoch=1700000000\nexit=0\n' > "$MAESTRO_HOME/evidence/$KEY-order-2"
+printf '<!-- maestro-order v1\nid: 002\nts: x\nepoch: 1690000000\n-->\n# o\n' > "$P/.maestro/orders/002-y.md"
+j3=$(bash "$TOOL" --project "$P" --format json 2>/dev/null)
+jq -e '.metricas[0].legadas_sem_carimbo=={quantidade:1,ids:[2]} and .metricas[0].mediana_parada_em_pronta_s==1000 and .metricas[0].mediana_n==1' <<<"$j3" >/dev/null \
+  && ok "legada 002 sem carimbo: listada à parte e fora da mediana" || bad "legada vazou na mediana: $(jq -c '.metricas[0]|{legadas_sem_carimbo,mediana_parada_em_pronta_s,mediana_n}' <<<"$j3")"
+rm -f "$MAESTRO_HOME/evidence/$KEY-order-2" "$P/.maestro/orders/002-y.md"
 
 # controle negativo: o detector enxerga uma escrita
 echo x >> "$P/a"

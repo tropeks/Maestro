@@ -1,7 +1,7 @@
 {
   "schema": "maestro-baseline-v1",
-  "gerado_em": "2026-10-03T22:34:45-0300",
-  "epoch": 1791077685,
+  "gerado_em": "2026-10-03T23:03:56-0300",
+  "epoch": 1791079436,
   "projeto": "Maestro",
   "selecao": "todas",
   "metricas": [
@@ -17,7 +17,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1829919
+          "parada_em_pronta_s": 1831670,
+          "legada_sem_carimbo": true
         },
         {
           "id": 2,
@@ -27,7 +28,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1827680
+          "parada_em_pronta_s": 1829431,
+          "legada_sem_carimbo": true
         },
         {
           "id": 3,
@@ -37,7 +39,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 4,
@@ -47,7 +50,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1681764
+          "parada_em_pronta_s": 1683515,
+          "legada_sem_carimbo": true
         },
         {
           "id": 5,
@@ -57,7 +61,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 6,
@@ -67,7 +72,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 7,
@@ -77,7 +83,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 8,
@@ -87,7 +94,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 9,
@@ -97,7 +105,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1585429
+          "parada_em_pronta_s": 1587180,
+          "legada_sem_carimbo": true
         },
         {
           "id": 10,
@@ -107,7 +116,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1577946
+          "parada_em_pronta_s": 1579697,
+          "legada_sem_carimbo": true
         },
         {
           "id": 11,
@@ -117,7 +127,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 12,
@@ -127,7 +138,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 13,
@@ -137,7 +149,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 14,
@@ -147,7 +160,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 15,
@@ -157,7 +171,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1495349
+          "parada_em_pronta_s": 1497100,
+          "legada_sem_carimbo": true
         },
         {
           "id": 16,
@@ -167,7 +182,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1435528
+          "parada_em_pronta_s": 1437279,
+          "legada_sem_carimbo": true
         },
         {
           "id": 17,
@@ -177,7 +193,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1434777
+          "parada_em_pronta_s": 1436528,
+          "legada_sem_carimbo": true
         },
         {
           "id": 18,
@@ -187,7 +204,8 @@
           "aceita": 1789811802,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 29245
+          "parada_em_pronta_s": 29245,
+          "legada_sem_carimbo": false
         },
         {
           "id": 19,
@@ -197,7 +215,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 20,
@@ -207,7 +226,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1313568
+          "parada_em_pronta_s": 1315319,
+          "legada_sem_carimbo": true
         },
         {
           "id": 21,
@@ -217,7 +237,8 @@
           "aceita": 1789746601,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 2327
+          "parada_em_pronta_s": 2327,
+          "legada_sem_carimbo": false
         },
         {
           "id": 22,
@@ -227,7 +248,8 @@
           "aceita": 1789752215,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 2851
+          "parada_em_pronta_s": 2851,
+          "legada_sem_carimbo": false
         },
         {
           "id": 23,
@@ -237,7 +259,8 @@
           "aceita": 1789811802,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 28118
+          "parada_em_pronta_s": 28118,
+          "legada_sem_carimbo": false
         },
         {
           "id": 24,
@@ -247,7 +270,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 25,
@@ -257,7 +281,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1265150
+          "parada_em_pronta_s": 1266901,
+          "legada_sem_carimbo": true
         },
         {
           "id": 26,
@@ -267,7 +292,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1290074
+          "parada_em_pronta_s": 1291825,
+          "legada_sem_carimbo": true
         },
         {
           "id": 27,
@@ -277,7 +303,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1289064
+          "parada_em_pronta_s": 1290815,
+          "legada_sem_carimbo": true
         },
         {
           "id": 28,
@@ -287,7 +314,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 29,
@@ -297,7 +325,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 30,
@@ -307,7 +336,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 31,
@@ -317,7 +347,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true
         },
         {
           "id": 32,
@@ -327,7 +358,8 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1198168
+          "parada_em_pronta_s": 1199919,
+          "legada_sem_carimbo": true
         },
         {
           "id": 33,
@@ -337,7 +369,8 @@
           "aceita": 1789962153,
           "idade_aberta_s": 22,
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": false
         },
         {
           "id": 34,
@@ -347,7 +380,8 @@
           "aceita": 1789921681,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 149
+          "parada_em_pronta_s": 149,
+          "legada_sem_carimbo": false
         },
         {
           "id": 35,
@@ -357,7 +391,8 @@
           "aceita": 1789932043,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 3274
+          "parada_em_pronta_s": 3274,
+          "legada_sem_carimbo": false
         },
         {
           "id": 36,
@@ -367,7 +402,8 @@
           "aceita": 1789962152,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 173
+          "parada_em_pronta_s": 173,
+          "legada_sem_carimbo": false
         },
         {
           "id": 37,
@@ -377,7 +413,8 @@
           "aceita": 1789953243,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 88
+          "parada_em_pronta_s": 88,
+          "legada_sem_carimbo": false
         },
         {
           "id": 38,
@@ -387,7 +424,8 @@
           "aceita": 1789963676,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 65
+          "parada_em_pronta_s": 65,
+          "legada_sem_carimbo": false
         },
         {
           "id": 39,
@@ -397,7 +435,8 @@
           "aceita": 1790075611,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 136
+          "parada_em_pronta_s": 136,
+          "legada_sem_carimbo": false
         },
         {
           "id": 40,
@@ -407,7 +446,8 @@
           "aceita": 1790077443,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 79
+          "parada_em_pronta_s": 79,
+          "legada_sem_carimbo": false
         },
         {
           "id": 41,
@@ -417,7 +457,8 @@
           "aceita": 1790093230,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 694
+          "parada_em_pronta_s": 694,
+          "legada_sem_carimbo": false
         },
         {
           "id": 42,
@@ -427,7 +468,8 @@
           "aceita": 1790420871,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 976
+          "parada_em_pronta_s": 976,
+          "legada_sem_carimbo": false
         },
         {
           "id": 43,
@@ -437,7 +479,8 @@
           "aceita": 1790425008,
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 960
+          "parada_em_pronta_s": 960,
+          "legada_sem_carimbo": false
         },
         {
           "id": 44,
@@ -447,7 +490,8 @@
           "aceita": 1790940283,
           "idade_aberta_s": 2539,
           "idade_execucao_s": 1173,
-          "parada_em_pronta_s": 1122
+          "parada_em_pronta_s": 1122,
+          "legada_sem_carimbo": false
         },
         {
           "id": 45,
@@ -457,7 +501,8 @@
           "aceita": 1790952616,
           "idade_aberta_s": 3559,
           "idade_execucao_s": 8324,
-          "parada_em_pronta_s": 4002
+          "parada_em_pronta_s": 4002,
+          "legada_sem_carimbo": false
         },
         {
           "id": 46,
@@ -467,7 +512,8 @@
           "aceita": 1790951306,
           "idade_aberta_s": 56,
           "idade_execucao_s": 6821,
-          "parada_em_pronta_s": 971
+          "parada_em_pronta_s": 971,
+          "legada_sem_carimbo": false
         },
         {
           "id": 47,
@@ -477,7 +523,8 @@
           "aceita": 1790960186,
           "idade_aberta_s": 534,
           "idade_execucao_s": 13387,
-          "parada_em_pronta_s": 31
+          "parada_em_pronta_s": 31,
+          "legada_sem_carimbo": false
         },
         {
           "id": 48,
@@ -487,7 +534,8 @@
           "aceita": 1791036780,
           "idade_aberta_s": 26,
           "idade_execucao_s": 41480,
-          "parada_em_pronta_s": 2127
+          "parada_em_pronta_s": 2127,
+          "legada_sem_carimbo": false
         },
         {
           "id": 49,
@@ -497,7 +545,8 @@
           "aceita": 1791052897,
           "idade_aberta_s": 11819,
           "idade_execucao_s": 2283,
-          "parada_em_pronta_s": "sem fonte"
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": false
         },
         {
           "id": 54,
@@ -507,7 +556,8 @@
           "aceita": 1791049160,
           "idade_aberta_s": 1938,
           "idade_execucao_s": 1087,
-          "parada_em_pronta_s": 334
+          "parada_em_pronta_s": 334,
+          "legada_sem_carimbo": false
         },
         {
           "id": 55,
@@ -517,27 +567,66 @@
           "aceita": 1791067760,
           "idade_aberta_s": 7132,
           "idade_execucao_s": 1182,
-          "parada_em_pronta_s": 53
+          "parada_em_pronta_s": 53,
+          "legada_sem_carimbo": false
         },
         {
           "id": 58,
           "aberta": 1791074033,
-          "execucao": "sem fonte",
-          "provada": "sem fonte",
+          "execucao": 1791077696,
+          "provada": 1791078848,
           "aceita": "sem fonte",
-          "idade_aberta_s": "sem fonte",
-          "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": "sem fonte"
+          "idade_aberta_s": 3663,
+          "idade_execucao_s": 1152,
+          "parada_em_pronta_s": 588,
+          "legada_sem_carimbo": false
         }
       ],
+      "legadas_sem_carimbo": {
+        "quantidade": 28,
+        "ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          19,
+          20,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ]
+      },
+      "mediana_n": 22,
+      "mediana_parada_em_pronta_s": 827,
       "status": "ok"
     },
     {
       "id": 2,
       "nome": "tempo da CI verde até o merge",
-      "status": "sem fonte",
-      "motivo": "nenhum registro local do instante de CI verde (consultar o GitHub é rede; fora do contrato)",
-      "valor": "sem fonte"
+      "status": "ok",
+      "prs": 27,
+      "mediana_s": 1239,
+      "max_s": 43190,
+      "fonte": "gh pr list + gh run list (só leitura)"
     },
     {
       "id": 3,
@@ -598,14 +687,94 @@
           "n": 1
         }
       ],
-      "nota": "turno = sessão com decision registrada para o projeto"
+      "nota": "turno = sessão com decision registrada para o projeto",
+      "ponte": {
+        "fonte": "ponte.db (sqlite3 -readonly, mode=ro)",
+        "status": "ok",
+        "runs": 10,
+        "permissoes_por_run": [
+          {
+            "run": "01M416TEHZC9T7R25327NRP7D9",
+            "projeto": "maestro",
+            "n": 0
+          },
+          {
+            "run": "01M418WG6Q4AE31R4FR205KKP5",
+            "projeto": "maestro",
+            "n": 12
+          },
+          {
+            "run": "01M41PP0KST7E1AA1AWCC950SV",
+            "projeto": "maestro",
+            "n": 20
+          },
+          {
+            "run": "01M41XY73JG0HKRT6N9YJEFE95",
+            "projeto": "maestro",
+            "n": 7
+          },
+          {
+            "run": "01M423TTMTKKT9MTXMMHYTBFH3",
+            "projeto": "maestro",
+            "n": 8
+          },
+          {
+            "run": "01M424N3RN8YB7Q8SKVSQ4EX77",
+            "projeto": "maestro",
+            "n": 4
+          },
+          {
+            "run": "01M4258SHX1M5YMHYKB2GDHNWM",
+            "projeto": "maestro",
+            "n": 46
+          },
+          {
+            "run": "01M427CP0H89WRQVAAR31PWNPF",
+            "projeto": "maestro",
+            "n": 6
+          },
+          {
+            "run": "01M428CNMJ78PNKZ9JGG9B07YG",
+            "projeto": "maestro",
+            "n": 18
+          },
+          {
+            "run": "01M42A03N4WVGNGCB6831605SW",
+            "projeto": "maestro",
+            "n": 22
+          }
+        ],
+        "permissoes_por_projeto": [
+          {
+            "projeto": "maestro",
+            "n": 143
+          }
+        ],
+        "quais": [
+          {
+            "alvo": "Bash",
+            "n": 138
+          },
+          {
+            "alvo": "Monitor",
+            "n": 5
+          }
+        ]
+      }
     },
     {
       "id": 5,
       "nome": "CPU, memória e fila de runner (lab-ci)",
-      "status": "sem fonte",
-      "valor": "sem fonte",
-      "motivo": "MAESTRO_BASELINE_LAB_SSH ausente ou lab-ci inalcançável"
+      "status": "ok",
+      "host": "lab-ci",
+      "load1m_x100": 30,
+      "ncpu": 8,
+      "mem_total_mb": 32101,
+      "mem_disponivel_mb": 29103,
+      "runners_ativos": 0,
+      "jobs_em_execucao": 0,
+      "jobs_na_fila": "sem fonte",
+      "nota": "jobs em execução = pgrep Runner.Worker; a fila é do GitHub e não é lida (só gh run list e gh pr list)"
     },
     {
       "id": 6,

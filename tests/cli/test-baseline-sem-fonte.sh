@@ -12,6 +12,10 @@ bad() { printf 'FAIL %s\n' "$1"; fail=1; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 export MAESTRO_HOME="$tmp/home"; mkdir -p "$MAESTRO_HOME"
 unset MAESTRO_BASELINE_LAB_SSH
+# ssh, gh e banco da Ponte indisponíveis: fontes externas falham, nunca estimadas
+mkdir -p "$tmp/bin"
+printf '#!/usr/bin/env bash\nexit 255\n' > "$tmp/bin/ssh"; cp "$tmp/bin/ssh" "$tmp/bin/gh"; chmod +x "$tmp/bin/ssh" "$tmp/bin/gh"
+export PATH="$tmp/bin:$PATH" MAESTRO_PONTE_DB="$tmp/nao-existe.db"
 P="$tmp/proj"; mkdir -p "$P"
 git -C "$P" init -q -b main; git -C "$P" config user.email t@t; git -C "$P" config user.name t
 echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
@@ -19,7 +23,7 @@ echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
 j=$(bash "$TOOL" --project "$P" --format json 2>/dev/null)
 jq -e '.metricas|length==6' <<<"$j" >/dev/null && ok "seis métricas presentes" || bad "esperava 6 métricas"
 
-for i in 0 1 3 4; do
+for i in 0 1 3 4; do # 1, 2 (gh falhou), 4 (sem routing nem Ponte), 5 (ssh falhou)
   jq -e ".metricas[$i].status==\"sem fonte\"" <<<"$j" >/dev/null && ok "métrica $((i+1)): status sem fonte" \
     || bad "métrica $((i+1)) deveria ser sem fonte: $(jq -c ".metricas[$i]" <<<"$j")"
 done
