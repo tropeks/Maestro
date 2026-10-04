@@ -95,12 +95,28 @@ executor não reabre nenhuma delas sem prova nova.
 valendo: subir o teto (proibido por esta decisão) e o conserto em arquivo autoprotegido (UM patch em
 `docs/patches/056-*.patch`).
 
+## Turno de recibos
+
+O Capitão aplicou o patch da 056 em `4a322f1` (tip do branch, árvore limpa). Este turno **só grava a
+prova**, no tip com o patch aplicado:
+
+1. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4a322f1`
+   ou o que o Capitão tiver por cima) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
+   por vez**, sozinha neste worktree).
+2. Grave, **um de cada vez e em sequência** (cada um roda a suíte completa):
+   `maestro evidence --record --label order-56 -- bash tests/run-all.sh`, depois `--label suite-56`,
+   depois `--label suite` (rótulo legado, até a frota girar). Use o `bin/maestro` do worktree.
+3. `maestro habits` na catraca (nenhum oversized acima do baseline; a régua não sobe).
+4. `maestro order --status 56` diz **VÁLIDA** no tip.
+5. Se a suíte reprovar por **teste quebrado pelo patch**, **não conserte**: cole a saída exata do FAIL e
+   relate (causa e o que o teste esperava). Código e patch não mudam neste turno.
+
 ## Turno
 
-- fatia: medir o `turno-check` por fase, achar o custo e propor o contrato do 124 (item 1 e a proposta do item 3)
-- fim: medição por fase colada e a escolha (a) ou (b) pedida ao Diretor; depois testes vermelho antes e verde depois e `bash tests/run-all.sh` sai 0
-- teto: 4
-- fora: subir o timeout sozinho, decidir o contrato do 124 sem o Diretor, aplicar o patch e tocar vendor/
+- fatia: gravar os recibos no tip com o patch aplicado
+- fim: suite completa sozinha com SUITE OK, recibos order-56, suite-56 e suite gravados, habits na catraca, `maestro order --status 56` VÁLIDA
+- teto: 2
+- fora: mudar código, salvo teste quebrado pelo patch, que vira relato; aplicar patch; tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **Revisão de subagente:** termina em ARQUIVO em `~/.maestro/briefs/` — o relato cita o caminho, não cola o achado. Arquivo se escreve **só com Write e Edit**: heredoc, `tee` e redirecionamento no Bash são barrados pelo guard (ordem 047).
