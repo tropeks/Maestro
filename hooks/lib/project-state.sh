@@ -40,7 +40,19 @@ maestro_graph_state() { # <raiz-do-projeto>
 # e sem colisão entre projetos homônimos. ÚNICA definição — session-start e
 # bin/maestro derivam por aqui; divergência quebraria o ponteiro da injeção.
 # ---------------------------------------------------------------------------
+# Ordem 056: memo opt-in. Quem chama muitas vezes na MESMA raiz (o `order --turno-check`
+# resolvia a chave ~8× — cd -P, git rev-parse no worktree e o $(...) de cada chamador,
+# ~200 ms) escreve a chave UMA vez com maestro_brief_prime, no shell principal; as
+# chamadas seguintes (inclusive dentro de $(...)) leem o memo sem fork. Sem prime, nada muda.
+declare -gA _MAESTRO_BRIEF_MEMO=()
+maestro_brief_prime() { # <raiz-do-projeto> — grava a chave no memo (chamar fora de $(...))
+  local r="${1:-$PWD}" v
+  unset "_MAESTRO_BRIEF_MEMO[$r]"
+  v=$(maestro_brief_file "$r") && _MAESTRO_BRIEF_MEMO[$r]="$v"
+  return 0
+}
 maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
+  [[ -n "${_MAESTRO_BRIEF_MEMO[${1:-$PWD}]+x}" ]] && { printf '%s' "${_MAESTRO_BRIEF_MEMO[${1:-$PWD}]}"; return 0; }
   # Hash djb2 em bash puro: isto roda DENTRO do session-start (NFR <100ms) e
   # cada fork custa ~7ms nesta classe de máquina — sha256sum+tr+head eram 4.
   # Não é hash criptográfico e não precisa ser: é chave de arquivo, e a única

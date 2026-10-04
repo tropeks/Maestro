@@ -71,6 +71,7 @@ const EVENTS = [
   "verify", // E23b — verificações obrigatórias por área
   "route_fix", // ordem 030 — correção de rota
   "turno_teto", // ordem 046 — teto de bloqueios do Stop de turno
+  "turno_timeout", // ordem 056 — o check do Stop estourou o teto de tempo (rc 124)
   "conform", // ordem 042/048 — maestro conform --check
 ] as const;
 

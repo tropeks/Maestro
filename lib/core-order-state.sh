@@ -38,15 +38,25 @@
 
 # ---------------------------------------------- carimbo e campos (puro; janela = cabeçalho, 20 linhas)
 _order_field() { # <arquivo> <chave> → valor do campo, ou vazio
-  awk -F': ' -v k="$2" 'NR>20 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null
+  # Ordem 056: bash puro, zero fork (era um awk por chamada; o Stop de turno chamava 18×).
+  # Mesma semântica do awk -F': ': janela de 20 linhas, 1º campo igual à chave, saída com \n.
+  local line n=0 k="$2"
+  [[ -r "$1" ]] || return 0
+  while (( n < 20 )) && IFS= read -r line; do
+    n=$((n + 1))
+    [[ "$line" == "$k: "* ]] && { printf '%s\n' "${line:${#k}+2}"; return 0; }
+  done < "$1"
+  return 0
 }
 _order_valid_stamp() { # <arquivo> → rc 0 se carimbo de ordem válido (issue #13: nem todo .md é ordem)
-  awk -F': ' '
-    NR>20 { exit }
-    $0 ~ /^<!-- maestro-order v1/ { hdr=1 }
-    $1 == "id" && $2 ~ /^[0-9]{1,3}$/ { idok=1 }
-    END { exit !(hdr && idok) }
-  ' "$1" 2>/dev/null
+  local line n=0 hdr=0 idok=0
+  [[ -r "$1" ]] || return 1
+  while (( n < 20 )) && IFS= read -r line; do
+    n=$((n + 1))
+    [[ "$line" == "<!-- maestro-order v1"* ]] && hdr=1
+    [[ "$line" =~ ^id:\ [0-9]{1,3}(:\ .*)?$ ]] && idok=1
+  done < "$1"
+  (( hdr && idok ))
 }
 _order_num() { # <string> → "$((10#string))" em decimal, ou vazio (rc 1) se não for 1-9 dígitos
   # ordem 037: causa-raiz do bug reproduzido pelo Capitão — arquivo sem

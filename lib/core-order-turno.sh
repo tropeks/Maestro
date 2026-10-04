@@ -28,16 +28,23 @@ _turno_value() { # <arquivo> <rótulo> → valor do rótulo dentro de `## Turno`
 }
 
 _turno_missing() { # <arquivo> → rótulos ausentes/vazios/inválidos, um por linha (teto precisa ser inteiro ≥ 1)
-  local l v
-  for l in $TURNO_LABELS; do
-    v=$(_turno_value "$1" "$l")
-    [[ -n "$v" ]] || { printf '%s\n' "$l"; continue; }
-    [[ "$l" != "teto" || "$v" =~ ^[1-9][0-9]*$ ]] || printf '%s\n' "$l"
-  done
+  # Uma passada só (ordem 056): eram 5 awk, um por rótulo, no caminho do Stop de turno.
+  awk -v labels="$TURNO_LABELS" '
+    BEGIN { n = split(labels, L, " ") }
+    /^## Turno[[:space:]]*$/ { f = 1; next }
+    /^## /                   { f = 0 }
+    f { s = $0; sub(/^[[:space:]]*-?[[:space:]]*/, "", s)
+        for (i = 1; i <= n; i++)
+          if (!(L[i] in v) && index(s, L[i] ":") == 1) { x = substr(s, length(L[i]) + 2); sub(/^[[:space:]]+/, "", x); v[L[i]] = x } }
+    END { for (i = 1; i <= n; i++) {
+            x = v[L[i]]
+            if (x == "" || substr(x, 1, 1) == "<") { print L[i]; continue }
+            if (L[i] == "teto" && x !~ /^[1-9][0-9]*$/) print L[i] } }' "$1" 2>/dev/null
 }
 
 _turno_has_block() { # <arquivo> → rc 0 se fatia, fim, teto e fora estão válidos (o relatório é outra lacuna)
-  ! _turno_missing "$1" | grep -qE '^(fatia|fim|teto|fora)$'
+  local m; m=$(_turno_missing "$1")
+  [[ ! "$m" =~ (^|$'\n')(fatia|fim|teto|fora)($|$'\n') ]]
 }
 
 _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não traz `## Turno`
@@ -50,15 +57,29 @@ _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não t
 }
 
 _turno_report_missing() { # <relatório.txt> → rótulos do relatório fixo ausentes, um por linha
-  local f="$1" l
+  local txt l re nl=$'\n' q='"'   # ordem 056: uma leitura, sem grep por rótulo; a aspa cobre o 1º rótulo colado ao JSON da linha
+  txt=$(cat "$1" 2>/dev/null) || txt=""
+  shopt -s nocasematch
   for l in $TURNO_REPORT_LABELS; do
-    grep -qiE "^[[:space:]]*[-*]*[[:space:]]*\**${l}\**[[:space:]]*:" "$f" 2>/dev/null || printf '%s\n' "$l"
+    re="(^|[${nl}${q}])[[:space:]]*[-*]*[[:space:]]*\\**${l}\\**[[:space:]]*:"
+    [[ "$txt" =~ $re ]] || printf '%s\n' "$l"
   done
+  shopt -u nocasematch
 }
 
 _turno_find_order() { # <proj> <branch> → arquivo da ordem cujo branch: é o dado, vazio se nenhuma
-  local f
+  # Ordem 056: o branch carrega o NNN da ordem (order/NNN-slug). Olhar primeiro os
+  # arquivos desse NNN evita validar o carimbo das N ordens do projeto (2 awk cada,
+  # ~600 ms com 51 ordens); a varredura completa fica de reserva (branch sem NNN, ou
+  # arquivo cujo branch: aponta para outro lugar).
+  local f n=""
+  [[ "$2" =~ /([0-9]{3})- ]] && n="${BASH_REMATCH[1]}"
   shopt -s nullglob
+  if [[ -n "$n" ]]; then
+    for f in "$1"/.maestro/orders/"$n"-*.md; do
+      _order_valid_stamp "$f" && [[ "$(_order_field "$f" branch)" == "$2" ]] && { printf '%s' "$f"; shopt -u nullglob; return 0; }
+    done
+  fi
   for f in "$1"/.maestro/orders/*.md; do
     _order_valid_stamp "$f" && [[ "$(_order_field "$f" branch)" == "$2" ]] && { printf '%s' "$f"; break; }
   done
@@ -117,6 +138,7 @@ _order_turno_check() { # <proj> <sid> <relatório.txt|""> → rc 0 libera (stdou
   _turno_has_block "$of" || return 0   # ordem antiga/sem bloco: lacuna do conform, nunca trava o Stop
   oid=$(_order_field "$of" id)
   wproj=$(_order_work_project "$proj" "$of")
+  maestro_brief_prime "$proj"; [[ "$wproj" == "$proj" ]] || maestro_brief_prime "$wproj"   # ordem 056: a chave do ledger, uma vez
   gaps=$(_turno_proof_gaps "$proj" "$wproj" "$of")
   if [[ -z "$gaps" ]]; then rm -f "$(_turno_count_file "$sid" "$oid")" 2>/dev/null; return 0; fi
   [[ -n "$rf" && -r "$rf" ]] && rep=$(_turno_report_missing "$rf")

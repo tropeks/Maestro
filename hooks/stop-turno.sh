@@ -12,7 +12,16 @@
 #   caminho COMUM (sem ordem em curso, ou ordem sem bloco `## Turno`): <50 ms,
 #     bash puro, ZERO fork — HEAD lido do .git por `read`, ordem achada por glob;
 #   Stop de turno (ordem em curso COM bloco): roda uma vez por turno e pode gastar
-#     até 2 s — é o teto do `timeout` que cerca a chamada ao CLI.
+#     até TURNO_TIMEOUT_S — é o teto do `timeout` que cerca a chamada ao CLI.
+#     Medido na ordem 056 (worktree com 51 ordens, load 9-10 em 8 CPUs, mediana de
+#     amostras do `order --turno-check`): ANTES ~1,7 s (busca da ordem ~600 ms, status
+#     ~200 ms, verificação por área ~400 ms, 18 awk de _order_field, chave do ledger
+#     resolvida ~8×); DEPOIS ~490 ms. A 046 mediu 708 ms no projeto de teste pequeno.
+#     O teto NÃO sobe (decisão do Diretor): o conserto é cortar o custo, não esticar o
+#     prazo.
+#   Timeout (rc 124) deixou de ser silêncio (ordem 056, contrato (a) do Diretor): o hook
+#     confere LOCALMENTE os 5 rótulos do relatório, sem chamar o CLI; faltou rótulo,
+#     bloqueia com a lista; os 5 presentes, libera. Evento turno_timeout (só metadados).
 #
 # Por que hook PRÓPRIO e não o gate-report.sh: ele sai cedo fora do herdr
 # (HERDR_ENV) e já está no teto de 400 linhas (oversized-file); o Stop de turno
@@ -21,6 +30,7 @@
 # REGRAS: sempre exit 0 (a Prioridade 1 vence a 3: o hook nunca prende o
 # gerente); qualquer falha libera; a ÚNICA saída em stdout é o JSON de block;
 # teto de bloqueios por ordem/sessão vive no CLI (_turno_gate, máx. 3).
+TURNO_TIMEOUT_S=2   # teto do `timeout` que cerca o CLI; orçamento e medição no cabeçalho
 exec 3>&1
 exec 1>&2
 
@@ -69,11 +79,29 @@ trap 'rm -f "$rf"' EXIT
 printf '%s' "${last//\\n/$'\n'}" > "$rf"
 bin="${CLAUDE_PLUGIN_ROOT:-$HERE/..}/bin/maestro"
 [[ -x "$bin" ]] || exit 0
-out=$(timeout 2 "$bin" order --turno-check --project "$proj" --session "$sid" --report-file "$rf" 2>/dev/null)
+out=$(timeout "$TURNO_TIMEOUT_S" "$bin" order --turno-check --project "$proj" --session "$sid" --report-file "$rf" 2>/dev/null)
 rc=$?
-(( rc == 1 )) || exit 0          # 0 libera; 124 (timeout) e qualquer outro erro liberam também
-[[ -n "$out" ]] || exit 0
-reason="maestro: o turno desta ordem não tem recibo válido no tip. ${out}"
+if (( rc == 124 )); then
+  # O CLI estourou o teto: nada de liberar calado. Checagem barata e local — os 5 rótulos
+  # do relatório fixo na última mensagem. Qualquer falha desta checagem libera (Prioridade 1).
+  source "$HERE/../lib/core-order-turno.sh" 2>/dev/null || TURNO_REPORT_LABELS="feito provado aberto decisão próximo"
+  source "$HERE/lib/common.sh" 2>/dev/null && log_event turno_timeout session_id="$sid" n="$((10#$n))" 2>/dev/null
+  [[ -n "$last" ]] || exit 0                       # sem mensagem legível: não há o que conferir
+  txt=$(<"$rf") || exit 0   # o 1º rótulo vem colado ao `"text":"` do JSON da linha: a classe aceita a aspa
+  missing=""; nl=$'\n'; q='"'
+  shopt -s nocasematch
+  for l in $TURNO_REPORT_LABELS; do
+    re="(^|[${nl}${q}])[[:space:]]*[-*]*[[:space:]]*\\**${l}\\**[[:space:]]*:"
+    [[ "$txt" =~ $re ]] || missing+="${missing:+ }$l"
+  done
+  shopt -u nocasematch
+  [[ -n "$missing" ]] || exit 0
+  reason="maestro: o check do turno estourou ${TURNO_TIMEOUT_S} s (turno_timeout) e o relatório não tem os rótulos: ${missing}. Escreva feito:/provado:/aberto:/decisão:/próximo: e termine de novo."
+else
+  (( rc == 1 )) || exit 0          # 0 libera; qualquer outro erro libera também
+  [[ -n "$out" ]] || exit 0
+  reason="maestro: o turno desta ordem não tem recibo válido no tip. ${out}"
+fi
 reason="${reason//\\/\\\\}"; reason="${reason//\"/\\\"}"; reason="${reason//$'\n'/\\n}"
 printf '{"decision":"block","reason":"%s"}\n' "$reason" >&3
 exit 0
