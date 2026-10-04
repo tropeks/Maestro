@@ -109,8 +109,8 @@ prova**, no tip com o patch aplicado:
    saída exata do guard e o comando que o disparou. **Não contorne** (nada de `git apply` por fora, de
    escrever o arquivo por outro caminho nem de `MAESTRO_OFF`). Se houver conflito inesperado, também
    PARE e relate com a lista dos arquivos em conflito.
-2. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4a322f1`
-   ou o que o Capitão tiver por cima) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
+2. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD`: o sha **muda com o rebase** e
+   o que vale é o conteúdo do patch do Capitão, já conferido no passo 1) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
    por vez**, sozinha neste worktree).
 3. Grave, **um de cada vez e em sequência** (cada um roda a suíte completa):
    `maestro evidence --record --label order-56 -- bash tests/run-all.sh`, depois `--label suite-56`,
