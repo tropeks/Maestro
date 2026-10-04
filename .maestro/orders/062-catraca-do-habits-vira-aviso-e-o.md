@@ -70,14 +70,36 @@ roda a suíte completa três vezes (`order-N`, `suite-N`, `suite`: ~42 min) para
 4. **Compatível:** nenhum recibo existente (`suite`, `suite-N`, `order-N`) deixa de ser lido; só deixa de ser
    **exigido** onde o aceite não o pede.
 
+### C. O esqueleto do Turno traz a regra de log e escrita
+
+Acréscimo do Capitão em 04/10, depois do rebase sobre `1cf3f16`. **Motivo:** a ordem **082 do daemon** só
+aprova **leitura sem pedir** dentro da pasta temporária do próprio run; log de suíte jogado em `/tmp` solto
+volta a gerar pedido de permissão (o ruído que a métrica 4 da 058 mede).
+
+1. `_order_turno_skeleton` (`lib/core-order-turno.sh`, hoje 8 linhas) passa a emitir, **depois** dos cinco
+   rótulos, uma linha citada (blockquote, não rótulo, para o `conform` e o Stop de turno não a confundirem
+   com campo do Turno) com esta regra, em português, exatamente neste conteúdo:
+   `> **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run,
+   /tmp/claude-<uid>/<cwd codificado>, nunca /tmp solto; escrita só com Edit ou Write.`
+   (`<uid>` e `<cwd codificado>` ficam literais no esqueleto: quem escreve a ordem os conhece; o codificado
+   é o caminho do diretório de trabalho com `/` trocado por `-`, como as pastas de `/tmp/claude-<uid>/`).
+2. **Só o esqueleto muda.** Ordens já escritas não são tocadas; o `conform --check` segue exigindo os mesmos
+   cinco rótulos e não acusa a linha nova; `order --create` com corpo que já traz `## Turno` não duplica nada.
+3. **Teste que falha antes:** `tests/cli/test-order-062-esqueleto-regra.sh` roda `order --create` num
+   projeto de fixture e afirma que a ordem criada contém a linha da regra (a de `/tmp/claude-<uid>` e a de
+   Edit/Write), que os cinco rótulos continuam preenchíveis e que `conform --check` não acusa a linha.
+   **Vermelho hoje** (o esqueleto não a traz), saída colada; verde depois. O teste do esqueleto da 046
+   (`tests/cli/test-order-046-turno.sh`) continua verde ou é ajustado e listado.
+4. **Vai no MESMO patch protegido** de A e B (`docs/patches/062-*.patch`): um `git apply` só do Capitão.
+
 ## Ask-First
 
 - Se o aceite ou o `doctor` lerem a catraca de um jeito que o aviso quebre (rc/estado esperado), PARE e
   reporte onde antes de seguir.
 - Se tirar o bloqueio exigir mudar o **formato** do baseline (`.maestro-habits.tsv`), PARE (DATA_MODEL).
 - Item B.3 é decisão do Diretor, como acima. O restante de B (ordens sem área) pode seguir.
-- **Toca `lib/`, autoprotegida** (`lib/cmd-habits.sh` e, se o esqueleto do `order --create` mudar,
-  `lib/cmd-order.sh`): a entrega é UM patch em `docs/patches/062-*.patch`, feito em clone sandbox FORA do
+- **Toca `lib/`, autoprotegida** (`lib/cmd-habits.sh`, `lib/core-order-turno.sh` para a regra de log do
+  esqueleto e, se o esqueleto do `order --create` também mudar, `lib/cmd-order.sh`): a entrega é UM patch em `docs/patches/062-*.patch`, feito em clone sandbox FORA do
   repo, testado antes e depois, aplicado pelo Capitão com um `git apply`. `tests/`, `docs/` e
   `.github/` vão direto no branch.
 
@@ -85,7 +107,8 @@ roda a suíte completa três vezes (`order-N`, `suite-N`, `suite`: ~42 min) para
 
 Teste e ajustes de testes em `tests/`, emendas em `docs/` e `.github/` direto no branch; `lib/` em **UM patch
 protegido**. Emendas no mesmo changeset: API_SPEC (`habits`: aviso e rc; recibos exigidos pelo aceite),
-ENGINEERING_SPEC (a catraca é aviso; o turno de recibos grava `order-N`), o comentário de cabeçalho de
+ENGINEERING_SPEC (a catraca é aviso; o turno de recibos grava `order-N`; o esqueleto do Turno traz a regra de
+log na pasta do run), o comentário de cabeçalho de
 `.maestro-habits.tsv` e o CHANGELOG (Changed).
 
 ## Prova exigida
@@ -99,8 +122,8 @@ ENGINEERING_SPEC (a catraca é aviso; o turno de recibos grava `order-N`), o com
 
 ## Turno
 
-- fatia: o teste vermelho da catraca como aviso, o conserto em `lib/cmd-habits.sh` no sandbox e o mapa de onde o aceite pede `suite`
-- fim: `bash tests/cli/test-order-062-catraca-aviso.sh` sai 1 antes (colado) e 0 depois; `bash tests/run-all.sh` completa no sandbox com o patch aplicado sai 0; patch protegido pronto e `git apply --check` ok no worktree
+- fatia: os testes vermelhos (catraca como aviso e regra de log no esqueleto do Turno), o conserto em `lib/cmd-habits.sh` e `lib/core-order-turno.sh` no sandbox e o mapa de onde o aceite pede `suite`
+- fim: `bash tests/cli/test-order-062-catraca-aviso.sh` e `bash tests/cli/test-order-062-esqueleto-regra.sh` saem 1 antes (colado) e 0 depois; `bash tests/run-all.sh` completa no sandbox com o patch aplicado sai 0; patch protegido pronto e `git apply --check` ok no worktree
 - teto: 4
 - fora: implementar o item B.3 sem a escolha do Diretor; mudar o formato do baseline; remover o sensor ou o baseline; aplicar o patch e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
