@@ -89,3 +89,16 @@ _order_receipt_label() { # <wproj> <rótulo> <id> → `<rótulo>-N` se o recibo 
 _order_receipt_file() { # <wproj> <rótulo> <id> → arquivo do recibo da ordem (suite-N) ou o legado
   maestro_evidence_file "$1" "$(_order_receipt_label "$@")" 2>/dev/null || :
 }
+_order_moved_since_accept() { # <dono> <wproj> <arquivo> → caminhos mudados desde o aceite (S-1806; vazio = não andou)
+  local dono="$1" wproj="$2" f="$3" at tip br
+  br=$(_order_field "$f" branch)
+  # ordem 021: accepted_tree pode só existir no registro fora da árvore, se
+  # um checkout restaurou o arquivo depois do --accept — mesma precedência de
+  # _order_status. accepted_tree é R3 (dono); o tip comparado é R1 (wproj).
+  at=$(_order_terminal_field_appended "$dono" "$f" accepted_tree) || true
+  [[ -n "$at" && "$at" != "desconhecida" ]] || return 0
+  tip=$(git -C "$wproj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null || true)
+  [[ -n "$tip" && "$at" != "$tip" ]] || return 0
+  git -C "$wproj" diff --name-only "$at" "$tip" 2>/dev/null \
+    | grep -v '^\.maestro/orders/' | head -3 | tr '\n' ' ' || true
+}

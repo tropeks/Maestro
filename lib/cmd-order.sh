@@ -338,8 +338,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --create)  action="create" ;;
       --list)    action="list" ;;
       --status)  action="status"; oid="${2:-}"; shift ;;
-      --accept)  action="accept"; oid="${2:-}"; shift ;;
-      --validate) action="validate"; oid="${2:-}"; shift ;;   # ordem 050: pede a validação da árvore provada
+      --accept|--validate) action="${1#--}"; oid="${2:-}"; shift ;;   # ordem 050: --validate pede a validação da árvore provada
       --title)   title="${2:-}"; shift ;;
       --branch)  branch="${2:-}"; shift ;;
       --frozen)  frozen="${2:-}"; shift ;;
@@ -358,8 +357,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
     esac
     shift
   done
-  [[ -n "$action" ]] || action="list"
-  local odir="$proj/.maestro/orders"
+  [[ -n "$action" ]] || action="list"; local odir="$proj/.maestro/orders"
 
   # shellcheck source=hooks/lib/common.sh
   source "$REPO_DIR/hooks/lib/common.sh"
