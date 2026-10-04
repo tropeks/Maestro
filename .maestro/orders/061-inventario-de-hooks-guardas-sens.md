@@ -121,3 +121,7 @@ sandbox, nunca contra projeto real.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`), com a v59 item 4 do spock como autorização — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 061` (você não fecha a própria ordem).
+accepted_at: 2026-10-04T15:14:35-03:00
+accepted_session: desconhecido
+accepted_tree: af77040e2186e9f9cea04bb130a1892dfb5244c6
+accepted_intent: 6
