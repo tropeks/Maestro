@@ -32,8 +32,10 @@ export PATH="$tmp/bin:$PATH" MAESTRO_BASELINE_LAB_SSH=lab-fake MAESTRO_BASELINE_
 export MAESTRO_HOME="$tmp/home"
 mkdir -p "$MAESTRO_HOME"/{order-state,evidence,logs}; : > "$MAESTRO_HOME/logs/routing.jsonl"
 export MAESTRO_PONTE_DB="$tmp/ponte.db"
-sqlite3 "$MAESTRO_PONTE_DB" "CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT);
-  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);"
+sqlite3 "$MAESTRO_PONTE_DB" "CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, state TEXT, created_at TEXT);
+  CREATE TABLE decision(kind TEXT, origin TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);
+  CREATE TABLE manager_event(event_id TEXT, type TEXT, project TEXT, order_ref TEXT, run_id TEXT, created_at TEXT);
+  CREATE TABLE director_inbox(seq INTEGER, created_at TEXT, ref_kind TEXT, ref_id TEXT, state TEXT);"
 P="$tmp/proj"; mkdir -p "$P/.maestro/orders"
 git -C "$P" init -q -b main; git -C "$P" config user.email t@t; git -C "$P" config user.name t
 echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
@@ -55,7 +57,7 @@ run --project "$P" --format json
 [[ $rc -eq 3 ]] && ok "ledger ilegível: exit 3" || bad "ledger ilegível deu rc=$rc"
 grep -q 'ledger' <<<"$err" && grep -q 'order-state' <<<"$err" && ok "stderr nomeia o ledger" || bad "stderr: $err"
 jq -e '.metricas[0].status=="FALHA" and (.metricas[0].falhas[0].fonte|test("ledger"))' <<<"$j" >/dev/null && ok "métrica 1 marcada FALHA no painel parcial" || bad "painel: $(jq -c '.metricas[0]' <<<"$j")"
-jq -e '.metricas|length==6' <<<"$j" >/dev/null && ok "painel parcial ainda tem as seis métricas" || bad "painel parcial truncado"
+jq -e '.metricas|length==9' <<<"$j" >/dev/null && ok "painel parcial ainda tem as nove métricas" || bad "painel parcial truncado"
 rm -f "$MAESTRO_HOME/order-state"; mkdir -p "$MAESTRO_HOME/order-state"
 
 # --- routing.jsonl ausente

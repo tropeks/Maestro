@@ -18,7 +18,7 @@ for n in alfa beta; do
   echo a > "$tmp/repos/$n/a"; git -C "$tmp/repos/$n" add -A; git -C "$tmp/repos/$n" commit -qm base
   k=$(source "$REPO/hooks/lib/project-state.sh"; b=$(maestro_brief_file "$tmp/repos/$n"); b="${b##*/}"; echo "${b%.md}")
   printf 'schema=maestro-order-state-v1\nid=1\noutcome=aceita\naccepted_at=2026-10-05T10:00:00-03:00\n' > "$MAESTRO_HOME/order-state/$k-001"
-  printf 'schema=maestro-evidence-v1\nlabel=order-1\nepoch=1791200000\nexit=0\n' > "$MAESTRO_HOME/evidence/$k-order-1"
+  printf 'schema=maestro-evidence-v1\nlabel=order-1\nepoch=1791200000\nexit=0\nregravacoes=0\ntokens=1\n' > "$MAESTRO_HOME/evidence/$k-order-1"
 done
 # gh simulado: registra cwd e argumentos; só aceita pr list e run list
 cat > "$tmp/bin/gh" <<'STUB'
@@ -35,8 +35,10 @@ chmod +x "$tmp/bin/gh" "$tmp/bin/ssh"
 export GH_LOG="$tmp/gh.log"; : > "$GH_LOG"
 export PATH="$tmp/bin:$PATH" MAESTRO_BASELINE_LAB_SSH=lab-fake
 export MAESTRO_PONTE_DB="$tmp/ponte.db"
-sqlite3 "$MAESTRO_PONTE_DB" "CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT);
-  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);"
+sqlite3 "$MAESTRO_PONTE_DB" "CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, state TEXT, created_at TEXT);
+  CREATE TABLE decision(kind TEXT, origin TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);
+  CREATE TABLE manager_event(event_id TEXT, type TEXT, project TEXT, order_ref TEXT, run_id TEXT, created_at TEXT);
+  CREATE TABLE director_inbox(seq INTEGER, created_at TEXT, ref_kind TEXT, ref_id TEXT, state TEXT);"
 
 j=$(bash "$TOOL" --all --format json 2>"$tmp/err"); rc=$?
 [[ $rc -eq 0 ]] && ok "--all com dois repos resolvidos: exit 0" || bad "rc=$rc err=$(cat "$tmp/err")"

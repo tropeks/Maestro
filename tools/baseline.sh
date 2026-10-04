@@ -10,6 +10,9 @@
 #   FALHA     a fonte esperada não existe, não abre ou estourou o timeout: a fonte e o motivo
 #             vão a stderr, o painel parcial ainda sai e o exit é 3 (o 2 é uso inválido).
 # Nunca se estima. Campo sem fonte POR CONSTRUÇÃO dentro de uma métrica ok segue "sem fonte".
+# Métricas: 1 idade/parada em pronta · 2 CI→merge · 3 rebases · 4 permissões (por janela) · 5 lab-ci ·
+#   6 timeouts · 7 ações do Capitão · 8 retrabalho · 9 custo por ordem (7 a 9: lib/baseline-novas.sh;
+#   contagens e inteiros, nunca tempo do Capitão).
 #
 # Uso: tools/baseline.sh --project <dir> [--format md|json] [--out ARQ]
 #                        [--since EPOCH --next N]   # só os N próximos aceites após EPOCH
@@ -242,24 +245,27 @@ fi
 # ---- métrica 4 (complemento): permissões da Ponte, banco aberto em modo read-only ----------
 PDB="${MAESTRO_PONTE_DB:-$HOME/.ponte/ponte.db}"
 pf=""; [[ $all -eq 0 ]] && pf="AND r.project = '${pname,,}'"; pf="${pf//[^a-zA-Z0-9_ =\'.-]/}"
+# permissões cortadas pela janela da v59: o lado é o do instante em que o RUN foi criado
 PONTE_SQL="
   WITH runs AS (
     SELECT run_id, project, order_ref, created_at,
+           CASE WHEN CAST(strftime('%s', created_at) AS INTEGER) <= $CORTE THEN 'antes' ELSE 'depois' END AS lado,
            LEAD(created_at) OVER (PARTITION BY project, order_ref ORDER BY created_at) AS prox
     FROM manager_run r WHERE 1=1 $pf),
   perm AS (
-    SELECT r.run_id, r.project, d.tool_name
+    SELECT r.run_id, r.project, r.lado, d.tool_name
     FROM runs r JOIN decision d ON d.kind='permission' AND d.project=r.project AND d.order_ref=r.order_ref
       AND d.created_at >= r.created_at AND (r.prox IS NULL OR d.created_at < r.prox))
-  SELECT 'run' AS tipo, run_id AS chave, project, count(perm.run_id) AS n FROM runs LEFT JOIN perm USING(run_id, project) GROUP BY run_id
-  UNION ALL SELECT 'projeto', project, project, count(*) FROM perm GROUP BY project
-  UNION ALL SELECT 'ferramenta', coalesce(tool_name,'?'), '', count(*) FROM perm GROUP BY tool_name"
+  SELECT 'run' AS tipo, run_id AS chave, project, lado, count(perm.run_id) AS n FROM runs LEFT JOIN perm USING(run_id, project, lado) GROUP BY run_id
+  UNION ALL SELECT 'projeto', project, project, lado, count(*) FROM perm GROUP BY project, lado
+  UNION ALL SELECT 'ferramenta', coalesce(tool_name,'?'), '', lado, count(*) FROM perm GROUP BY tool_name, lado"
 PONTE_JQ='
   . as $p | { fonte:"ponte.db (sqlite3 -readonly, mode=ro)", status:"ok",
+    corte_epoch:$corte,
     runs:($p|map(select(.tipo=="run"))|length),
-    permissoes_por_run:($p|map(select(.tipo=="run")|{run:.chave, projeto:.project, n})),
-    permissoes_por_projeto:($p|map(select(.tipo=="projeto")|{projeto:.chave, n})),
-    quais:($p|map(select(.tipo=="ferramenta")|{alvo:.chave, n})|sort_by(-.n)) }'
+    permissoes_por_run:($p|map(select(.tipo=="run")|{run:.chave, projeto:.project, lado, n})),
+    permissoes_por_projeto:($p|map(select(.tipo=="projeto")|{projeto:.chave, lado, n})),
+    quais:($p|map(select(.tipo=="ferramenta")|{alvo:.chave, lado, n})|sort_by(-.n)) }'
 ponte_falha="" pontej=""
 if [[ ! -r "$PDB" ]]; then ponte_falha="banco ausente ou ilegível"
 elif ! command -v sqlite3 >/dev/null; then ponte_falha="sqlite3 ausente (necessário para ler a Ponte)"
@@ -273,7 +279,7 @@ if [[ -n "$ponte_falha" ]]; then
 elif [[ -z "$pontej" ]]; then
   ponte=$(jq -nc '{status:"sem dado", motivo:"ponte.db legível, sem runs do projeto"}')
 else
-  ponte=$(jq -c "$PONTE_JQ" <<<"$pontej" 2>/dev/null) || {
+  ponte=$(jq -c --argjson corte "$CORTE" "$PONTE_JQ" <<<"$pontej" 2>/dev/null) || {
     f4+=("$(falha "ponte.db" "saída da consulta ilegível")"); ponte=$(jq -nc '{status:"FALHA", motivo:"saída da consulta ilegível"}'); }
 fi
 [[ -n "$r4" ]] || r4=$(jq -nc '{id:4, nome:"permissões por turno (gate_warn+gate_block)"}')
@@ -315,11 +321,19 @@ if [[ -z "$f5" ]]; then
 fi
 [[ -n "$m5" ]] || m5=$(jq -nc --arg f "ssh $lab" --arg m "${f5#ssh $lab }" '{id:5, nome:"CPU, memória e fila de runner (lab-ci)", status:"FALHA", falhas:[{fonte:$f, motivo:$m}]}')
 
+# ---- métricas 7 a 9 (ações do Capitão, retrabalho, custo por ordem): ver lib/baseline-novas.sh -----
+# shellcheck source=lib/baseline-novas.sh
+source "$HERE/lib/baseline-novas.sh"
+m7=$(m7_acoes_capitao)
+m8=$(m8_retrabalho)
+m9=$(m9_custo)
+
 # ---- monta a saída ------------------------------------------------------------------
 doc=$(jq -nc --arg gen "$(ISO "$NOW")" --argjson now "$NOW" --arg proj "${pname:-carteira}" --arg sel "$sel_note" \
-  --argjson m1 "$m1" --argjson m2 "$m2" --argjson m3 "$m3" --argjson m4 "$m4" --argjson m5 "$m5" --argjson m6 "$m6" '
-  {schema:"maestro-baseline-v2", gerado_em:$gen, epoch:$now, projeto:$proj, selecao:(if $sel=="" then "todas" else $sel end),
-   metricas:[$m1,$m2,$m3,$m4,$m5,$m6]}')
+  --argjson m1 "$m1" --argjson m2 "$m2" --argjson m3 "$m3" --argjson m4 "$m4" --argjson m5 "$m5" --argjson m6 "$m6" \
+  --argjson m7 "$m7" --argjson m8 "$m8" --argjson m9 "$m9" '
+  {schema:"maestro-baseline-v3", gerado_em:$gen, epoch:$now, projeto:$proj, selecao:(if $sel=="" then "todas" else $sel end),
+   metricas:[$m1,$m2,$m3,$m4,$m5,$m6,$m7,$m8,$m9]}')
 
 render() {
   if [[ "$fmt" == json ]]; then jq . <<<"$doc"; return; fi

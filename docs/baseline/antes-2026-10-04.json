@@ -1,0 +1,1376 @@
+{
+  "schema": "maestro-baseline-v3",
+  "gerado_em": "2026-10-04T18:02:35-0300",
+  "epoch": 1791147755,
+  "projeto": "Maestro",
+  "selecao": "todas",
+  "metricas": [
+    {
+      "id": 1,
+      "nome": "idade por estado e tempo parado em pronta (segundos)",
+      "ordens": [
+        {
+          "id": 1,
+          "aberta": 1789057484,
+          "execucao": "sem fonte",
+          "provada": 1789247766,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1899989,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 2,
+          "aberta": 1789072665,
+          "execucao": "sem fonte",
+          "provada": 1789250005,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1897750,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 3,
+          "aberta": 1789234468,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 4,
+          "aberta": 1789389810,
+          "execucao": "sem fonte",
+          "provada": 1789395921,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1751834,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 5,
+          "aberta": 1789401665,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 6,
+          "aberta": 1789408490,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 7,
+          "aberta": 1789423705,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 8,
+          "aberta": 1789476517,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 9,
+          "aberta": 1789489717,
+          "execucao": "sem fonte",
+          "provada": 1789492256,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1655499,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 10,
+          "aberta": 1789495394,
+          "execucao": "sem fonte",
+          "provada": 1789499739,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1648016,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 11,
+          "aberta": 1789501432,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 12,
+          "aberta": 1789551799,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 13,
+          "aberta": 1789551812,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 14,
+          "aberta": 1789561919,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 15,
+          "aberta": 1789569102,
+          "execucao": "sem fonte",
+          "provada": 1789582336,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1565419,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 16,
+          "aberta": 1789591335,
+          "execucao": "sem fonte",
+          "provada": 1789642157,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1505598,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 17,
+          "aberta": 1789595995,
+          "execucao": "sem fonte",
+          "provada": 1789642908,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1504847,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 18,
+          "aberta": 1789641544,
+          "execucao": "sem fonte",
+          "provada": 1789782557,
+          "aceita": 1789811802,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 29245,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 19,
+          "aberta": 1789652401,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 20,
+          "aberta": 1789652565,
+          "execucao": "sem fonte",
+          "provada": 1789764117,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1383638,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 21,
+          "aberta": 1789740461,
+          "execucao": "sem fonte",
+          "provada": 1789744274,
+          "aceita": 1789746601,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 2327,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 22,
+          "aberta": 1789746869,
+          "execucao": "sem fonte",
+          "provada": 1789749364,
+          "aceita": 1789752215,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 2851,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 23,
+          "aberta": 1789777587,
+          "execucao": "sem fonte",
+          "provada": 1789783684,
+          "aceita": 1789811802,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 28118,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 24,
+          "aberta": 1789777587,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 25,
+          "aberta": 1789778508,
+          "execucao": "sem fonte",
+          "provada": 1789812535,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1335220,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 26,
+          "aberta": 1789779038,
+          "execucao": "sem fonte",
+          "provada": 1789787611,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1360144,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 27,
+          "aberta": 1789786329,
+          "execucao": "sem fonte",
+          "provada": 1789788621,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1359134,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 28,
+          "aberta": 1789845423,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 29,
+          "aberta": 1789859621,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 30,
+          "aberta": 1789860377,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 31,
+          "aberta": 1789860378,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 32,
+          "aberta": 1789873656,
+          "execucao": "sem fonte",
+          "provada": 1789879517,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1268238,
+          "legada_sem_carimbo": true,
+          "populacao": false,
+          "lado": "fora"
+        },
+        {
+          "id": 33,
+          "aberta": 1789898324,
+          "execucao": 1789898346,
+          "provada": "sem fonte",
+          "aceita": 1789962153,
+          "idade_aberta_s": 22,
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 34,
+          "aberta": 1789905925,
+          "execucao": "sem fonte",
+          "provada": 1789921532,
+          "aceita": 1789921681,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 149,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 35,
+          "aberta": 1789924780,
+          "execucao": "sem fonte",
+          "provada": 1789928769,
+          "aceita": 1789932043,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 3274,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 36,
+          "aberta": 1789941601,
+          "execucao": "sem fonte",
+          "provada": 1789961979,
+          "aceita": 1789962152,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 173,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 37,
+          "aberta": 1789949988,
+          "execucao": "sem fonte",
+          "provada": 1789953155,
+          "aceita": 1789953243,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 88,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 38,
+          "aberta": 1789962222,
+          "execucao": "sem fonte",
+          "provada": 1789963611,
+          "aceita": 1789963676,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 65,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 39,
+          "aberta": 1790069344,
+          "execucao": "sem fonte",
+          "provada": 1790075475,
+          "aceita": 1790075611,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 136,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 40,
+          "aberta": 1790069620,
+          "execucao": "sem fonte",
+          "provada": 1790077364,
+          "aceita": 1790077443,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 79,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 41,
+          "aberta": 1790083493,
+          "execucao": "sem fonte",
+          "provada": 1790092536,
+          "aceita": 1790093230,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 694,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 42,
+          "aberta": 1790370390,
+          "execucao": "sem fonte",
+          "provada": 1790419895,
+          "aceita": 1790420871,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 976,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 43,
+          "aberta": 1790380803,
+          "execucao": "sem fonte",
+          "provada": 1790424048,
+          "aceita": 1790425008,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 960,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 44,
+          "aberta": 1790935449,
+          "execucao": 1790937988,
+          "provada": 1790939161,
+          "aceita": 1790940283,
+          "idade_aberta_s": 2539,
+          "idade_execucao_s": 1173,
+          "parada_em_pronta_s": 1122,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 45,
+          "aberta": 1790936731,
+          "execucao": 1790940290,
+          "provada": 1790948614,
+          "aceita": 1790952616,
+          "idade_aberta_s": 3559,
+          "idade_execucao_s": 8324,
+          "parada_em_pronta_s": 4002,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 46,
+          "aberta": 1790943458,
+          "execucao": 1790943514,
+          "provada": 1790950335,
+          "aceita": 1790951306,
+          "idade_aberta_s": 56,
+          "idade_execucao_s": 6821,
+          "parada_em_pronta_s": 971,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 47,
+          "aberta": 1790946234,
+          "execucao": 1790946768,
+          "provada": 1790960155,
+          "aceita": 1790960186,
+          "idade_aberta_s": 534,
+          "idade_execucao_s": 13387,
+          "parada_em_pronta_s": 31,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 48,
+          "aberta": 1790993147,
+          "execucao": 1790993173,
+          "provada": 1791034653,
+          "aceita": 1791036780,
+          "idade_aberta_s": 26,
+          "idade_execucao_s": 41480,
+          "parada_em_pronta_s": 2127,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 49,
+          "aberta": 1791041963,
+          "execucao": 1791053782,
+          "provada": 1791056065,
+          "aceita": 1791052897,
+          "idade_aberta_s": 11819,
+          "idade_execucao_s": 2283,
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 50,
+          "aberta": 1791041964,
+          "execucao": 1791083866,
+          "provada": 1791085005,
+          "aceita": 1791089162,
+          "idade_aberta_s": 41902,
+          "idade_execucao_s": 1139,
+          "parada_em_pronta_s": 4157,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 54,
+          "aberta": 1791045801,
+          "execucao": 1791047739,
+          "provada": 1791048826,
+          "aceita": 1791049160,
+          "idade_aberta_s": 1938,
+          "idade_execucao_s": 1087,
+          "parada_em_pronta_s": 334,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 55,
+          "aberta": 1791059393,
+          "execucao": 1791066525,
+          "provada": 1791067707,
+          "aceita": 1791067760,
+          "idade_aberta_s": 7132,
+          "idade_execucao_s": 1182,
+          "parada_em_pronta_s": 53,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 56,
+          "aberta": 1791072388,
+          "execucao": 1791089186,
+          "provada": 1791120358,
+          "aceita": 1791122656,
+          "idade_aberta_s": 16798,
+          "idade_execucao_s": 31172,
+          "parada_em_pronta_s": 2298,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 58,
+          "aberta": 1791074033,
+          "execucao": 1791077696,
+          "provada": 1791081978,
+          "aceita": 1791082014,
+          "idade_aberta_s": 3663,
+          "idade_execucao_s": 4282,
+          "parada_em_pronta_s": 36,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "antes"
+        },
+        {
+          "id": 59,
+          "aberta": 1791074037,
+          "execucao": 1791140207,
+          "provada": 1791141642,
+          "aceita": 1791141674,
+          "idade_aberta_s": 66170,
+          "idade_execucao_s": 1435,
+          "parada_em_pronta_s": 32,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 60,
+          "aberta": 1791116180,
+          "execucao": 1791130576,
+          "provada": 1791135045,
+          "aceita": 1791135074,
+          "idade_aberta_s": 14396,
+          "idade_execucao_s": 4469,
+          "parada_em_pronta_s": 29,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 61,
+          "aberta": 1791134008,
+          "execucao": 1791136130,
+          "provada": 1791137356,
+          "aceita": 1791137675,
+          "idade_aberta_s": 2122,
+          "idade_execucao_s": 1226,
+          "parada_em_pronta_s": 319,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 62,
+          "aberta": 1791138494,
+          "execucao": 1791142167,
+          "provada": 1791144707,
+          "aceita": 1791144750,
+          "idade_aberta_s": 3673,
+          "idade_execucao_s": 2540,
+          "parada_em_pronta_s": 43,
+          "legada_sem_carimbo": false,
+          "populacao": true,
+          "lado": "depois"
+        },
+        {
+          "id": 63,
+          "aberta": 1791144828,
+          "execucao": 1791146957,
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": 2129,
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
+          "legada_sem_carimbo": false,
+          "populacao": false,
+          "lado": "fora"
+        }
+      ],
+      "legadas_sem_carimbo": {
+        "quantidade": 28,
+        "ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          19,
+          20,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32
+        ]
+      },
+      "mediana_n": 28,
+      "mediana_parada_em_pronta_s": 514,
+      "janela": {
+        "corte_epoch": 1791083700,
+        "corte_iso": "2026-10-04T00:15:00-0300",
+        "regra": "ordens com carimbo de aceite válido, por projeto, sem as legadas (ids 1 a 32 sem carimbo); a mesma regra vale antes e depois do corte; lado = data do aceite (antes: até o corte; depois: estritamente depois)",
+        "antes": {
+          "n": 24,
+          "ids": [
+            18,
+            21,
+            22,
+            23,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            54,
+            55,
+            58
+          ],
+          "n_medida": 22,
+          "n_pequeno": false,
+          "mediana_parada_em_pronta_s": 827
+        },
+        "depois": {
+          "n": 6,
+          "ids": [
+            50,
+            56,
+            59,
+            60,
+            61,
+            62
+          ],
+          "n_medida": 6,
+          "n_pequeno": false,
+          "mediana_parada_em_pronta_s": 181
+        },
+        "comparacao": "comparado: mediana depois 181 s, antes 827 s, diferença -646 s"
+      },
+      "status": "ok"
+    },
+    {
+      "id": 2,
+      "nome": "tempo da CI verde até o merge",
+      "status": "ok",
+      "prs": 27,
+      "mediana_s": 1239,
+      "max_s": 43190,
+      "fonte": "gh pr list + gh run list (só leitura)"
+    },
+    {
+      "id": 3,
+      "nome": "rebases e conflitos por causa",
+      "status": "ok",
+      "rebases_no_reflog_do_HEAD": 0,
+      "commits_de_carimbo_de_aceite": 19,
+      "conflitos": "sem fonte",
+      "por_causa": {
+        "carimbo": "sem fonte",
+        "ordem_concorrente": "sem fonte",
+        "outra": "sem fonte"
+      },
+      "nota": "o git não registra conflito nem causa; o reflog cobre só este clone"
+    },
+    {
+      "id": 4,
+      "nome": "permissões por turno (gate_warn+gate_block)",
+      "status": "ok",
+      "turnos": 7,
+      "permissoes": 176,
+      "permissoes_por_turno_x100": 2514,
+      "quais": [
+        {
+          "alvo": "Edit",
+          "n": 77
+        },
+        {
+          "alvo": "rm_recursive",
+          "n": 74
+        },
+        {
+          "alvo": "Write",
+          "n": 7
+        },
+        {
+          "alvo": "privilege_escalation",
+          "n": 5
+        },
+        {
+          "alvo": "remote_pipe_shell",
+          "n": 5
+        },
+        {
+          "alvo": "git_discard",
+          "n": 3
+        },
+        {
+          "alvo": "accept",
+          "n": 2
+        },
+        {
+          "alvo": "git_reset_hard",
+          "n": 2
+        },
+        {
+          "alvo": "git_clean",
+          "n": 1
+        }
+      ],
+      "nota": "turno = sessão com decision registrada para o projeto",
+      "ponte": {
+        "fonte": "ponte.db (sqlite3 -readonly, mode=ro)",
+        "status": "ok",
+        "corte_epoch": 1791083700,
+        "runs": 19,
+        "permissoes_por_run": [
+          {
+            "run": "01M416TEHZC9T7R25327NRP7D9",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 0
+          },
+          {
+            "run": "01M418WG6Q4AE31R4FR205KKP5",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 12
+          },
+          {
+            "run": "01M41PP0KST7E1AA1AWCC950SV",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 20
+          },
+          {
+            "run": "01M41XY73JG0HKRT6N9YJEFE95",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 7
+          },
+          {
+            "run": "01M423TTMTKKT9MTXMMHYTBFH3",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 8
+          },
+          {
+            "run": "01M424N3RN8YB7Q8SKVSQ4EX77",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 4
+          },
+          {
+            "run": "01M4258SHX1M5YMHYKB2GDHNWM",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 46
+          },
+          {
+            "run": "01M427CP0H89WRQVAAR31PWNPF",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 6
+          },
+          {
+            "run": "01M428CNMJ78PNKZ9JGG9B07YG",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 18
+          },
+          {
+            "run": "01M42A03N4WVGNGCB6831605SW",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 25
+          },
+          {
+            "run": "01M42CZGG28ZFR39FGYJY90TDD",
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 4
+          },
+          {
+            "run": "01M43SD6YHC33D7PMS56K9ENQF",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 15
+          },
+          {
+            "run": "01M43W1PP5BT5G2NNBBJKND2CY",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 18
+          },
+          {
+            "run": "01M43Y9RSVZZ2A86KZQHZWM2AF",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 8
+          },
+          {
+            "run": "01M43ZKMRX46AX6SFFHBGXB6R5",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 25
+          },
+          {
+            "run": "01M442QTDDMMDGBAVWSRZ2BWQB",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 22
+          },
+          {
+            "run": "01M4469ZC9Y4C4ABVX5YG6N1BM",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 10
+          },
+          {
+            "run": "01M4496RY31C645NCHX7HJP961",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 11
+          },
+          {
+            "run": "01M44AYG2ZE2ZWQHN51E4ST1QW",
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 18
+          }
+        ],
+        "permissoes_por_projeto": [
+          {
+            "projeto": "maestro",
+            "lado": "antes",
+            "n": 150
+          },
+          {
+            "projeto": "maestro",
+            "lado": "depois",
+            "n": 127
+          }
+        ],
+        "quais": [
+          {
+            "alvo": "Bash",
+            "lado": "antes",
+            "n": 145
+          },
+          {
+            "alvo": "Bash",
+            "lado": "depois",
+            "n": 124
+          },
+          {
+            "alvo": "Monitor",
+            "lado": "antes",
+            "n": 5
+          },
+          {
+            "alvo": "Monitor",
+            "lado": "depois",
+            "n": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "nome": "CPU, memória e fila de runner (lab-ci)",
+      "status": "ok",
+      "host": "lab-ci",
+      "load1m_x100": 18,
+      "ncpu": 8,
+      "mem_total_mb": 32101,
+      "mem_disponivel_mb": 29086,
+      "runners_ativos": 0,
+      "jobs_em_execucao": 0,
+      "jobs_na_fila": "sem fonte",
+      "nota": "jobs em execução = pgrep Runner.Worker; a fila é do GitHub e não é lida (só gh run list e gh pr list)"
+    },
+    {
+      "id": 6,
+      "nome": "timeouts",
+      "turno": 12,
+      "teste": "sem fonte",
+      "runner": "sem fonte",
+      "status": "ok",
+      "nota": "turno = eventos turno_teto casados pelo número da ordem; teste e runner não têm registro"
+    },
+    {
+      "id": 7,
+      "nome": "ações do Capitão (contagem de decisões spock e commits em caminhos protegidos)",
+      "status": "ok",
+      "fonte": "ponte.db decision.origin=spock + git log em hooks/ bin/ lib/ src/ .claude-plugin/plugin.json",
+      "antes": {
+        "ponte": 4,
+        "git": 164,
+        "total": 168
+      },
+      "depois": {
+        "ponte": 0,
+        "git": 8,
+        "total": 8
+      },
+      "por_ordem": [
+        {
+          "projeto": "maestro",
+          "ordem": 18,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 24,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 25,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 26,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 29,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 30,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 31,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 32,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 36,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 37,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 38,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 39,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 41,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 42,
+          "ponte": 0,
+          "git": 4,
+          "total": 4
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 43,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 44,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 45,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 46,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 47,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 48,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 49,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 50,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 56,
+          "ponte": 0,
+          "git": 2,
+          "total": 2
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 59,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 60,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        },
+        {
+          "projeto": "maestro",
+          "ordem": 62,
+          "ponte": 0,
+          "git": 1,
+          "total": 1
+        }
+      ],
+      "sem_ordem": {
+        "ponte": 4,
+        "git": 136
+      }
+    },
+    {
+      "id": 8,
+      "nome": "retrabalho (turnos devolvidos, turnos sem relato, recibos regravados)",
+      "status": "FALHA",
+      "fonte": "ponte.db director_inbox/manager_run/manager_event + ledger evidence",
+      "turnos_devolvidos": {
+        "status": "sem dado",
+        "antes": 0,
+        "depois": 0,
+        "por_ordem": [],
+        "nota": "director_inbox.state=returned; a tabela não tem projeto: vale a Ponte inteira"
+      },
+      "turnos_sem_relato": {
+        "status": "ok",
+        "antes": 2,
+        "depois": 1,
+        "por_ordem": [
+          {
+            "ordem": 50,
+            "n": 1
+          },
+          {
+            "ordem": 56,
+            "n": 1
+          },
+          {
+            "ordem": 62,
+            "n": 1
+          }
+        ]
+      },
+      "recibos_regravados": {
+        "status": "FALHA",
+        "nota": "sem contagem: ordens da população sem o campo regravacoes (ver falhas); nenhum zero no lugar de ausência"
+      },
+      "falhas": [
+        {
+          "fonte": "ledger evidence/<chave>-order-<n> (campo regravacoes)",
+          "motivo": "recibo sem o campo regravacoes inteiro: Maestro-abc49550-order-18, Maestro-abc49550-order-21, Maestro-abc49550-order-22, Maestro-abc49550-order-23, Maestro-abc49550-order-33, Maestro-abc49550-order-34, Maestro-abc49550-order-35, Maestro-abc49550-order-36, Maestro-abc49550-order-37, Maestro-abc49550-order-38, Maestro-abc49550-order-39, Maestro-abc49550-order-40, Maestro-abc49550-order-41, Maestro-abc49550-order-42, Maestro-abc49550-order-43, Maestro-abc49550-order-44, Maestro-abc49550-order-45, Maestro-abc49550-order-46, Maestro-abc49550-order-47, Maestro-abc49550-order-48, Maestro-abc49550-order-49, Maestro-abc49550-order-50, Maestro-abc49550-order-54, Maestro-abc49550-order-55, Maestro-abc49550-order-56, Maestro-abc49550-order-58, Maestro-abc49550-order-59, Maestro-abc49550-order-60, Maestro-abc49550-order-61, Maestro-abc49550-order-62; o recibo é sobrescrito e nenhum evento guarda a regravação (proposta: maestro evidence --record incrementa regravacoes=N no mesmo rótulo)"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "nome": "custo por ordem (inteiros)",
+      "status": "FALHA",
+      "falhas": [
+        {
+          "fonte": "ledger evidence/<chave>-order-<n> (campo tokens ou custo_centavos)",
+          "motivo": "nenhum custo inteiro registrado para: Maestro-abc49550-order-18, Maestro-abc49550-order-21, Maestro-abc49550-order-22, Maestro-abc49550-order-23, Maestro-abc49550-order-33, Maestro-abc49550-order-34, Maestro-abc49550-order-35, Maestro-abc49550-order-36, Maestro-abc49550-order-37, Maestro-abc49550-order-38, Maestro-abc49550-order-39, Maestro-abc49550-order-40, Maestro-abc49550-order-41, Maestro-abc49550-order-42, Maestro-abc49550-order-43, Maestro-abc49550-order-44, Maestro-abc49550-order-45, Maestro-abc49550-order-46, Maestro-abc49550-order-47, Maestro-abc49550-order-48, Maestro-abc49550-order-49, Maestro-abc49550-order-50, Maestro-abc49550-order-54, Maestro-abc49550-order-55, Maestro-abc49550-order-56, Maestro-abc49550-order-58, Maestro-abc49550-order-59, Maestro-abc49550-order-60, Maestro-abc49550-order-61, Maestro-abc49550-order-62; nenhuma telemetria local guarda custo por ordem (proposta: maestro evidence --record grava tokens=N ou custo_centavos=N)"
+        }
+      ]
+    }
+  ]
+}

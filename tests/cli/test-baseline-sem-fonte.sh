@@ -23,9 +23,9 @@ echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
 
 j=$(bash "$TOOL" --project "$P" --format json 2>/dev/null); rc=$?
 [[ $rc -eq 3 ]] && ok "fontes esperadas ausentes: exit 3" || bad "esperava exit 3, veio $rc"
-jq -e '.metricas|length==6' <<<"$j" >/dev/null && ok "seis métricas presentes" || bad "esperava 6 métricas"
+jq -e '.metricas|length==9' <<<"$j" >/dev/null && ok "nove métricas presentes" || bad "esperava 9 métricas"
 
-for i in 0 1 3 4 5; do # 1 (ledger), 2 (gh), 4 (routing e Ponte), 5 (ssh), 6 (routing)
+for i in 0 1 3 4 5 6 7 8; do # 1 (ledger), 2 (gh), 4 (routing e Ponte), 5 (ssh), 6 (routing), 7 a 9 (Ponte, git, ledger)
   jq -e ".metricas[$i].status==\"FALHA\" and (.metricas[$i].falhas|length)>0" <<<"$j" >/dev/null && ok "métrica $((i+1)): FALHA com fonte e motivo" \
     || bad "métrica $((i+1)) deveria ser FALHA: $(jq -c ".metricas[$i]" <<<"$j")"
 done

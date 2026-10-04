@@ -24,7 +24,7 @@ git -C "$P" checkout -q main
 
 KEY=$(source "$REPO/hooks/lib/project-state.sh"; b=$(maestro_brief_file "$P"); b="${b##*/}"; echo "${b%.md}")
 printf 'schema=maestro-order-state-v1\nid=1\noutcome=aceita\naccepted_at=2023-11-14T20:00:00-03:00\n' > "$MAESTRO_HOME/order-state/$KEY-001"
-printf 'schema=maestro-evidence-v1\nlabel=order-1\nepoch=1700001800\nexit=0\n' > "$MAESTRO_HOME/evidence/$KEY-order-1"
+printf 'schema=maestro-evidence-v1\nlabel=order-1\nepoch=1700001800\nexit=0\nregravacoes=0\ntokens=1\n' > "$MAESTRO_HOME/evidence/$KEY-order-1"
 { echo '{"ts":"2026-01-01T10:00:00-03:00","event":"decision","session_id":"s1","project":"proj"}'
   echo '{"ts":"2026-01-01T10:01:00-03:00","event":"gate_warn","tool":"Edit","session_id":"s1"}'
   echo '{"ts":"2026-01-01T10:02:00-03:00","event":"turno_teto","session_id":"s1","n":"1"}'
@@ -59,10 +59,12 @@ export MAESTRO_BASELINE_REPOS="$tmp"   # o --all resolve a chave do ledger para 
 export MAESTRO_PONTE_DB="$tmp/home/ponte.db"
 PN=$(basename "$P")
 sqlite3 "$MAESTRO_PONTE_DB" "
-  CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT);
-  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);
-  INSERT INTO manager_run VALUES('r1','$PN','order/001-x','2026-01-01T00:00:00Z'),('r2','$PN','order/001-x','2026-01-02T00:00:00Z');
-  INSERT INTO decision VALUES('permission','$PN','order/001-x','Bash','2026-01-01T01:00:00Z'),
+  CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT, state TEXT);
+  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT, origin TEXT);
+  CREATE TABLE manager_event(event_id TEXT, type TEXT, project TEXT, order_ref TEXT, run_id TEXT, created_at TEXT);
+  CREATE TABLE director_inbox(seq INTEGER, created_at TEXT, ref_kind TEXT, ref_id TEXT, state TEXT);
+  INSERT INTO manager_run(run_id,project,order_ref,created_at) VALUES('r1','$PN','order/001-x','2026-01-01T00:00:00Z'),('r2','$PN','order/001-x','2026-01-02T00:00:00Z');
+  INSERT INTO decision(kind,project,order_ref,tool_name,created_at) VALUES('permission','$PN','order/001-x','Bash','2026-01-01T01:00:00Z'),
     ('permission','$PN','order/001-x','Bash','2026-01-01T02:00:00Z'),('permission','$PN','order/001-x','Edit','2026-01-02T01:00:00Z'),
     ('question','$PN','order/001-x',NULL,'2026-01-02T01:00:00Z');"
 
@@ -79,7 +81,7 @@ after=$(snap)
 
 [[ $rc1 -eq 0 && $rc2 -eq 0 && $rc3 -eq 0 && $rc4 -eq 0 ]] && ok "as quatro execuções saem 0" || bad "rc: $rc1 $rc2 $rc3 $rc4"
 [[ "$before" == "$after" ]] && ok "hash do repo, do ledger e do runner igual antes e depois" || bad "algo mudou (hash difere)"
-jq -e '.metricas|length==6' <<<"$j" >/dev/null && ok "seis métricas" || bad "esperava 6 métricas"
+jq -e '.metricas|length==9' <<<"$j" >/dev/null && ok "nove métricas" || bad "esperava 9 métricas"
 jq -e '.metricas[0].ordens[0].parada_em_pronta_s==1000' <<<"$j" >/dev/null \
   && ok "métrica 1 calculada do ledger (aceita - provada = 1000)" || bad "métrica 1 errada: $(jq -c '.metricas[0]' <<<"$j")"
 jq -e '.metricas[4].load1m_x100==50 and .metricas[4].ncpu==8' <<<"$j" >/dev/null && ok "métrica 5 lida do runner" || bad "métrica 5 errada"

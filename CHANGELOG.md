@@ -14,6 +14,21 @@ from the decision log and tag messages when this file was introduced.
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
 ### Changed
+- **Painel de linha de base: permissões por janela e três medidas novas** (ordem 063, turno 2: itens 4 a 6).
+  A métrica 4 (permissões da Ponte) sai cortada pela v59: cada run e cada projeto traz o `lado` (`antes` ou
+  `depois`, pelo instante de criação do run). Três métricas novas, todas contagens ou inteiros, **nunca tempo do
+  Capitão** e nunca estimativa; fonte ausente é FALHA nomeada (fonte e motivo em stderr, exit 3). **7. Ações do
+  Capitão** = decisões `origin='spock'` do `ponte.db` (os `captain_ask`) + commits que tocam `hooks/`, `bin/`,
+  `lib/`, `src/` ou `.claude-plugin/plugin.json` (só o Capitão aplica patch ali), por lado e por ordem quando o
+  commit (`tipo(NNN):`) ou a decisão (`order/NNN`) a nomeia. **8. Retrabalho** = turnos devolvidos
+  (`director_inbox.state='returned'`), turnos encerrados sem relato (`manager_run` em `failed`/`cancelled`/`teto`
+  sem `manager_event` `review_requested` ou `completed`) e recibos regravados no mesmo rótulo (campo `regravacoes`
+  do recibo). **9. Custo por ordem** = inteiros `tokens` ou `custo_centavos` do recibo do ledger. Nenhum log novo:
+  hoje o recibo não grava `regravacoes`, `tokens` nem `custo_centavos`, então 8 (recibos regravados) e 9 saem FALHA
+  nomeada até um instrumento os gravar (proposta: `maestro evidence --record` incrementa `regravacoes=N` e grava
+  `tokens=N`; é `bin/`/`lib/`, outra ordem). Schema do JSON sobe para `maestro-baseline-v3` (nove métricas).
+  Snapshot regravado em `docs/baseline/antes-2026-10-04.{md,json}` (o de 03/10 fica como histórico).
+  Código das três em `tools/lib/baseline-novas.sh`; oráculo `tests/cli/test-baseline-novas-medidas.sh`.
 - **Painel de linha de base: mesma população nos dois lados e falha alta** (ordem 063, turno 1: itens 1 a 3).
   `tools/baseline.sh` corta a métrica 1 no marco da v59 (`2026-10-04T00:15:00-03:00`, epoch `1791083700`) e aplica
   a MESMA regra de população nas duas fatias — ordens com carimbo de aceite válido, por projeto, sem as legadas
