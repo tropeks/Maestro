@@ -173,3 +173,7 @@ Este turno **só grava a prova**, no tip com o patch aplicado:
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`), com a v59 item 3 do spock como autorização — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 060` (você não fecha a própria ordem).
+accepted_at: 2026-10-04T14:31:14-03:00
+accepted_session: desconhecido
+accepted_tree: 7d9ffd4a2f433a0bbae06e899a170572b5988635
+accepted_intent: 6
