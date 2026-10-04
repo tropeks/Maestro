@@ -53,6 +53,7 @@ STUB
 chmod +x "$tmp/bin/ssh" "$tmp/bin/gh"
 export STUB_LOG="$tmp/ssh.log" GH_LOG="$tmp/gh.log"; : > "$STUB_LOG"; : > "$GH_LOG"
 export PATH="$tmp/bin:$PATH" MAESTRO_BASELINE_LAB_SSH="lab-fake"
+export MAESTRO_BASELINE_REPOS="$tmp"   # o --all resolve a chave do ledger para $tmp/proj (063)
 
 # banco da Ponte de fixture (aberto pelo painel só em modo read-only)
 export MAESTRO_PONTE_DB="$tmp/home/ponte.db"

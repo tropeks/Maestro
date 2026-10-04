@@ -14,6 +14,17 @@ from the decision log and tag messages when this file was introduced.
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
 ### Changed
+- **Painel de linha de base: mesma população nos dois lados e falha alta** (ordem 063, turno 1: itens 1 a 3).
+  `tools/baseline.sh` corta a métrica 1 no marco da v59 (`2026-10-04T00:15:00-03:00`, epoch `1791083700`) e aplica
+  a MESMA regra de população nas duas fatias — ordens com carimbo de aceite válido, por projeto, sem as legadas
+  (ids 1 a 32 sem carimbo) —, imprime a regra e o N de cada lado e, com menos de 3 medidas num lado, não compara.
+  Três estados por métrica, nunca misturados: `ok`, `sem dado` (a fonte existe e não tem registro na janela; exit 0)
+  e `FALHA` (fonte esperada ausente, ilegível ou com timeout: fonte e motivo em stderr, painel parcial impresso,
+  **exit 3**; o 2 segue sendo uso inválido). O "sem fonte" silencioso sai de nível de métrica (campos sem fonte por
+  construção, como `conflitos`, seguem). O `gh pr list` e o `gh run list` rodam também no `--all`, por repo e só
+  leitura; cada chave do ledger resolve para um checkout em `MAESTRO_BASELINE_REPOS` (padrão `~/dev`) e a que não
+  resolve é FALHA nomeada. Schema do JSON sobe para `maestro-baseline-v2`. A métrica 1 passa a medir só a população
+  (a ordem pendente sem carimbo sai da mediana). A métrica 1 mora em `tools/lib/baseline-ordens.sh`.
 - **A catraca do `habits` vira aviso** (ordem 062, decisão do Capitão de 04/10). Smell acima do baseline
   (`oversized-file`, `oversized-function`, `deep-nesting`) e dívida declarada vencida saem como
   `AVISO catraca: …` com exit 0, em vez de `CATRACA:` com exit 1; a detecção e o `--baseline` não mudam.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# ordem 058 — regra de honestidade: métrica sem fonte aparece como "sem fonte", SEM número.
-# Fixture vazia (sem ledger, sem routing.jsonl, sem lab-ci) → nada a medir. Controle:
-# com a fonte presente o mesmo campo vira número.
+# ordens 058 e 063 — regra de honestidade: fonte esperada que some NUNCA vira número nem
+# "sem fonte" calado: a métrica vira FALHA (fonte e motivo, exit 3), sem número estimado.
+# Fixture vazia (sem ledger, sem routing.jsonl, sem Ponte, gh e ssh falhando). Controle:
+# com a fonte presente o mesmo campo vira número. (Janela vazia = "sem dado": test-baseline-falha-alta.)
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 TOOL="$REPO/tools/baseline.sh"
@@ -20,30 +21,30 @@ P="$tmp/proj"; mkdir -p "$P"
 git -C "$P" init -q -b main; git -C "$P" config user.email t@t; git -C "$P" config user.name t
 echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
 
-j=$(bash "$TOOL" --project "$P" --format json 2>/dev/null)
+j=$(bash "$TOOL" --project "$P" --format json 2>/dev/null); rc=$?
+[[ $rc -eq 3 ]] && ok "fontes esperadas ausentes: exit 3" || bad "esperava exit 3, veio $rc"
 jq -e '.metricas|length==6' <<<"$j" >/dev/null && ok "seis métricas presentes" || bad "esperava 6 métricas"
 
-for i in 0 1 3 4; do # 1, 2 (gh falhou), 4 (sem routing nem Ponte), 5 (ssh falhou)
-  jq -e ".metricas[$i].status==\"sem fonte\"" <<<"$j" >/dev/null && ok "métrica $((i+1)): status sem fonte" \
-    || bad "métrica $((i+1)) deveria ser sem fonte: $(jq -c ".metricas[$i]" <<<"$j")"
+for i in 0 1 3 4 5; do # 1 (ledger), 2 (gh), 4 (routing e Ponte), 5 (ssh), 6 (routing)
+  jq -e ".metricas[$i].status==\"FALHA\" and (.metricas[$i].falhas|length)>0" <<<"$j" >/dev/null && ok "métrica $((i+1)): FALHA com fonte e motivo" \
+    || bad "métrica $((i+1)) deveria ser FALHA: $(jq -c ".metricas[$i]" <<<"$j")"
 done
-# métricas 2 e 5 (CI e lab-ci) e 6 (timeouts de teste/runner) sem fonte por construção
-jq -e '.metricas[1].status=="sem fonte" and .metricas[1].valor=="sem fonte"' <<<"$j" >/dev/null && ok "métrica 2 sem fonte, sem número" || bad "métrica 2"
-jq -e '.metricas[5].teste=="sem fonte" and .metricas[5].runner=="sem fonte"' <<<"$j" >/dev/null && ok "métrica 6: teste e runner sem fonte" || bad "métrica 6"
+jq -e '.metricas[5].teste=="sem fonte" or .metricas[5].status=="FALHA"' <<<"$j" >/dev/null && ok "métrica 6: sem número estimado" || bad "métrica 6"
 
-# nenhum número em métrica sem fonte: só id e texto
-nnum=$(jq '[.metricas[] | select(.status=="sem fonte") | del(.id) | .. | numbers] | length' <<<"$j")
-[[ "$nnum" -eq 0 ]] && ok "nenhum número em métrica sem fonte" || bad "número vazou em métrica sem fonte ($nnum)"
+# nenhum número em métrica FALHA: só id e texto
+nnum=$(jq '[.metricas[] | select(.status=="FALHA") | del(.id) | .. | numbers] | length' <<<"$j")
+[[ "$nnum" -eq 0 ]] && ok "nenhum número em métrica FALHA" || bad "número vazou em métrica FALHA ($nnum)"
 
 m=$(bash "$TOOL" --project "$P" --format md 2>/dev/null)
-grep -q '^## Métricas sem fonte' <<<"$m" && grep -q '1\. idade por estado' <<<"$m" \
-  && ok "o relatório lista as métricas sem fonte" || bad "relatório sem a seção de sem fonte"
+grep -q '^## Falhas' <<<"$m" && grep -q '1\. idade por estado' <<<"$m" \
+  && ok "o relatório lista as falhas" || bad "relatório sem a seção de falhas"
 
-# controle: a mesma métrica 4 com fonte vira número
-printf '%s\n' '{"ts":"2026-01-01T10:00:00-03:00","event":"decision","session_id":"s","project":"proj"}' > /dev/null
+# controle: a mesma métrica 4 com fonte (routing e Ponte presentes) vira número
 mkdir -p "$MAESTRO_HOME/logs"
 { echo '{"ts":"2026-01-01T10:00:00-03:00","event":"decision","session_id":"s","project":"proj"}'
   echo '{"ts":"2026-01-01T10:01:00-03:00","event":"gate_block","cmd":"rm_recursive","session_id":"s"}'; } > "$MAESTRO_HOME/logs/routing.jsonl"
+sqlite3 "$MAESTRO_PONTE_DB" "CREATE TABLE manager_run(run_id TEXT, project TEXT, order_ref TEXT, created_at TEXT);
+  CREATE TABLE decision(kind TEXT, project TEXT, order_ref TEXT, tool_name TEXT, created_at TEXT);"
 j2=$(bash "$TOOL" --project "$P" --format json 2>/dev/null)
 jq -e '.metricas[3].status=="ok" and (.metricas[3].permissoes|type)=="number"' <<<"$j2" >/dev/null \
   && ok "controle: com fonte, a métrica 4 vira número" || bad "controle negativo falhou: $(jq -c '.metricas[3]' <<<"$j2")"
