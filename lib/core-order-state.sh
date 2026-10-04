@@ -151,6 +151,9 @@ _order_workproject_lib_load() {
 _order_workproject_lib_load
 # ordem 044: árvore sem .maestro/** (core-tree.sh); sem a lib, igualdade exata.
 [[ -f "$REPO_DIR/lib/core-tree.sh" ]] && source "$REPO_DIR/lib/core-tree.sh" || maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
+# ordem 060: UM veredito da prova (maestro_proof_verdict) para evidence --check, --status e --accept.
+if [[ -f "$REPO_DIR/lib/core-proof-verdict.sh" ]]; then source "$REPO_DIR/lib/core-proof-verdict.sh"
+else die env "lib/core-proof-verdict.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2; fi
 # ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
 # árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
 if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
@@ -167,10 +170,12 @@ _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1�
   # casa por acidente), então strict=0 aqui sempre.
   for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" 0); do
     ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
-    [[ -f "$ev_f" ]] && grep -q '^exit=0$' "$ev_f" 2>/dev/null || continue
+    [[ -f "$ev_f" ]] || continue
     ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
-    # ordem 044: igualdade fora de .maestro/** (carimbo da anterior não vence o recibo)
-    [[ -n "$ev_w" ]] && maestro_tree_same "$wproj" "$ev_w" "$tip_tree" && { printf '%s %s' "$cand" "$ev_w"; return 0; }
+    # ordem 060: o MESMO veredito do evidence --check (exit, árvore na corrida, comando, tip via
+    # maestro_tree_same da 044) — nenhum critério próprio aqui; idade não entra.
+    [[ -n "$ev_w" && -z "$(maestro_proof_verdict "$ev_f" "$wproj" "$cand" "$tip_tree")" ]] \
+      && { printf '%s %s' "$cand" "$ev_w"; return 0; }
   done
   return 0
 }
@@ -320,7 +325,7 @@ _order_verif_areas() { # <wproj> <arquivo> → áreas tocadas pelo branch (uma p
   return 0
 }
 _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: estado" por rótulo exigido
-  local proj="$1" f="$2" areas="${3-}" labels lb tip br ef ev_w ev_m st
+  local proj="$1" f="$2" areas="${3-}" labels lb tip br ef ev_w st
   [[ -n "$areas" || $# -ge 3 ]] || areas=$(_order_verif_areas "$proj" "$f")
   [[ -n "$areas" ]] || return 0
   # shellcheck disable=SC2086
@@ -330,14 +335,10 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
   for lb in $labels; do
     ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
     if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
-    elif ! grep -q '^exit=0$' "$ef" 2>/dev/null; then st='VENCIDA (a execução falhou)'
-    else
-      ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ef" 2>/dev/null) || ev_w=""
-      if ! maestro_tree_same "$proj" "$ev_w" "$tip"; then st='VENCIDA (não é o conteúdo do tip)'
-      else
-        ev_m=$(awk -F= '/^cmd_match=/ { print $2; exit }' "$ef" 2>/dev/null) || ev_m=""
-        [[ "$ev_m" == "no" ]] && st='VENCIDA (comando ≠ o declarado)' || st='VÁLIDA'
-      fi
+    elif [[ -z "$tip" ]]; then st='VENCIDA (sem tip para comparar)'
+    else   # ordem 060: o veredito é o do evidence --check (maestro_proof_verdict), motivos incluídos
+      ev_w=$(maestro_proof_verdict "$ef" "$proj" "$lb" "$tip")
+      [[ -z "$ev_w" ]] && st='VÁLIDA' || st="VENCIDA ($ev_w)"
     fi
     printf '%s: %s\n' "$lb" "$st"
   done

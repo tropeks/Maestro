@@ -80,12 +80,14 @@ _ev_cmd_measure_probe() { # → probe_ms (mediana de N invocações no-op via MA
   return 0
 }
 
-_ev_decl() { # <proj> <rótulo> → comando declarado; `suite-N` (recibo por ordem) herda o de `suite` (ordem 048)
-  local d; d=$(maestro_verif_cmd "$1" "$2") || d=""
-  [[ -z "$d" && "$2" =~ ^([a-z][a-z0-9-]*)-[0-9]{1,3}$ ]] && d=$(maestro_verif_cmd "$1" "${BASH_REMATCH[1]}")
-  printf '%s' "$d"
-  return 0
-}
+# ordem 060: _ev_decl e o veredito da prova (maestro_proof_verdict) moram em lib/core-proof-verdict.sh
+# — UM critério para evidence --check, order --status e order --accept.
+if ! declare -f maestro_proof_verdict >/dev/null 2>&1; then
+  [[ -f "$REPO_DIR/lib/core-proof-verdict.sh" ]] || die env "lib/core-proof-verdict.sh não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
+  # shellcheck source=lib/core-proof-verdict.sh
+  source "$REPO_DIR/lib/core-proof-verdict.sh"
+fi
 
 _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
@@ -195,28 +197,6 @@ _ev_cmd_record() { # <proj> <label> <arquivo do recibo> <load_limiar> -- <comand
 }
 
 # ------------------------------------------------------------ leitura/veredito
-_ev_cmd_reasons() { # <label> <proj> <maxage> <age> <e_wb> <e_wa> <e_exit> <e_match> <e_hash> <decl_r> → motivos (vazio = válida)
-  local label="$1" proj="$2" maxage="$3" age="$4" e_wb="$5" e_wa="$6" \
-        e_exit="$7" e_match="$8" e_hash="$9" decl_r="${10}"
-  local reasons="" w_now="none"
-  [[ "$e_wb" != "$e_wa" ]] && reasons+="${reasons:+; }árvore mudou durante a corrida"
-  (( age >= maxage )) && reasons+="${reasons:+; }idade no teto (${maxage}s)"
-  [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
-    w_now=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_now="none"
-  [[ "$w_now" == "none" || "$e_wa" == "none" ]] && reasons+="${reasons:+; }sem git para comparar conteúdo"
-  [[ "$w_now" != "none" && "$e_wa" != "none" ]] && ! maestro_tree_same "$proj" "$w_now" "$e_wa" \
-    && reasons+="${reasons:+; }conteúdo mudou desde a prova"
-  [[ "$e_exit" != "0" ]] && reasons+="${reasons:+; }a execução provou FALHA (exit $e_exit)"
-  if [[ "$e_match" == "no" ]]; then
-    reasons+="${reasons:+; }comando diferente do declarado em .maestro.yaml"
-  elif [[ -n "$decl_r" && -n "$e_hash" && "$e_hash" != "none" ]] \
-    && [[ "$e_hash" != "$(maestro_verif_hash "$decl_r")" ]]; then
-    reasons+="${reasons:+; }comando do recibo ≠ commands.$label (.maestro.yaml)"
-  fi
-  printf '%s' "$reasons"
-  return 0
-}
-
 _ev_cmd_qualifiers() { # <e_load> <load_limiar> <e_inc> → "load_qualif<US>inc_qualif" (US=\x1f: qualif pode vir vazio)
   local e_load="$1" load_limiar="$2" e_inc="$3" load_qualif="" load_str="" inc_qualif=""
   if [[ -n "$e_load" ]]; then
@@ -244,18 +224,17 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime 
     echo "evidência ($label): NENHUMA — registre com: $(verif_record_hint "$proj" "$rl")"
     (( check == 1 )) && return 1 || return 0
   fi
-  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
-  eval "$(_ev_read_vars "$ef")" 2>/dev/null || :
-  [[ -n "$e_match" ]] || e_match="free"
-  if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
+  local reasons vrc=0   # ordem 060: o veredito é UM só (core-proof-verdict.sh); aqui só imprime
+  reasons=$(maestro_proof_verdict "$ef" "$proj" "$label") || vrc=$?
+  if (( vrc == 2 )); then
     echo "evidência ($label): recibo ilegível — regrave"
     (( check == 1 )) && return 1 || return 0
   fi
+  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
+  eval "$(_ev_read_vars "$ef")" 2>/dev/null || :   # só exibição: idade (informação, nunca veredito) e carga (ordem 055)
   local age=$(( $(maestro_now_epoch) - e_epoch ))
   (( age < 0 )) && age=0
   local decl_r; decl_r=$(_ev_decl "$proj" "$label")
-  local reasons; reasons=$(_ev_cmd_reasons "$label" "$proj" "$maxage" "$age" \
-    "$e_wb" "$e_wa" "$e_exit" "$e_match" "$e_hash" "$decl_r")
   local load_qualif inc_qualif
   IFS=$'\x1f' read -r load_qualif inc_qualif <<<"$(_ev_cmd_qualifiers "$e_load" "$load_limiar" "$e_inc")"
   if [[ -z "$reasons" ]]; then
