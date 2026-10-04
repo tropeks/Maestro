@@ -50,3 +50,7 @@ Depende de: ordem 050 (Maestro) aceita (é a base da Etapa 1); a Etapa 0 (ordem 
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 059` (você não fecha a própria ordem).
+accepted_at: 2026-10-04T16:21:14-03:00
+accepted_session: desconhecido
+accepted_tree: 144c6954192cd480b515c0d91862ad84daee5250
+accepted_intent: 6
