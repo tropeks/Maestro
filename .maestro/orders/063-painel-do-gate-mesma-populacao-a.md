@@ -22,7 +22,7 @@ para provar que **nenhuma etapa seguinte melhorou algo sem número**. Três defe
 2. **"sem fonte" silencioso.** Quando uma fonte **que devia existir** some (ledger ilegível, git, `gh`, ssh ao
    `lab-ci`, API da Ponte), o painel imprime "sem fonte" e sai 0. Quem lê não distingue "não há dado" de
    "o instrumento quebrou". Um painel que mente por omissão é pior que nenhum.
-3. **Mede o que é fácil, não o que o Capitão paga:** falta o tempo do Capitão, o retrabalho e o custo por ordem.
+3. **Mede o que é fácil, não o que o Capitão paga:** faltam as ações do Capitão (contadas, não cronometradas), o retrabalho e o custo por ordem.
 
 ## O que entrega
 
@@ -49,18 +49,17 @@ escrita em projeto, ledger, runner, banco ou `lab-ci`.
    não resolve para um caminho é **FALHA nomeada** (a chave e por quê), não pulo silencioso.
 4. **Permissões cortadas por janela.** A métrica 4 (permissões por turno, da Ponte) passa a sair **antes** e
    **depois** da janela da v59, por run e por projeto, e não mais um agregado só.
-5. **Três medidas novas**, cada uma com fonte declarada e, se faltar a fonte, o estado FALHA ou "sem dado"
-   conforme o item 2 (nunca estimada):
-   - **Minutos do Capitão:** `captain_ask` no ledger (a pergunta e a resposta; minutos = soma dos intervalos
-     pergunta→resposta onde o par é legível, em minutos inteiros) **e** os **patches aplicados por ele**,
-     contados no **git** (commits `… patch protegido`, que são o `git apply` do Capitão), por ordem.
-   - **Retrabalho:** **turnos devolvidos** (bloqueio do Stop de turno e ordem reenfileirada), **recibos
-     regravados** (gravações do mesmo rótulo na mesma ordem além da primeira) e **turnos sem relatório**
-     (`turno_timeout` e fim de turno sem os 5 rótulos). **Se a fonte de uma dessas não existe no ledger** (ex.:
-     nenhum evento de gravação de recibo), o painel diz `sem instrumento`, lista no relatório e a ordem **não
-     acrescenta log** (isso é `hooks/`, outra ordem): vira achado com a proposta mínima de instrumento.
+5. **Três medidas novas**, cada uma com fonte declarada. **Fonte que falta é FALHA nomeada** (item 2: a fonte
+   e o motivo em stderr, exit 3), **nunca estimativa** e nunca zero no lugar de ausência. Definições
+   fechadas pelo Diretor em 04/10 (seção "Decisões do Diretor — turno 2"):
+   - **Ações do Capitão** (contagem mecânica; **não são minutos**, nenhum tempo é estimado): as **decisões
+     com `origin spock` no `ponte.db`** (são os `captain_ask`) **mais** os **commits que tocam caminhos
+     protegidos** (`hooks/`, `bin/`, `lib/`, `src/`, `.claude-plugin/plugin.json`), porque **só o Capitão aplica
+     patch ali**. Publicado como **contagem de ações do Capitão**, por ordem quando o commit é atribuível a uma.
+   - **Retrabalho:** **turnos devolvidos**, **turnos encerrados sem relato** e **recibos regravados no mesmo
+     rótulo**, todos lidos do **ledger** e do **`ponte.db`**.
    - **Custo por ordem:** em **inteiros** (tokens ou centavos; **nunca float**, regra do projeto), por ordem, da
-     telemetria/ledger local onde houver registro; sem registro, `sem instrumento` como acima.
+     telemetria/ledger local; sem registro legível, FALHA nomeada como acima.
 6. **Snapshot "antes" regravado** com a população e as definições novas, em `docs/baseline/antes-2026-10-04.{md,json}`
    (o de 03/10 fica como histórico). **Só o Diretor o declara referência**, depois de ler: o executor não declara.
 
@@ -74,17 +73,20 @@ escrita em projeto, ledger, runner, banco ou `lab-ci`.
 - [oráculo: `bash tests/cli/test-baseline-gh-all.sh`] com `gh` simulado, o `--all` o chama **por repo** e só com
   `gh pr list` e `gh run list`.
 - [oráculo: `bash tests/cli/test-baseline-novas-medidas.sh`] as três medidas saem de uma fixture de ledger e de
-  git, em inteiros, e a que não tem fonte sai `sem instrumento` (não zero, não vazia).
+  git e de um `ponte.db` de fixture, em inteiros, e a que não tem fonte sai **FALHA nomeada com exit 3** (não
+  zero, não vazia, não estimada); nenhuma saída contém a palavra "minutos" para o Capitão.
 - [oráculo: `bash tests/cli/test-baseline-so-leitura.sh`] segue verde: nada escrito no repo, ledger e runners.
 - [oráculo: `bash tests/run-all.sh`] suíte verde; `habits` sem aviso novo.
 - [humano] o Diretor lê o snapshot regravado, confere a população e declara a referência.
 
 ## Ask-First
 
-- Se `captain_ask` ou os patches do Capitão não forem distinguíveis por um critério mecânico no ledger e no git
-  (ex.: patch aplicado por outra pessoa), PARE e proponha o critério antes de contar.
-- Se uma medida exigir **log novo** (evento que hoje não existe), **não o acrescente**: `sem instrumento` e a
-  proposta no relatório.
+- **Resolvido pelo Diretor (turno 2):** o critério das ações do Capitão é o da seção "Decisões do Diretor —
+  turno 2" (`origin spock` no `ponte.db` + commits em caminhos protegidos). Não proponha outro.
+- Se uma medida exigir **log novo** (evento que hoje não existe), **não o acrescente** (isso é `hooks/`, outra
+  ordem): a medida sai **FALHA nomeada**, e o relatório traz a proposta mínima de instrumento.
+- Se o `ponte.db` não abrir em modo somente leitura, ou o esquema não tiver o campo `origin`, é FALHA nomeada
+  (arquivo/tabela/coluna); **não** escreva no banco para contornar.
 - Se a regra de população deixar um dos lados com menos de 3 ordens, reporte e **não compare**.
 - Rede: **só** `gh pr list`/`gh run list` (internet) e o ssh de leitura ao `lab-ci` (LAN); mais nada.
 - `tools/`, `tests/` e `docs/` vão direto no branch; **não há patch protegido**. Se algo exigir `lib/`,
@@ -103,12 +105,36 @@ documentou, e o CHANGELOG (Changed/Added).
 - O snapshot "antes" de 04/10 gerado e commitado, com N de cada lado e a regra.
 - Suíte completa `SUITE OK`, sozinha no worktree; recibo `order-63` no tip e `maestro order --status 63` VÁLIDA.
 
+## Decisões do Diretor — turno 2
+
+Registradas em 04/10 após o turno 1 aprovado (janela, estados e `gh` no `--all`, no branch em `51da6fd`). Valem
+como contrato; o executor não as reabre sem prova nova. Respondem ao Ask-First e **substituem** o que o turno 1
+assumiu sobre minutos e sobre `sem instrumento`.
+
+1. **Ações do Capitão = contagem mecânica, sem estimar tempo.** Duas fontes somadas: (a) as **decisões com
+   `origin spock` no `ponte.db`**, que são os `captain_ask`; (b) os **commits que tocam caminhos protegidos**
+   (`hooks/`, `bin/`, `lib/`, `src/`, `.claude-plugin/plugin.json`), porque **só o Capitão aplica patch ali**
+   (o executor entrega o patch em `docs/patches/`). **Publique como contagem de ações do Capitão, não como
+   minutos**: o painel não tem coluna, rótulo nem cálculo de minutos para o Capitão.
+2. **Retrabalho = três contagens**, todas do **ledger** e do **`ponte.db`**: **turnos devolvidos**, **turnos
+   encerrados sem relato** e **recibos regravados no mesmo rótulo**. O executor mapeia onde cada uma vive
+   (evento, tabela e coluna) e cola o mapa.
+3. **Onde faltar fonte, FALHA nomeada, nunca estimativa.** Vale o item 2 da ordem: fonte ausente → métrica FALHA,
+   motivo e fonte em stderr, **exit 3**. O estado `sem instrumento` **deixa de existir**. Log novo continua
+   proibido nesta ordem: ausência de fonte vira FALHA e a proposta de instrumento no relatório.
+4. **Log da suíte na pasta temporária do run:** `/tmp/claude-1000/-home-rcosta00-dev-worktrees-maestro-063`
+   (nunca `/tmp` solto). Suíte em segundo plano, espera por laço até `rc=`.
+
+**O snapshot regravado (item 6) sai mesmo com FALHAs:** o painel imprime o parcial, marca as métricas FALHA e o
+exit 3 vai para o relatório; o snapshot não esconde a falha atrás de "sem fonte". O Diretor lê e decide a
+referência.
+
 ## Turno
 
-- fatia: janela e população iguais nos dois lados, estados ok/sem dado/FALHA com exit 3, e `gh` no `--all` (itens 1 a 3), com os três testes
-- fim: os testes `test-baseline-janela`, `test-baseline-falha-alta` e `test-baseline-gh-all` saem 1 antes (colado) e 0 depois; `bash tests/run-all.sh` sai 0
-- teto: 4
-- fora: as permissões por janela e as três medidas novas (próximo turno, itens 4 e 5), acrescentar log ou hook, editar hooks/lib/bin/src, declarar o snapshot como referência e tocar vendor/
+- fatia: turno 2 — itens 4 a 6: permissões por janela, as três medidas novas (ações do Capitão, retrabalho e custo por ordem; fonte ausente = FALHA nomeada) e o snapshot "antes" de 04/10 regravado
+- fim: `bash tests/cli/test-baseline-novas-medidas.sh` sai 1 antes (colado) e 0 depois, os testes do turno 1 e `test-baseline-so-leitura.sh` seguem verdes, o snapshot `docs/baseline/antes-2026-10-04.{md,json}` commitado e `bash tests/run-all.sh` sai 0
+- teto: 3
+- fora: estimar tempo ou publicar minutos do Capitão, acrescentar log ou hook, editar hooks/lib/bin/src, escrever no `ponte.db`, declarar o snapshot como referência e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run,
