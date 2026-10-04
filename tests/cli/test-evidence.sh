@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # E13 / S-1301 + S-1302 — `maestro evidence`: recibo amarrado a conteúdo.
-# Invariante: VÁLIDA só quando conteúdo byte-idêntico + comando igual + idade
-# no teto + exit 0 + árvore parada durante a corrida. Tudo o mais nomeia o
-# motivo. Hermético: MAESTRO_HOME/projeto em mktemp.
+# Invariante: VÁLIDA só quando conteúdo byte-idêntico + comando igual + exit 0
+# + árvore parada durante a corrida (idade só informa, ordem 060). Tudo o mais
+# nomeia o motivo. Hermético: MAESTRO_HOME/projeto em mktemp.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,7 +45,7 @@ grep -q 'árvore mudou durante a corrida' <<<"$out" && ok "comando que suja a á
 git -C "$P" checkout -q -- f
 "$BIN" evidence --record --project "$P" -- true >/dev/null
 out=$(MAESTRO_EVIDENCE_MAX_AGE=0 "$BIN" evidence --project "$P")
-grep -q 'idade' <<<"$out" && ok "teto de idade estourado → VENCIDA" || bad "idade ($out)"
+grep -q 'VÁLIDA' <<<"$out" && ! grep -q 'idade' <<<"$out" && ok "idade é informação, nunca veredito (ordem 060): teto estourado → continua VÁLIDA" || bad "idade ($out)"
 
 echo "-- rótulos separam provas"
 "$BIN" evidence --record --label build --project "$P" -- true >/dev/null

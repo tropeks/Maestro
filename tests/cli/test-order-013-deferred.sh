@@ -152,8 +152,9 @@ else
   EF2=$(ls "$MAESTRO_HOME/evidence"/*-order-2 2>/dev/null | head -1)
   sed -i 's/^epoch=.*/epoch=1/' "$EF2"
   OUT2=$("$BIN" order --status 2 --project "$P" 2>&1)
-  grep -q 'VENCIDA' <<<"$OUT2" && ok "(e) REGRESSÃO: ordem SEM deferred_by continua vencendo por idade" \
-    || bad "(e) REGRESSÃO QUEBRADA: ordem sem deferred_by parou de vencer ($OUT2)"
+  # ordem 060: idade é informação, nunca veredito — a ordem sem deferred_by também não vence por idade.
+  grep -q 'VENCIDA' <<<"$OUT2" && bad "(e) ordem SEM deferred_by venceu por idade, contra a ordem 060 ($OUT2)" \
+    || ok "(e) ordem SEM deferred_by não vence por idade (ordem 060: idade não invalida prova)"
   grep -q '^ordem 002: adiada$' <<<"$OUT2" && bad "(e) ordem SEM deferred_by virou 'adiada' — vazamento do mecanismo" \
     || ok "(e) ordem sem deferred_by não é afetada pelo mecanismo novo"
 

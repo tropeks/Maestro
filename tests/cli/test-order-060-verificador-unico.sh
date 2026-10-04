@@ -67,7 +67,7 @@ caso() {
 caso a I "árvore mudou na corrida"          's/^wtree_before=.*/wtree_before=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
 caso b I "comando ≠ declarado (cmd_match=no)" 's/^cmd_match=.*/cmd_match=no/'
 caso c I "hash do recibo ≠ commands.<label>"  's/^cmd_hash=.*/cmd_hash=0123456789abcdef/'
-caso d I "idade acima do teto"               's/^epoch=.*/epoch=1/'
+caso d V "velho e idêntico ao tip (idade)"    's/^epoch=.*/epoch=1/'
 caso e I "exit ≠ 0"                          's/^exit=.*/exit=1/'
 caso f V "recibo válido"                      ''
 
@@ -91,6 +91,9 @@ grep -q '_order_verif_gate' "$REPO/lib/cmd-order-accept.sh" \
   && ! grep -q '_ev_cmd_reasons' "$REPO"/lib/*.sh \
   && ok "gate do --accept passa por _order_verif_gate → veredito único; _ev_cmd_reasons não existe mais" \
   || bad "_ev_cmd_reasons ainda existe ou accept não usa o veredito"
+! grep -q 'idade no teto' "$REPO"/lib/*.sh && ! grep -q 'age >= \|maxage' "$REPO/lib/core-proof-verdict.sh" \
+  && ok "idade não reprova em leitor nenhum: sem motivo 'idade no teto' e sem teto no veredito" \
+  || bad "ainda há reprovação por idade (motivo 'idade no teto' ou teto no veredito)"
 for f in lib/cmd-evidence.sh lib/core-order-state.sh lib/cmd-order-accept.sh; do
   if grep -nE '"\$e_wb"|"\$e_match"|"\$e_exit"|/\^cmd_match=/|age >= |wtree_before' "$REPO/$f" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -q .; then
     bad "$f ainda compara wtree_before/cmd_match/idade por conta própria"

@@ -735,8 +735,9 @@ probe_ms=<int>                   # ordem 016 PR1 — sonda de baseline (capacida
 ```
 
 VÁLIDA exige: wtree atual == wtree_after (conteúdo byte-idêntico ao provado), before ==
-after (árvore parada durante a corrida), exit 0, idade < teto (`MAESTRO_EVIDENCE_MAX_AGE`,
-default 86400s). Falha também é recibo — exit é dado. Estado local (classe do brief),
+after (árvore parada durante a corrida), exit 0 e comando = o declarado. **Idade é informação,
+nunca veredito** (ordem 060): recibo velho de conteúdo idêntico ao tip segue VÁLIDO; o formato
+do recibo não mudou. Falha também é recibo — exit é dado. Estado local (classe do brief),
 jamais no log; consumidores: `outcome --suite` (cita ou avisa), `verify`, `order
 --accept`, deslop, retro, doctor.
 

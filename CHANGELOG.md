@@ -10,10 +10,12 @@ from the decision log and tag messages when this file was introduced.
 - **A prova tem uma verdade só** (ordem 060). `evidence --check`, `order --status` e
   `order --accept` liam o mesmo recibo com três critérios: `--status`/`--accept` só olhavam
   `exit=0` e a árvore do tip, então um recibo VENCIDO no `evidence` (árvore mudou durante a corrida,
-  comando ≠ declarado, hash ≠ `commands.<rótulo>`, idade no teto) podia sair `provada` e ser aceito.
+  comando ≠ declarado, hash ≠ `commands.<rótulo>`) podia sair `provada` e ser aceito.
   Os três chamam agora `maestro_proof_verdict` (`lib/core-proof-verdict.sh`), o critério rigoroso do
-  `evidence --check`; `--status`/`--accept` nomeiam os motivos. Formato do recibo e texto do
-  `evidence --check` inalterados; carga continua só qualificador (055).
+  `evidence --check`; `--status`/`--accept` nomeiam os motivos. **Idade é informação, nunca
+  veredito:** o recibo velho de conteúdo idêntico ao tip segue VÁLIDO nos três (o texto do
+  `evidence --check` só muda aí: o que estava VENCIDO só por idade passa a VÁLIDO). Formato do
+  recibo inalterado; carga continua só qualificador (055).
 
 ## [1.22.0] — 2026-10-04
 

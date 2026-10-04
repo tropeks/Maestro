@@ -1,5 +1,5 @@
 diff --git a/lib/cmd-evidence.sh b/lib/cmd-evidence.sh
-index 32a8b39..690376c 100644
+index 32a8b39..0bfbde4 100644
 --- a/lib/cmd-evidence.sh
 +++ b/lib/cmd-evidence.sh
 @@ -80,12 +80,14 @@ _ev_cmd_measure_probe() { # → probe_ms (mediana de N invocações no-op via MA
@@ -61,13 +61,13 @@ index 32a8b39..690376c 100644
 -  [[ -n "$e_match" ]] || e_match="free"
 -  if [[ -z "$e_epoch" || -z "$e_wa" ]]; then
 +  local reasons vrc=0   # ordem 060: o veredito é UM só (core-proof-verdict.sh); aqui só imprime
-+  reasons=$(maestro_proof_verdict "$ef" "$proj" "$label" "" "$maxage") || vrc=$?
++  reasons=$(maestro_proof_verdict "$ef" "$proj" "$label") || vrc=$?
 +  if (( vrc == 2 )); then
      echo "evidência ($label): recibo ilegível — regrave"
      (( check == 1 )) && return 1 || return 0
    fi
 +  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
-+  eval "$(_ev_read_vars "$ef")" 2>/dev/null || :   # só exibição: idade e qualificadores de carga (ordem 055)
++  eval "$(_ev_read_vars "$ef")" 2>/dev/null || :   # só exibição: idade (informação, nunca veredito) e carga (ordem 055)
    local age=$(( $(maestro_now_epoch) - e_epoch ))
    (( age < 0 )) && age=0
    local decl_r; decl_r=$(_ev_decl "$proj" "$label")
@@ -77,10 +77,10 @@ index 32a8b39..690376c 100644
    IFS=$'\x1f' read -r load_qualif inc_qualif <<<"$(_ev_cmd_qualifiers "$e_load" "$load_limiar" "$e_inc")"
    if [[ -z "$reasons" ]]; then
 diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
-index dff6526..f1205dd 100644
+index c671aac..842d721 100644
 --- a/lib/core-order-state.sh
 +++ b/lib/core-order-state.sh
-@@ -160,6 +160,9 @@ _order_workproject_lib_load() {
+@@ -151,6 +151,9 @@ _order_workproject_lib_load() {
  _order_workproject_lib_load
  # ordem 044: árvore sem .maestro/** (core-tree.sh); sem a lib, igualdade exata.
  [[ -f "$REPO_DIR/lib/core-tree.sh" ]] && source "$REPO_DIR/lib/core-tree.sh" || maestro_tree_same() { [[ -n "$2" && "$2" == "$3" ]]; }
@@ -90,7 +90,7 @@ index dff6526..f1205dd 100644
  # ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
  # árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
  if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
-@@ -176,10 +179,12 @@ _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1
+@@ -167,10 +170,12 @@ _order_evidence_match() { # <dono> <wproj> <arquivo> → "rótulo árvore" do 1
    # casa por acidente), então strict=0 aqui sempre.
    for cand in $(_order_evidence_candidates "$(_order_field "$f" id)" "$dono8" 0); do
      ev_f=$(maestro_evidence_file "$wproj" "$cand" 2>/dev/null)
@@ -99,14 +99,14 @@ index dff6526..f1205dd 100644
      ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$ev_f" 2>/dev/null)
 -    # ordem 044: igualdade fora de .maestro/** (carimbo da anterior não vence o recibo)
 -    [[ -n "$ev_w" ]] && maestro_tree_same "$wproj" "$ev_w" "$tip_tree" && { printf '%s %s' "$cand" "$ev_w"; return 0; }
-+    # ordem 060: o MESMO veredito do evidence --check (exit, árvore na corrida, comando, idade, tip
-+    # via maestro_tree_same da 044) — nenhum critério próprio aqui.
++    # ordem 060: o MESMO veredito do evidence --check (exit, árvore na corrida, comando, tip via
++    # maestro_tree_same da 044) — nenhum critério próprio aqui; idade não entra.
 +    [[ -n "$ev_w" && -z "$(maestro_proof_verdict "$ev_f" "$wproj" "$cand" "$tip_tree")" ]] \
 +      && { printf '%s %s' "$cand" "$ev_w"; return 0; }
    done
    return 0
  }
-@@ -329,7 +334,7 @@ _order_verif_areas() { # <wproj> <arquivo> → áreas tocadas pelo branch (uma p
+@@ -320,7 +325,7 @@ _order_verif_areas() { # <wproj> <arquivo> → áreas tocadas pelo branch (uma p
    return 0
  }
  _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: estado" por rótulo exigido
@@ -115,7 +115,7 @@ index dff6526..f1205dd 100644
    [[ -n "$areas" || $# -ge 3 ]] || areas=$(_order_verif_areas "$proj" "$f")
    [[ -n "$areas" ]] || return 0
    # shellcheck disable=SC2086
-@@ -339,14 +344,10 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
+@@ -330,14 +335,10 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
    for lb in $labels; do
      ef=$(_order_receipt_file "$proj" "$lb" "$(_order_field "$f" id)")   # ordem 048: suite-N antes do legado
      if [[ -z "$ef" || ! -f "$ef" || ! -r "$ef" ]]; then st='NENHUMA'
@@ -136,10 +136,10 @@ index dff6526..f1205dd 100644
    done
 diff --git a/lib/core-proof-verdict.sh b/lib/core-proof-verdict.sh
 new file mode 100644
-index 0000000..0f74e70
+index 0000000..f69a500
 --- /dev/null
 +++ b/lib/core-proof-verdict.sh
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,54 @@
 +#!/usr/bin/env bash
 +# maestro lib/core-proof-verdict.sh — ordem 060: o veredito da prova tem UMA verdade.
 +#
@@ -147,8 +147,9 @@ index 0000000..0f74e70
 +# `order --accept` (_order_verif_report/_order_verif_gate) liam o MESMO recibo com três
 +# critérios — um recibo VENCIDO no evidence podia sair `provada` no --status e ser aceito.
 +# Agora os três chamam maestro_proof_verdict e não mantêm critério próprio. O formato do
-+# recibo (maestro-evidence-v1) segue de lib/core-evidence.sh; carga e medições inconclusivas
-+# são só qualificador (ordem 055) e NÃO entram aqui.
++# recibo (maestro-evidence-v1) segue de lib/core-evidence.sh. Idade e carga NÃO entram aqui:
++# a idade é só informação impressa (ordem 060, decisão do Diretor) e a carga só qualifica
++# o texto (ordem 055). Conteúdo idêntico ao tip é VÁLIDO por mais velho que o recibo seja.
 +#
 +# Sourced no mesmo processo (core-order-state.sh, cmd-evidence.sh); nenhum fork novo além do
 +# wtree/maestro_tree_same que o veredito de conteúdo já exigia.
@@ -165,26 +166,22 @@ index 0000000..0f74e70
 +  return 0
 +}
 +
-+maestro_proof_verdict() { # <recibo> <proj> <rótulo> <árvore_agora|""> [teto_idade_s] → motivos (stdout), vazio = VÁLIDO; rc 2 = recibo ilegível
++maestro_proof_verdict() { # <recibo> <proj> <rótulo> [árvore_agora] → motivos (stdout), vazio = VÁLIDO; rc 2 = recibo ilegível
 +  # <árvore_agora>: com ela o conteúdo é comparado a ESSA árvore (o tip da ordem); vazio compara
 +  # ao conteúdo atual de <proj> (evidence --check). Rótulo = o pedido pelo chamador (decl herda de `suite`).
-+  local ef="$1" proj="$2" label="$3" w_now="${4:-}" maxage="${5:-${MAESTRO_EVIDENCE_MAX_AGE:-86400}}"
++  local ef="$1" proj="$2" label="$3" w_now="${4:-}" reasons="" decl
 +  local e_epoch="" e_exit="" e_wb="" e_wa="" e_hash="" e_match="" e_load="" e_ncpu="" e_inc="" e_probe=""
-+  local reasons="" age decl
-+  [[ "$maxage" =~ ^[0-9]{1,8}$ ]] || maxage=86400
 +  _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
 +  maestro_verif_load
 +  eval "$(_ev_read_vars "$ef")" 2>/dev/null || :
 +  [[ -n "$e_match" ]] || e_match="free"
 +  [[ -n "$e_epoch" && -n "$e_wa" ]] || { printf 'recibo ilegível'; return 2; }
-+  age=$(( $(maestro_now_epoch) - e_epoch )); (( age < 0 )) && age=0
 +  decl=$(_ev_decl "$proj" "$label")
 +  if [[ -z "$w_now" ]]; then
 +    w_now="none"
 +    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && w_now=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_now="none"
 +  fi
 +  [[ "$e_wb" != "$e_wa" ]] && reasons+="${reasons:+; }árvore mudou durante a corrida"
-+  (( age >= maxage )) && reasons+="${reasons:+; }idade no teto (${maxage}s)"
 +  [[ "$w_now" == "none" || "$e_wa" == "none" ]] && reasons+="${reasons:+; }sem git para comparar conteúdo"
 +  [[ "$w_now" != "none" && "$e_wa" != "none" ]] && ! maestro_tree_same "$proj" "$w_now" "$e_wa" \
 +    && reasons+="${reasons:+; }conteúdo mudou desde a prova"

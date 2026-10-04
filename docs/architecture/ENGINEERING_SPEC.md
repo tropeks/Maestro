@@ -51,7 +51,7 @@ maestro/
 | Decision record é por session_id | `src/decide.ts` |
 | Allowlist de não-código | `config/routing-table.yaml::gate.allowlist` |
 | Injeção ≤ 2k tokens | teste `tests/hooks/injection-budget.bats` |
-| A prova tem UMA verdade: `evidence --check`, `order --status` e `order --accept` chamam o mesmo veredito (ordem 060) | `lib/core-proof-verdict.sh::maestro_proof_verdict`; teste `tests/cli/test-order-060-verificador-unico.sh` |
+| A prova tem UMA verdade: `evidence --check`, `order --status` e `order --accept` chamam o mesmo veredito; idade é informação, nunca veredito (ordem 060) | `lib/core-proof-verdict.sh::maestro_proof_verdict`; teste `tests/cli/test-order-060-verificador-unico.sh` |
 
 ## Estratégia de testes
 

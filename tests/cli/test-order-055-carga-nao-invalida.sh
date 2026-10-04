@@ -5,8 +5,8 @@
 # O recibo é gravado com load1m_x100 acima do limiar (200) e medições
 # inconclusivas; `order --status`, `--status --json` e `--accept` têm de ler
 # `provada` e liberar o aceite, com o qualificador impresso pelo evidence.
-# Controles negativos: exit ≠ 0, árvore mudada, tip diferente do provado e
-# idade vencida continuam recusando.
+# Controles negativos: exit ≠ 0, árvore mudada e tip diferente do provado
+# continuam recusando. Idade não invalida (ordem 060): controle positivo.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -96,12 +96,12 @@ G checkout -q main
 out=$("$BIN" order --accept 1 --project "$P" --session dir-1 2>&1); rc=$?
 (( rc != 0 )) && ok "controle: tip ≠ provado recusa o aceite" || bad "tip ≠ provado aceitou: $out"
 
-# --- negativo 4: idade vencida ⇒ evidence VENCIDA mesmo com carga
+# --- controle 4 (ordem 060): idade enorme + carga ⇒ evidence VÁLIDA (idade só informa)
 fixture neg4
 record_loaded true || exit 1
 sed -i 's/^epoch=.*/epoch=1/' "$EF"
 out=$("$BIN" evidence --check --label order-1 --project "$P" 2>&1); rc=$?
-(( rc != 0 )) && grep -q 'VENCIDA' <<<"$out" && grep -q 'idade' <<<"$out" \
-  && ok "controle: idade vencida ⇒ VENCIDA (rc ≠ 0)" || bad "idade vencida não venceu (rc=$rc): $out"
+(( rc == 0 )) && grep -q 'VÁLIDA' <<<"$out" && ! grep -q 'idade' <<<"$out" \
+  && ok "idade é informação (ordem 060): recibo velho e idêntico ao tip segue VÁLIDO (rc 0)" || bad "idade invalidou o recibo (rc=$rc): $out"
 
 exit $fail
