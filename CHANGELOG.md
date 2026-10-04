@@ -6,7 +6,38 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-10-04
+
+Manutenção por ordem: o Stop de turno deixa de liberar calado sob carga, a numeração de ordens passa
+a ser por reserva, a ordem ganha estados de validação e a fábrica ganha o painel de linha de base.
+
+### Added
+- **Numeração de ordens por reserva** (ordem 049): `order --create` reserva o número no registro fora
+  da árvore (`~/.maestro/order-state/`), com lock atômico, considerando arquivos da árvore, worktrees,
+  branches locais e remotos e reservas já gravadas. Duas criações simultâneas nunca recebem o mesmo
+  número; id duplicado é erro em `--list`/`--status`/`conform`; reserva não consumida expira e `--list`
+  a mostra. Formato do arquivo e do carimbo inalterados. Patch `docs/patches/049-reserva-de-numeracao.patch`.
+- **Estados de validação da ordem e gate do aceite** (ordem 050): `em_validacao`, `validada` e
+  `reprovada`, derivados de recibos por árvore (nunca autodeclarados), entre `provada` e `aceita`;
+  `maestro order --validate <id>` grava o pedido fora da árvore. `--accept` só passa de `validada`
+  atrás de `MAESTRO_ACCEPT_REQUIRE_VALIDATION`; com a flag desligada, ou em projeto sem `validation:` no
+  `.maestro.yaml`, o comportamento é o de antes. `order --list`, `--status` (e `--json`) e `conform`
+  conhecem os estados novos. Patches `docs/patches/050-estados-de-validacao.patch` e
+  `050-habits-catraca.patch` (devolve `core-order-state.sh` para baixo do teto de 400 linhas).
+- **Painel de linha de base da fábrica** (ordem 058, Etapa 0): `tools/baseline.sh`, ferramenta
+  autônoma e **somente leitura**, com seis métricas (idade por estado e tempo parado em "pronta", CI
+  verde até o merge, rebases e conflitos, permissões por turno, CPU/memória/fila de runner, timeouts) em
+  markdown e JSON. Métrica sem fonte legível vira "sem fonte", nunca estimada; as ordens legadas sem
+  carimbo ficam numa linha própria, fora da mediana. Fontes: ledger, git, `routing.jsonl`, ssh ao
+  `lab-ci` só com comandos de leitura, `gh run list`/`gh pr list` e a Ponte em leitura. Snapshot "antes"
+  em `docs/baseline/antes-2026-10-03.{md,json}`; a integração ao CLI (`maestro baseline`) fica para uma
+  ordem futura.
+
 ### Fixed
+- **Carga não invalida o veredito do recibo** (ordem 055): load acima do limiar e medições
+  inconclusivas só qualificam o texto do `evidence --check`; `exit 0` com conteúdo idêntico ao tip
+  segue VÁLIDO e a ordem derivada como `provada`. Entrou teste de regressão com controles negativos
+  (exit ≠ 0, árvore mudada, tip diferente e idade vencida continuam recusando); nenhum código mudou.
 - **Stop de turno liberava calado em 124 sob carga** (ordem 056): `order --turno-check` custava
   ~1,7 s (busca da ordem por carimbo em todas as ordens, `_order_field` com 18 `awk`, chave do
   ledger resolvida ~8×) e estourava o `timeout` de 2 s; o 124 liberava e o turno acabava sem
@@ -14,7 +45,8 @@ from the decision log and tag messages when this file was introduced.
   (`TURNO_TIMEOUT_S`). Em 124 o hook agora confere localmente os 5 rótulos do relatório e
   bloqueia com a lista dos que faltam; evento novo `turno_timeout`. O 1º rótulo colado ao JSON
   da linha do transcrito passa a ser reconhecido. Conserto em `hooks/`, `lib/` e `src/`: patch
-  `docs/patches/056-stop-turno-timeout.patch`.
+  `docs/patches/056-stop-turno-timeout.patch`; `056-habits-catraca.patch` move `_order_field` e
+  `_order_valid_stamp` para `core-order-terminal.sh` (`core-order-state.sh` 400 → 381 linhas).
 
 ## [1.21.0] — 2026-10-03
 
