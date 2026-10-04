@@ -124,7 +124,24 @@ como contrato; o executor não as reabre sem prova nova. **Substituem** o que o 
 
 ## Turno
 
-- fatia: turno 2 — aplicar as decisões 1 a 4: veredito único rigoroso sem idade, caso de recibo velho e idêntico V nos três, patch refeito
+> **Primeiro passo, antes de qualquer edição: regenerar a sandbox e refazer o patch sobre ela.** O branch
+> foi rebaseado sobre `origin/main` (`8d141eb`, 1.22.0) e a `main` trouxe a **056**, que mexeu em
+> `lib/core-order-state.sh` (`_order_field`/`_order_valid_stamp` saíram dele) e em
+> `lib/core-order-terminal.sh` (os recebeu), além da 049 e da 050 (`core-order-validation.sh` lê
+> `_order_evidence_match`). O patch atual, `docs/patches/060-verificador-unico.patch`, foi gerado sobre a
+> lib **velha**: mesmo que o `git apply --check` passe (passa hoje, só por offsets), o veredito único tem de
+> ser desenhado sobre a lib de AGORA. Faça nesta ordem:
+> 1. `git clone --no-hardlinks` do worktree, **FORA do repo**, no tip rebaseado (o clone traz a lib da `main`
+>    sem o patch da 060).
+> 2. Refaça lá a função única, os três leitores e a remoção da idade (decisões 1 a 4), editando **só com
+>    Edit ou Write**, sobre a lib nova. Não reaplique o patch antigo por cima: ele serve de referência.
+> 3. `git diff` do sandbox vira o **novo** `docs/patches/060-verificador-unico.patch` (substitui o do turno 1).
+> 4. `git apply --check` do patch novo **no worktree** (tip rebaseado) tem de passar; `habits` na catraca
+>    **no sandbox**, antes e depois (a 056 deixou `core-order-state.sh` em 381 linhas: não estoure o teto).
+> 5. Se o patch novo conflitar com a 050/056 de um jeito que exija decisão (ex.: a função única não cabe
+>    sem mover código de `core-order-validation.sh`), PARE e relate com o arquivo e a linha.
+
+- fatia: turno 2 — regenerar a sandbox do tip rebaseado e, sobre ela, aplicar as decisões 1 a 4: veredito único rigoroso sem idade, caso de recibo velho e idêntico V nos três, patch refeito
 - fim: o teste de reprodução (caso "velho e idêntico" V nos três) sai vermelho antes (colado) e verde depois; `bash tests/run-all.sh` completa no sandbox com o patch aplicado sai 0 (SUITE OK), `habits` na catraca e `git apply --check` ok no worktree
 - teto: 3
 - fora: qualquer outra mudança — formato do recibo, texto de comandos não relacionados, a regra da 055, remover código morto da idade, o daemon, aplicar o patch e tocar vendor/
