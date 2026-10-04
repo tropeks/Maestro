@@ -100,20 +100,29 @@ valendo: subir o teto (proibido por esta decisão) e o conserto em arquivo autop
 O Capitão aplicou o patch da 056 em `4a322f1` (tip do branch, árvore limpa). Este turno **só grava a
 prova**, no tip com o patch aplicado:
 
-1. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4a322f1`
+1. **Rebase primeiro, antes de qualquer recibo.** A `main` andou (058 aceita em `da5c63b`, mais a 055):
+   o branch está atrás dela e o recibo gravado num tip desatualizado vence no rebase seguinte.
+   `git fetch origin && git rebase origin/main` no worktree deste branch. **Não há conflito esperado**:
+   a `main` só trouxe a 055 e a 058, que não tocam os arquivos desta ordem. Confira que os commits de
+   patch do Capitão continuam com o mesmo conteúdo (`git show <sha>:docs/patches/<arquivo> | sha1sum`
+   antes e depois). **Se o guard barrar o rebase** por tocar arquivo protegido, **PARE e relate**: a
+   saída exata do guard e o comando que o disparou. **Não contorne** (nada de `git apply` por fora, de
+   escrever o arquivo por outro caminho nem de `MAESTRO_OFF`). Se houver conflito inesperado, também
+   PARE e relate com a lista dos arquivos em conflito.
+2. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4a322f1`
    ou o que o Capitão tiver por cima) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
    por vez**, sozinha neste worktree).
-2. Grave, **um de cada vez e em sequência** (cada um roda a suíte completa):
+3. Grave, **um de cada vez e em sequência** (cada um roda a suíte completa):
    `maestro evidence --record --label order-56 -- bash tests/run-all.sh`, depois `--label suite-56`,
    depois `--label suite` (rótulo legado, até a frota girar). Use o `bin/maestro` do worktree.
-3. `maestro habits` na catraca (nenhum oversized acima do baseline; a régua não sobe).
-4. `maestro order --status 56` diz **VÁLIDA** no tip.
-5. Se a suíte reprovar por **teste quebrado pelo patch**, **não conserte**: cole a saída exata do FAIL e
+4. `maestro habits` na catraca (nenhum oversized acima do baseline; a régua não sobe).
+5. `maestro order --status 56` diz **VÁLIDA** no tip.
+6. Se a suíte reprovar por **teste quebrado pelo patch**, **não conserte**: cole a saída exata do FAIL e
    relate (causa e o que o teste esperava). Código e patch não mudam neste turno.
 
 ## Turno
 
-- fatia: gravar os recibos no tip com o patch aplicado
+- fatia: rebasear o branch sobre origin/main e gravar os recibos no tip com o patch aplicado
 - fim: suite completa sozinha com SUITE OK, recibos order-56, suite-56 e suite gravados, habits na catraca, `maestro order --status 56` VÁLIDA
 - teto: 2
 - fora: mudar código, salvo teste quebrado pelo patch, que vira relato; aplicar patch; tocar vendor/
