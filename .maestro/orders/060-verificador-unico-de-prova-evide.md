@@ -122,29 +122,38 @@ como contrato; o executor não as reabre sem prova nova. **Substituem** o que o 
 - A emenda de contrato (API_SPEC, DATA_MODEL §recibo, ENGINEERING_SPEC) e o CHANGELOG passam a dizer "idade
   é informação, nunca veredito", no MESMO changeset.
 
+## Turno de recibos
+
+O turno 2 (veredito único rigoroso sem idade, patch refeito sobre a lib rebaseada) está **concluído**: o
+Capitão aplicou o patch em `e87c9f8` (tip do branch, em dia com `origin/main` `8d141eb`, árvore limpa).
+Este turno **só grava a prova**, no tip com o patch aplicado:
+
+1. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `e87c9f8` ou
+   o que o Capitão tiver por cima), a carga (`uptime`) e que **nenhuma outra suíte roda**
+   (`pgrep -fa run-all` vazio: uma suíte pesada por vez, sozinha neste worktree). Se o branch estiver
+   atrás de `origin/main`, `git fetch origin && git rebase origin/main` primeiro; se o guard barrar,
+   **PARE e relate**, não contorne.
+2. `maestro habits --all` **dentro da catraca** (`oversized-file` e `oversized-function` iguais ao
+   baseline, a régua não sobe) **antes** de gravar qualquer recibo. Se houver slop acima, PARE e relate.
+3. Grave, **um de cada vez e em sequência**, usando o `bin/maestro` do worktree e
+   `PYTHONDONTWRITEBYTECODE=1`: `order-60`, depois `suite-60`, depois `suite` (rótulo legado, até a frota
+   girar). Cada gravação roda `bash tests/run-all.sh` completa (~14 min), então:
+   - rode **em segundo plano**, com a saída num arquivo de log e uma linha final `rc=$?` escrita ao
+     terminar (ex.: `( maestro evidence --record --label order-60 -- bash tests/run-all.sh > LOG 2>&1;
+     echo "rc=$?" >> LOG ) &`);
+   - **espere por laço** até a linha `rc=` aparecer no log (`until grep -q '^rc=' LOG; do sleep 20;
+     done`), nunca por `sleep` único longo nem por adivinhação de tempo;
+   - leia o `SUITE OK`/`FAIL` e o `rc=` do log antes de passar para o próximo rótulo.
+4. `maestro order --status 60` diz **VÁLIDA** no tip (recibo `order-60`, `suite: VÁLIDA`).
+5. Se a suíte reprovar, **PARE no primeiro FAIL**: cole a saída exata e relate (qual teste, qual
+   asserção, se é do patch ou de tempo sob carga). **Não conserte.** Código e patch não mudam neste turno.
+
 ## Turno
 
-> **Primeiro passo, antes de qualquer edição: regenerar a sandbox e refazer o patch sobre ela.** O branch
-> foi rebaseado sobre `origin/main` (`8d141eb`, 1.22.0) e a `main` trouxe a **056**, que mexeu em
-> `lib/core-order-state.sh` (`_order_field`/`_order_valid_stamp` saíram dele) e em
-> `lib/core-order-terminal.sh` (os recebeu), além da 049 e da 050 (`core-order-validation.sh` lê
-> `_order_evidence_match`). O patch atual, `docs/patches/060-verificador-unico.patch`, foi gerado sobre a
-> lib **velha**: mesmo que o `git apply --check` passe (passa hoje, só por offsets), o veredito único tem de
-> ser desenhado sobre a lib de AGORA. Faça nesta ordem:
-> 1. `git clone --no-hardlinks` do worktree, **FORA do repo**, no tip rebaseado (o clone traz a lib da `main`
->    sem o patch da 060).
-> 2. Refaça lá a função única, os três leitores e a remoção da idade (decisões 1 a 4), editando **só com
->    Edit ou Write**, sobre a lib nova. Não reaplique o patch antigo por cima: ele serve de referência.
-> 3. `git diff` do sandbox vira o **novo** `docs/patches/060-verificador-unico.patch` (substitui o do turno 1).
-> 4. `git apply --check` do patch novo **no worktree** (tip rebaseado) tem de passar; `habits` na catraca
->    **no sandbox**, antes e depois (a 056 deixou `core-order-state.sh` em 381 linhas: não estoure o teto).
-> 5. Se o patch novo conflitar com a 050/056 de um jeito que exija decisão (ex.: a função única não cabe
->    sem mover código de `core-order-validation.sh`), PARE e relate com o arquivo e a linha.
-
-- fatia: turno 2 — regenerar a sandbox do tip rebaseado e, sobre ela, aplicar as decisões 1 a 4: veredito único rigoroso sem idade, caso de recibo velho e idêntico V nos três, patch refeito
-- fim: o teste de reprodução (caso "velho e idêntico" V nos três) sai vermelho antes (colado) e verde depois; `bash tests/run-all.sh` completa no sandbox com o patch aplicado sai 0 (SUITE OK), `habits` na catraca e `git apply --check` ok no worktree
-- teto: 3
-- fora: qualquer outra mudança — formato do recibo, texto de comandos não relacionados, a regra da 055, remover código morto da idade, o daemon, aplicar o patch e tocar vendor/
+- fatia: gravar order-60, suite-60 e suite no tip com o patch aplicado
+- fim: suíte completa sozinha com SUITE OK nos três recibos (em segundo plano, esperando por laço até a linha `rc=`), `habits` dentro da catraca, `maestro order --status 60` VÁLIDA
+- teto: 2
+- fora: mudar código (e patch); aplicar patch; tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **Escrita de código só com Edit ou Write, nunca por shell.** Nenhum heredoc, `tee`, `sed -i`,
