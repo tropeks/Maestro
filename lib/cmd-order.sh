@@ -107,6 +107,7 @@ _order_create_write() { # <proj> <oid> <título> <branch> <frozen> <extra> <doc>
     printf 'author_session: %s\n' "${sid:-desconhecido}"
     printf -- '-->\n# Ordem %s — %s\n\n%s\n' "$oid" "$title" "$body"
     grep -q '^## Turno' <<<"$body" || { _order_turno_lib_load; _order_turno_skeleton; }   # ordem 046
+    _order_entry_lib_load; _order_entry_required "$proj" && ! grep -q '^## Critérios de aceite' <<<"$body" && _order_criteria_skeleton   # ordem 059
     printf '\n## Contrato de execução\n'
     printf -- '- Trabalhe APENAS no branch `%s`; NUNCA no main/master.\n' "$branch"
     [[ -n "$frozen" ]] && printf -- '- Zonas CONGELADAS (não toque): %s\n' "$frozen"
@@ -296,6 +297,11 @@ _order_turno_cmd() { # --turno-check [--session s] [--report-file f] | --turno-l
   of=$(_order_resolve_stamped "$proj/.maestro/orders" "$oid")
   _order_turno_livre "$of" "$oid" "$sid"
 }
+_order_entry_lib_load() { # carrega lib/core-order-entry.sh (ordem 059) — uma vez, degradando por comando (I-2)
+  declare -f _order_entry_check >/dev/null 2>&1 && return 0
+  [[ -f "$REPO_DIR/lib/core-order-entry.sh" ]] && source "$REPO_DIR/lib/core-order-entry.sh" && return 0
+  die env "lib/core-order-entry.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+}
 _order_json_lib_load() { # carrega lib/cmd-order-json.sh — uma vez, degradando por comando (I-2)
   declare -f _order_action_status_json >/dev/null 2>&1 && return 0
   if [[ -f "$REPO_DIR/lib/cmd-order-json.sh" ]]; then
@@ -338,7 +344,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --create)  action="create" ;;
       --list)    action="list" ;;
       --status)  action="status"; oid="${2:-}"; shift ;;
-      --accept|--validate) action="${1#--}"; oid="${2:-}"; shift ;;   # ordem 050: --validate pede a validação da árvore provada
+      --accept|--validate|--entry-check) action="${1#--}"; oid="${2:-}"; shift ;;   # ordem 050: --validate pede a validação; 059: --entry-check só lê
       --title)   title="${2:-}"; shift ;;
       --branch)  branch="${2:-}"; shift ;;
       --frozen)  frozen="${2:-}"; shift ;;
@@ -358,7 +364,6 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
     shift
   done
   [[ -n "$action" ]] || action="list"; local odir="$proj/.maestro/orders"
-
   # shellcheck source=hooks/lib/common.sh
   source "$REPO_DIR/hooks/lib/common.sh"
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
@@ -383,6 +388,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       if (( json_out == 1 )); then _order_json_lib_load; _order_action_status_json "$proj" "$wproj" "$of" "$oid"
       else _order_status_lib_load; _order_action_status "$proj" "$wproj" "$of" "$oid"; fi ;;
     validate) _order_action_validate "$proj" "$wproj" "$of" "$oid" "$sid" ;;   # ordem 050
+    entry-check) _intent_lib_load; _order_turno_lib_load; _order_entry_lib_load; _order_entry_check "$proj" "$wproj" "$of" "$oid"; return $? ;;   # ordem 059
     accept)
       _order_accept_lib_load
       if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$wproj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
