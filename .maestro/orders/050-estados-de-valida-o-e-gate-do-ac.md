@@ -30,6 +30,37 @@ Testes: validada, reprovada, árvore mudada, flag desligada (golden idêntico), 
 
 Depende de: ordem 49 (numeração) só pela sequência do pacote, não pelo código.
 
+## Reparo
+
+Achado na suíte completa do tip da 050 (`5fc35bf`): ela reprova **só** na catraca do `habits`:
+`oversized-file: 14 > baseline 13; oversized-function: 7 > baseline 6`. A 050 trouxe **um** de cada,
+medidos com `maestro habits --all` no worktree da ordem:
+
+- **oversized-file:** `lib/core-order-state.sh` — **403 linhas** (teto 400). Estava em 398 antes da 050
+  (a 048 já o tinha espremido sob a catraca); a 050 acrescentou 5 linhas.
+- **oversized-function:** `lib/cmd-order.sh:332` — **62 linhas** (teto 60), o despachante do `order`
+  que a 050 alargou para ligar `--validate`.
+
+**A régua não sobe.** `.maestro-habits.tsv` fica como está: o reparo divide o que entrou, no molde da
+ordem 045 (decompor sem mudar comportamento).
+
+1. `core-order-state.sh` ≤ 400: mover para `lib/core-order-validation.sh` (já nasceu na 050) ou para
+   `core-order-terminal.sh` a função/bloco que a 050 colocou em `core-order-state.sh`, no molde do que a
+   048 fez com `_order_receipt_file`. Margem de pelo menos 3 linhas para a próxima ordem não estourar.
+2. `cmd-order.sh:332` ≤ 60: extrair o ramo do `--validate` (e o que mais a 050 colou no `case`) para
+   uma função própria no arquivo de validação, deixando o despachante ≤ 60 linhas.
+3. **Comportamento idêntico**, provado: `tests/cli/test-order-050-validacao.sh` e os testes `test-order*`
+   passam como antes; a saída de erros do despachante não muda; nenhum caso novo.
+
+`lib/` é autoprotegida: a correção sai como **patch NOVO** em `docs/patches/050-habits-catraca.patch`
+(o `050-estados-de-validacao.patch` já aplicado **não** é editado), feito em clone sandbox FORA do repo
+a partir do tip do branch, testado antes e depois e aplicado pelo Capitão com UM `git apply`.
+
+**Prova do reparo:** `maestro habits` no sandbox com o patch: `oversized-file` 13 e `oversized-function`
+6 (iguais ao baseline, nenhum acima); suíte completa `SUITE OK` sozinha no worktree; recibos `order-50`,
+`suite-50` e `suite` (legado) no tip final, depois do patch aplicado. Roda **depois da 056** (um turno
+ativo por vez).
+
 ## Turno
 
 - fatia: o derivado dos três estados, `--validate` e o gate do `--accept` atrás da flag
