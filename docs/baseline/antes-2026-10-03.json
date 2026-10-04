@@ -1,7 +1,7 @@
 {
   "schema": "maestro-baseline-v1",
-  "gerado_em": "2026-10-03T23:03:56-0300",
-  "epoch": 1791079436,
+  "gerado_em": "2026-10-03T23:25:52-0300",
+  "epoch": 1791080752,
   "projeto": "Maestro",
   "selecao": "todas",
   "metricas": [
@@ -17,7 +17,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1831670,
+          "parada_em_pronta_s": 1832986,
           "legada_sem_carimbo": true
         },
         {
@@ -28,7 +28,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1829431,
+          "parada_em_pronta_s": 1830747,
           "legada_sem_carimbo": true
         },
         {
@@ -50,7 +50,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1683515,
+          "parada_em_pronta_s": 1684831,
           "legada_sem_carimbo": true
         },
         {
@@ -105,7 +105,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1587180,
+          "parada_em_pronta_s": 1588496,
           "legada_sem_carimbo": true
         },
         {
@@ -116,7 +116,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1579697,
+          "parada_em_pronta_s": 1581013,
           "legada_sem_carimbo": true
         },
         {
@@ -171,7 +171,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1497100,
+          "parada_em_pronta_s": 1498416,
           "legada_sem_carimbo": true
         },
         {
@@ -182,7 +182,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1437279,
+          "parada_em_pronta_s": 1438595,
           "legada_sem_carimbo": true
         },
         {
@@ -193,7 +193,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1436528,
+          "parada_em_pronta_s": 1437844,
           "legada_sem_carimbo": true
         },
         {
@@ -226,7 +226,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1315319,
+          "parada_em_pronta_s": 1316635,
           "legada_sem_carimbo": true
         },
         {
@@ -281,7 +281,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1266901,
+          "parada_em_pronta_s": 1268217,
           "legada_sem_carimbo": true
         },
         {
@@ -292,7 +292,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1291825,
+          "parada_em_pronta_s": 1293141,
           "legada_sem_carimbo": true
         },
         {
@@ -303,7 +303,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1290815,
+          "parada_em_pronta_s": 1292131,
           "legada_sem_carimbo": true
         },
         {
@@ -358,7 +358,7 @@
           "aceita": "sem fonte",
           "idade_aberta_s": "sem fonte",
           "idade_execucao_s": "sem fonte",
-          "parada_em_pronta_s": 1199919,
+          "parada_em_pronta_s": 1201235,
           "legada_sem_carimbo": true
         },
         {
@@ -574,11 +574,11 @@
           "id": 58,
           "aberta": 1791074033,
           "execucao": 1791077696,
-          "provada": 1791078848,
+          "provada": "sem fonte",
           "aceita": "sem fonte",
           "idade_aberta_s": 3663,
-          "idade_execucao_s": 1152,
-          "parada_em_pronta_s": 588,
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte",
           "legada_sem_carimbo": false
         }
       ],
@@ -615,8 +615,8 @@
           32
         ]
       },
-      "mediana_n": 22,
-      "mediana_parada_em_pronta_s": 827,
+      "mediana_n": 21,
+      "mediana_parada_em_pronta_s": 960,
       "status": "ok"
     },
     {
@@ -741,19 +741,19 @@
           {
             "run": "01M42A03N4WVGNGCB6831605SW",
             "projeto": "maestro",
-            "n": 22
+            "n": 24
           }
         ],
         "permissoes_por_projeto": [
           {
             "projeto": "maestro",
-            "n": 143
+            "n": 145
           }
         ],
         "quais": [
           {
             "alvo": "Bash",
-            "n": 138
+            "n": 140
           },
           {
             "alvo": "Monitor",
@@ -767,10 +767,10 @@
       "nome": "CPU, memória e fila de runner (lab-ci)",
       "status": "ok",
       "host": "lab-ci",
-      "load1m_x100": 30,
+      "load1m_x100": 33,
       "ncpu": 8,
       "mem_total_mb": 32101,
-      "mem_disponivel_mb": 29103,
+      "mem_disponivel_mb": 29114,
       "runners_ativos": 0,
       "jobs_em_execucao": 0,
       "jobs_na_fila": "sem fonte",

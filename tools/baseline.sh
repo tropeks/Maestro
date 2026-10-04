@@ -131,6 +131,7 @@ m1=$(jq -c --argjson now "$NOW" --arg sf "$SF" '
   # intervalo negativo = marcos fora de ordem (recibo regravado, relógio): sem fonte, não número
   def d(a;b): if (a|type)=="number" and (b|type)=="number" and b >= a then (b-a) else $sf end;
   # recibo regravado depois do aceite (aceita < provada) não diz quando ficou pronta: sem fonte
+  def mediana: (length) as $n | (.[($n-1)/2|floor] + .[$n/2|floor]) / 2 | floor;
   def pronta: if (.provada|type)!="number" then $sf
     elif (.aceita|type)=="number" then (if .aceita >= .provada then .aceita - .provada else $sf end)
     else $now - .provada end;
@@ -141,12 +142,11 @@ m1=$(jq -c --argjson now "$NOW" --arg sf "$SF" '
       parada_em_pronta_s: pronta,
       legada_sem_carimbo: (.id <= 32 and ((.aceita|type)!="number")) }) }
   # ordens 1..32 sem carimbo de aceite válido: linha própria, fora da mediana
-  | .legadas_sem_carimbo = { quantidade: ([.ordens[]|select(.legada_sem_carimbo)]|length),
-                             ids: [.ordens[]|select(.legada_sem_carimbo)|.id] }
+  | ([.ordens[]|select(.legada_sem_carimbo)|.id]) as $lg
+  | .legadas_sem_carimbo = {quantidade:($lg|length), ids:$lg}
   | ([.ordens[] | select((.legada_sem_carimbo|not) and (.parada_em_pronta_s|type)=="number") | .parada_em_pronta_s] | sort) as $v
   | .mediana_n = ($v|length)
-  | .mediana_parada_em_pronta_s = (if ($v|length)==0 then $sf
-      else (($v[(($v|length)-1)/2|floor] + $v[($v|length)/2|floor]) / 2 | floor) end)
+  | .mediana_parada_em_pronta_s = (if ($v|length)==0 then $sf else ($v|mediana) end)
   | .status = (if (.ordens|length)==0 then $sf else "ok" end)
   | if .status==$sf then {id, nome, status, ordens:$sf, mediana_parada_em_pronta_s:$sf} else . end' <<<"$ORDERS_JSON")
 
