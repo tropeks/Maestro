@@ -144,3 +144,7 @@ log na pasta do run), o comentário de cabeçalho de
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`), com a decisão do Capitão de 04/10 (v59, enxugar) como autorização — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 062` (você não fecha a própria ordem).
+accepted_at: 2026-10-04T17:12:30-03:00
+accepted_session: desconhecido
+accepted_tree: c61bb903555bb35e6684896abd4a323db1f00fa9
+accepted_intent: 6
