@@ -155,7 +155,7 @@ _habits_write_baseline() { # <bfile> <total> → grava .maestro-habits.tsv (cont
   return 0
 }
 
-_habits_check_baseline() { # <bfile> <total> → rc 0 dentro da catraca, 1 CATRACA estourada (over/due)
+_habits_check_baseline() { # <bfile> <total> → rc 0 sempre; estouro (over/due) vira AVISO catraca (ordem 062)
   # E24 Lote 0/0.3 — dívida DECLARADA com prazo (I-6: epoch é inteiro, sem
   # float). Colunas 3/4 são OPCIONAIS — retrocompatível (ver bin/maestro
   # original para a nota completa sobre o formato de 2 vs. 4 colunas).
@@ -186,14 +186,14 @@ _habits_check_baseline() { # <bfile> <total> → rc 0 dentro da catraca, 1 CATRA
   fi
   if (( ${#over[@]} > 0 || ${#due[@]} > 0 )); then
     (( ${#over[@]} > 0 )) && {
-      printf -- '---\nCATRACA: slop novo acima do baseline — %s\n' "$(join_semi "${over[@]}")"
+      printf -- '---\nAVISO catraca: slop acima do baseline — %s\n' "$(join_semi "${over[@]}")"
       printf 'Conserte o que entrou; a régua não sobe para acomodar o novo.\n'
     }
     (( ${#due[@]} > 0 )) && {
-      printf -- '---\nCATRACA: dívida declarada VENCEU sem chegar ao alvo — %s\n' "$(join_semi "${due[@]}")"
+      printf -- '---\nAVISO catraca: dívida declarada VENCEU sem chegar ao alvo — %s\n' "$(join_semi "${due[@]}")"
       printf 'O prazo (vence_epoch) passou e a contagem segue acima do alvo declarado.\n'
     }
-    return 1
+    return 0   # ordem 062: a catraca avisa e entra no relatório; não reprova (a detecção e o --baseline seguem)
   fi
   printf -- '---\ndentro da catraca: %s achado(s), nenhum smell acima do baseline\n' "$total"
   (( improved == 1 )) && printf 'a régua pode descer: rode `maestro habits --baseline` no mesmo commit do fix\n'

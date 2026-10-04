@@ -54,6 +54,8 @@ _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não t
   printf -- '- teto: <rodadas máximas, inteiro>\n'
   printf -- '- fora: <o que este turno NÃO faz>\n'
   printf -- '- relatório: <onde está o contrato do relatório de fim de turno>\n'
+  # ordem 062 (C): blockquote, não rótulo — o conform e o Stop de turno não a leem como campo
+  printf '\n> **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run, /tmp/claude-<uid>/<cwd codificado>, nunca /tmp solto; escrita só com Edit ou Write.\n'
 }
 
 _turno_report_missing() { # <relatório.txt> → rótulos do relatório fixo ausentes, um por linha
