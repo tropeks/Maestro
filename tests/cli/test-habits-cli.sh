@@ -180,9 +180,9 @@ def h(y):
         pass
 FX
 out=$("$BIN" habits --all --project "$PROJ"); rc=$?
-chk "slop NOVO acima do baseline reprova (mesmo untracked)" "$rc" "1"
-grep -q 'CATRACA.*swallowed-error: 2 > baseline 1' <<<"$out" \
-  && ok "reprova nomeando smell e contagens" || bad "reprova nomeando smell e contagens ($out)"
+chk "slop NOVO acima do baseline AVISA e sai 0 (ordem 062: catraca é aviso)" "$rc" "0"
+grep -q 'AVISO catraca.*swallowed-error: 2 > baseline 1' <<<"$out" \
+  && ok "avisa nomeando smell e contagens" || bad "avisa nomeando smell e contagens ($out)"
 rm -f "$PROJ/novo2.py" "$PROJ/legado.py"
 out=$("$BIN" habits --all --project "$PROJ"); rc=$?
 chk "dívida paga continua passando" "$rc" "0"

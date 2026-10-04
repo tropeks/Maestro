@@ -140,6 +140,22 @@ da rodada (relatório é ESTADO, não jornada): `feito:` · `provado:` (o comand
 "não provado") · `aberto:` · `decisão:` (o que exige o Diretor, ou "nenhuma") · `próximo:`.
 Este é o contrato citado no rótulo `relatório:` de cada ordem.
 
+**Regra de log e escrita no esqueleto (ordem 062).** Depois dos cinco rótulos, o esqueleto
+traz uma linha citada (blockquote, não rótulo: o `conform` e o Stop de turno não a leem como
+campo): *log de suíte e saída de espera vão para a pasta temporária do próprio run,
+`/tmp/claude-<uid>/<cwd codificado>`, nunca `/tmp` solto; escrita só com Edit ou Write.*
+Motivo: a ordem 082 do daemon só aprova leitura sem pedir dentro dessa pasta; log em `/tmp`
+solto volta a gerar pedido de permissão. `<uid>` e `<cwd codificado>` ficam literais no
+esqueleto. Só o esqueleto muda: ordem já escrita não é tocada e corpo com `## Turno` próprio
+não ganha a linha.
+
+**A catraca do `habits` é aviso (ordem 062).** `oversized-file`, `oversized-function` e
+`deep-nesting` acima do baseline (e a dívida declarada vencida) saem como `AVISO catraca` no
+relatório do `habits`, com exit 0: controle que custou três ordens de retrabalho e nunca
+evitou falha de comportamento precisa ser visto, não bloquear. A detecção e o
+`habits --baseline` seguem; o passo do CI continua rodando `habits --all` e mostra o aviso
+sem reprovar o job.
+
 **O que é trilho e o que é honra** (Prioridade 3 do INTENT, decisão do Capitão, 2026-10-02):
 
 | | trilho (mecânico, sem LLM) | honra declarada (nenhum hook alcança) |

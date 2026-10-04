@@ -13,6 +13,13 @@ from the decision log and tag messages when this file was introduced.
   `tools/medir-controles.sh` mede o tempo por chamada em sandbox; `tests/cli/test-inventario-controles.sh` confere o
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
+### Changed
+- **A catraca do `habits` vira aviso** (ordem 062, decisão do Capitão de 04/10). Smell acima do baseline
+  (`oversized-file`, `oversized-function`, `deep-nesting`) e dívida declarada vencida saem como
+  `AVISO catraca: …` com exit 0, em vez de `CATRACA:` com exit 1; a detecção e o `--baseline` não mudam.
+  O esqueleto do `## Turno` emitido por `order --create` traz a regra de log na pasta temporária do run
+  (`/tmp/claude-<uid>/<cwd codificado>`) e de escrita só com Edit/Write.
+
 ### Fixed
 - **A prova tem uma verdade só** (ordem 060). `evidence --check`, `order --status` e
   `order --accept` liam o mesmo recibo com três critérios: `--status`/`--accept` só olhavam

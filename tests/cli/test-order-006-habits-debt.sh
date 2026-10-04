@@ -55,8 +55,10 @@ run_habits; [[ $? -eq 0 ]] && ok "linha de 2 colunas lê como hoje (bl=1 cobre o
   || bad "linha de 2 colunas mudou de comportamento"
 
 printf '# c\noversized-file\t5\t%d\t0\n' "$PAST" > "$P/.maestro-habits.tsv"
-run_habits; [[ $? -eq 1 ]] && ok "vencida + acima do alvo (mesmo dentro do baseline 5) → exit 1" \
-  || bad "deveria reprovar vencida+acima do alvo"
+out=$(MAESTRO_HOME="$MAESTRO_HOME" "$BIN" habits --all --project "$P" 2>&1); rc=$?
+[[ $rc -eq 0 && "$out" == *"AVISO catraca: dívida declarada VENCEU"* ]] \
+  && ok "vencida + acima do alvo (mesmo dentro do baseline 5) → AVISO catraca, exit 0 (ordem 062)" \
+  || bad "deveria avisar (rc 0) vencida+acima do alvo (rc=$rc)"
 
 printf '# c\noversized-file\t5\t%d\t1\n' "$PAST" > "$P/.maestro-habits.tsv"
 run_habits; [[ $? -eq 0 ]] && ok "vencida + NO alvo (cur == alvo) → exit 0" \
@@ -101,10 +103,10 @@ if ! grep -q 'now_epoch < vence && cur > alvo' "$SABLIB"; then
   bad "sabotagem não pegou (padrão do sed não bateu — mecanismo mudou de forma?)"
 else
   printf '# c\noversized-file\t5\t%d\t0\n' "$PAST" > "$P/.maestro-habits.tsv"
-  MAESTRO_HOME="$T/home-sab" "$SAB" habits --all --project "$P" >/dev/null 2>&1
+  OUT_SAB=$(MAESTRO_HOME="$T/home-sab" "$SAB" habits --all --project "$P" 2>&1)
   RC_SAB=$?
-  [[ $RC_SAB -eq 1 ]] && bad "sabotagem não quebrou nada — vencida+acima do alvo ainda reprovaria" \
-    || ok "sabotado: vencida+acima do alvo deixa de reprovar (rc=$RC_SAB) — o teste tem dente"
+  [[ "$OUT_SAB" == *"dívida declarada VENCEU"* ]] && bad "sabotagem não quebrou nada — vencida+acima do alvo ainda avisaria" \
+    || ok "sabotado: vencida+acima do alvo deixa de avisar (rc=$RC_SAB) — o teste tem dente"
 fi
 
 exit $fail

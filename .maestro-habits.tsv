@@ -1,4 +1,5 @@
-# maestro habits baseline (S-905) — catraca anti-slop: só desce.
+# maestro habits baseline (S-905) — catraca anti-slop: só desce. Desde a ordem 062 a catraca AVISA
+# (`AVISO catraca`, exit 0) em vez de reprovar; a régua continua só descendo ao ser regravada.
 # Regenerar (sempre para baixo, no mesmo commit do fix): maestro habits --baseline
 # DÍVIDA DECLARADA (E24, ordem 006). Colunas 3 e 4: vence_epoch e alvo.
 # Prazo 1790737199 = 2026-09-29T23:59:59-03:00. RECALCULADO em 2026-09-15,

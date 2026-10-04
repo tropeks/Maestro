@@ -316,9 +316,15 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
 - Achado sai como `arquivo:linha: smell — detalhe`, com os guias dos smells distintos
   ao final (sensor + guia, sempre juntos). Exit: 0 limpo · 1 achados · 2 ambiente.
 - **S-905 (catraca):** `--baseline` grava `.maestro-habits.tsv` (smell → contagem,
-  versionado no projeto). Com o arquivo presente, `--all` compara e reprova (exit 1)
-  APENAS smell acima do baseline; igual passa; melhora imprime o convite a regravar.
-  Escopos diff/caminho ignoram o baseline (a régua é do repo inteiro).
+  versionado no projeto). Com o arquivo presente, `--all` compara e **avisa** (ordem 062,
+  decisão do Capitão de 04/10): smell acima do baseline sai como
+  `AVISO catraca: slop acima do baseline — <smell: N > baseline M; …>` e a dívida declarada
+  vencida como `AVISO catraca: dívida declarada VENCEU …`, ambos com **exit 0** — o aviso
+  entra no relatório, não reprova a suíte nem o aceite (a catraca gerou 3 patches de puro
+  retrabalho: 045, 050, 056). Igual passa; melhora imprime o convite a regravar. A
+  detecção não muda: sem baseline (ou com escopo diff/caminho), smell continua exit 1.
+  Escopos diff/caminho ignoram o baseline (a régua é do repo inteiro). Formato do
+  `.maestro-habits.tsv` inalterado; o aceite, o `conform` e o `doctor` não leem o rc da catraca.
 
 ### `maestro consent` · `maestro outcome` · `maestro retro` (E10)
 - `consent --grant <routing-table|roster|ops> [--ttl 1min–4h]` / `--revoke` / sem flag
