@@ -6,6 +6,13 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Added
+- **Inventário de controles com custo e ganho medidos** (ordem 061, v59 item 4 do INTENT do spock). `docs/INVENTARIO-CONTROLES.md`:
+  uma linha por hook, guarda, sensor e verificação, com efeito, disparos (ledger e telemetria local), custo (tempo por
+  chamada e manutenção), ganho e uma lista proposta `sai` / `vira opcional` / `fica`. Só leitura: nada foi removido.
+  `tools/medir-controles.sh` mede o tempo por chamada em sandbox; `tests/cli/test-inventario-controles.sh` confere o
+  universo contra `hooks/hooks.json` e `config/habit-guides/`.
+
 ### Fixed
 - **A prova tem uma verdade só** (ordem 060). `evidence --check`, `order --status` e
   `order --accept` liam o mesmo recibo com três critérios: `--status`/`--accept` só olhavam
