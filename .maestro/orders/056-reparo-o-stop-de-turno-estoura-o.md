@@ -139,3 +139,7 @@ prova**, no tip com o patch aplicado:
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 056` (você não fecha a própria ordem).
+accepted_at: 2026-10-04T11:04:16-03:00
+accepted_session: desconhecido
+accepted_tree: 99ae958b2631d8ecbebc3e219c7a3813e84d4b48
+accepted_intent: 6
