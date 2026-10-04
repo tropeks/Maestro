@@ -72,6 +72,29 @@ ENGINEERING_SPEC ("O turno da ordem e o relatório de fim de turno": orçamento 
 - Suíte completa `SUITE OK`, sozinha no worktree; recibos `order-56`, `suite-56` e `suite` (legado, até
   a frota girar); `habits` dentro da catraca.
 
+## Decisões do Diretor
+
+Registradas em 03/10 após o turno 1 (medição e proposta). **Valem como contrato desta ordem**; o
+executor não reabre nenhuma delas sem prova nova.
+
+1. **Contrato do 124: opção (a).** Em timeout (rc 124) o hook faz a **checagem local dos 5 rótulos**
+   do relatório fixo (`feito`, `provado`, `aberto`, `decisão`, `próximo` — a constante
+   `TURNO_REPORT_LABELS` de `lib/core-order-turno.sh`) na última mensagem, **sem chamar o CLI**. Se
+   faltar rótulo, bloqueia com a lista do que falta; se os 5 estiverem, libera. A Prioridade 1
+   continua: o hook nunca prende, e qualquer falha da checagem local degrada para liberar. O 124
+   deixa de ser silêncio: o evento (só metadados, sem texto da mensagem) vai ao log.
+2. **Combinado com o corte de custo do item 2**, não no lugar dele: a checagem local de (a) é a rede
+   de segurança, o corte de custo é o conserto. As duas entram no mesmo patch.
+3. **Meta de custo: o `order --turno-check` abaixo de 700 ms SOB CARGA** (não só sem carga), medido
+   pelo método do item 1 (mediana de N amostras, por fase) e com o portão de carga de
+   `tests/lib/latency.sh` para o veredito do teste. Número inteiro, em ms.
+4. **Teto do `timeout` mantido em 2 s.** Não sobe. Vira constante nomeada com o orçamento e a medição
+   no comentário (item 4), mas o valor é 2.
+
+**O que muda no Ask-First:** o PARE antes do item 3 está cumprido (a escolha foi feita). Continuam
+valendo: subir o teto (proibido por esta decisão) e o conserto em arquivo autoprotegido (UM patch em
+`docs/patches/056-*.patch`).
+
 ## Turno
 
 - fatia: medir o `turno-check` por fase, achar o custo e propor o contrato do 124 (item 1 e a proposta do item 3)
