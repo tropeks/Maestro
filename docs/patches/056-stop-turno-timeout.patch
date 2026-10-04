@@ -1,0 +1,226 @@
+diff --git a/hooks/lib/common.sh b/hooks/lib/common.sh
+index 8cf0ecb..3e8b4f5 100755
+--- a/hooks/lib/common.sh
++++ b/hooks/lib/common.sh
+@@ -130,7 +130,7 @@ _maestro_year_month() {
+ # ---------------------------------------------------------------------------
+ _maestro_event_valid() {
+   case "${1:-}" in
+-    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto|conform) return 0 ;;
++    decision|gate_pass|gate_warn|gate_block|override_manual|killswitch|session_end|habit_warn|consent_grant|consent_revoke|outcome|conduct|budget_warn|order_create|order_accept|upgrade|delegation|intent|verify|director_ask|route_fix|turno_teto|turno_timeout|conform) return 0 ;;
+     *) return 1 ;;
+   esac
+ }
+diff --git a/hooks/lib/project-state.sh b/hooks/lib/project-state.sh
+index 2cd2e0c..36c6852 100755
+--- a/hooks/lib/project-state.sh
++++ b/hooks/lib/project-state.sh
+@@ -40,7 +40,19 @@ maestro_graph_state() { # <raiz-do-projeto>
+ # e sem colisão entre projetos homônimos. ÚNICA definição — session-start e
+ # bin/maestro derivam por aqui; divergência quebraria o ponteiro da injeção.
+ # ---------------------------------------------------------------------------
++# Ordem 056: memo opt-in. Quem chama muitas vezes na MESMA raiz (o `order --turno-check`
++# resolvia a chave ~8× — cd -P, git rev-parse no worktree e o $(...) de cada chamador,
++# ~200 ms) escreve a chave UMA vez com maestro_brief_prime, no shell principal; as
++# chamadas seguintes (inclusive dentro de $(...)) leem o memo sem fork. Sem prime, nada muda.
++declare -gA _MAESTRO_BRIEF_MEMO=()
++maestro_brief_prime() { # <raiz-do-projeto> — grava a chave no memo (chamar fora de $(...))
++  local r="${1:-$PWD}" v
++  unset "_MAESTRO_BRIEF_MEMO[$r]"
++  v=$(maestro_brief_file "$r") && _MAESTRO_BRIEF_MEMO[$r]="$v"
++  return 0
++}
+ maestro_brief_file() { # <raiz-do-projeto> → caminho do brief no stdout
++  [[ -n "${_MAESTRO_BRIEF_MEMO[${1:-$PWD}]+x}" ]] && { printf '%s' "${_MAESTRO_BRIEF_MEMO[${1:-$PWD}]}"; return 0; }
+   # Hash djb2 em bash puro: isto roda DENTRO do session-start (NFR <100ms) e
+   # cada fork custa ~7ms nesta classe de máquina — sha256sum+tr+head eram 4.
+   # Não é hash criptográfico e não precisa ser: é chave de arquivo, e a única
+diff --git a/hooks/stop-turno.sh b/hooks/stop-turno.sh
+index 473a7b9..dbd4de1 100755
+--- a/hooks/stop-turno.sh
++++ b/hooks/stop-turno.sh
+@@ -12,7 +12,16 @@
+ #   caminho COMUM (sem ordem em curso, ou ordem sem bloco `## Turno`): <50 ms,
+ #     bash puro, ZERO fork — HEAD lido do .git por `read`, ordem achada por glob;
+ #   Stop de turno (ordem em curso COM bloco): roda uma vez por turno e pode gastar
+-#     até 2 s — é o teto do `timeout` que cerca a chamada ao CLI.
++#     até TURNO_TIMEOUT_S — é o teto do `timeout` que cerca a chamada ao CLI.
++#     Medido na ordem 056 (worktree com 51 ordens, load 9-10 em 8 CPUs, mediana de
++#     amostras do `order --turno-check`): ANTES ~1,7 s (busca da ordem ~600 ms, status
++#     ~200 ms, verificação por área ~400 ms, 18 awk de _order_field, chave do ledger
++#     resolvida ~8×); DEPOIS ~490 ms. A 046 mediu 708 ms no projeto de teste pequeno.
++#     O teto NÃO sobe (decisão do Diretor): o conserto é cortar o custo, não esticar o
++#     prazo.
++#   Timeout (rc 124) deixou de ser silêncio (ordem 056, contrato (a) do Diretor): o hook
++#     confere LOCALMENTE os 5 rótulos do relatório, sem chamar o CLI; faltou rótulo,
++#     bloqueia com a lista; os 5 presentes, libera. Evento turno_timeout (só metadados).
+ #
+ # Por que hook PRÓPRIO e não o gate-report.sh: ele sai cedo fora do herdr
+ # (HERDR_ENV) e já está no teto de 400 linhas (oversized-file); o Stop de turno
+@@ -21,6 +30,7 @@
+ # REGRAS: sempre exit 0 (a Prioridade 1 vence a 3: o hook nunca prende o
+ # gerente); qualquer falha libera; a ÚNICA saída em stdout é o JSON de block;
+ # teto de bloqueios por ordem/sessão vive no CLI (_turno_gate, máx. 3).
++TURNO_TIMEOUT_S=2   # teto do `timeout` que cerca o CLI; orçamento e medição no cabeçalho
+ exec 3>&1
+ exec 1>&2
+
+@@ -69,11 +79,29 @@ trap 'rm -f "$rf"' EXIT
+ printf '%s' "${last//\\n/$'\n'}" > "$rf"
+ bin="${CLAUDE_PLUGIN_ROOT:-$HERE/..}/bin/maestro"
+ [[ -x "$bin" ]] || exit 0
+-out=$(timeout 2 "$bin" order --turno-check --project "$proj" --session "$sid" --report-file "$rf" 2>/dev/null)
++out=$(timeout "$TURNO_TIMEOUT_S" "$bin" order --turno-check --project "$proj" --session "$sid" --report-file "$rf" 2>/dev/null)
+ rc=$?
+-(( rc == 1 )) || exit 0          # 0 libera; 124 (timeout) e qualquer outro erro liberam também
+-[[ -n "$out" ]] || exit 0
+-reason="maestro: o turno desta ordem não tem recibo válido no tip. ${out}"
++if (( rc == 124 )); then
++  # O CLI estourou o teto: nada de liberar calado. Checagem barata e local — os 5 rótulos
++  # do relatório fixo na última mensagem. Qualquer falha desta checagem libera (Prioridade 1).
++  source "$HERE/../lib/core-order-turno.sh" 2>/dev/null || TURNO_REPORT_LABELS="feito provado aberto decisão próximo"
++  source "$HERE/lib/common.sh" 2>/dev/null && log_event turno_timeout session_id="$sid" n="$((10#$n))" 2>/dev/null
++  [[ -n "$last" ]] || exit 0                       # sem mensagem legível: não há o que conferir
++  txt=$(<"$rf") || exit 0   # o 1º rótulo vem colado ao `"text":"` do JSON da linha: a classe aceita a aspa
++  missing=""; nl=$'\n'; q='"'
++  shopt -s nocasematch
++  for l in $TURNO_REPORT_LABELS; do
++    re="(^|[${nl}${q}])[[:space:]]*[-*]*[[:space:]]*\\**${l}\\**[[:space:]]*:"
++    [[ "$txt" =~ $re ]] || missing+="${missing:+ }$l"
++  done
++  shopt -u nocasematch
++  [[ -n "$missing" ]] || exit 0
++  reason="maestro: o check do turno estourou ${TURNO_TIMEOUT_S} s (turno_timeout) e o relatório não tem os rótulos: ${missing}. Escreva feito:/provado:/aberto:/decisão:/próximo: e termine de novo."
++else
++  (( rc == 1 )) || exit 0          # 0 libera; qualquer outro erro libera também
++  [[ -n "$out" ]] || exit 0
++  reason="maestro: o turno desta ordem não tem recibo válido no tip. ${out}"
++fi
+ reason="${reason//\\/\\\\}"; reason="${reason//\"/\\\"}"; reason="${reason//$'\n'/\\n}"
+ printf '{"decision":"block","reason":"%s"}\n' "$reason" >&3
+ exit 0
+diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
+index b3bcb6e..338cec6 100644
+--- a/lib/core-order-state.sh
++++ b/lib/core-order-state.sh
+@@ -38,15 +38,25 @@
+
+ # ---------------------------------------------- carimbo e campos (puro; janela = cabeçalho, 20 linhas)
+ _order_field() { # <arquivo> <chave> → valor do campo, ou vazio
+-  awk -F': ' -v k="$2" 'NR>20 { exit } $1 == k { print substr($0, length(k)+3); exit }' "$1" 2>/dev/null
++  # Ordem 056: bash puro, zero fork (era um awk por chamada; o Stop de turno chamava 18×).
++  # Mesma semântica do awk -F': ': janela de 20 linhas, 1º campo igual à chave, saída com \n.
++  local line n=0 k="$2"
++  [[ -r "$1" ]] || return 0
++  while (( n < 20 )) && IFS= read -r line; do
++    n=$((n + 1))
++    [[ "$line" == "$k: "* ]] && { printf '%s\n' "${line:${#k}+2}"; return 0; }
++  done < "$1"
++  return 0
+ }
+ _order_valid_stamp() { # <arquivo> → rc 0 se carimbo de ordem válido (issue #13: nem todo .md é ordem)
+-  awk -F': ' '
+-    NR>20 { exit }
+-    $0 ~ /^<!-- maestro-order v1/ { hdr=1 }
+-    $1 == "id" && $2 ~ /^[0-9]{1,3}$/ { idok=1 }
+-    END { exit !(hdr && idok) }
+-  ' "$1" 2>/dev/null
++  local line n=0 hdr=0 idok=0
++  [[ -r "$1" ]] || return 1
++  while (( n < 20 )) && IFS= read -r line; do
++    n=$((n + 1))
++    [[ "$line" == "<!-- maestro-order v1"* ]] && hdr=1
++    [[ "$line" =~ ^id:\ [0-9]{1,3}(:\ .*)?$ ]] && idok=1
++  done < "$1"
++  (( hdr && idok ))
+ }
+ _order_num() { # <string> → "$((10#string))" em decimal, ou vazio (rc 1) se não for 1-9 dígitos
+   # ordem 037: causa-raiz do bug reproduzido pelo Capitão — arquivo sem
+diff --git a/lib/core-order-turno.sh b/lib/core-order-turno.sh
+index 43dc4bd..07e83f2 100644
+--- a/lib/core-order-turno.sh
++++ b/lib/core-order-turno.sh
+@@ -28,16 +28,23 @@ _turno_value() { # <arquivo> <rótulo> → valor do rótulo dentro de `## Turno`
+ }
+
+ _turno_missing() { # <arquivo> → rótulos ausentes/vazios/inválidos, um por linha (teto precisa ser inteiro ≥ 1)
+-  local l v
+-  for l in $TURNO_LABELS; do
+-    v=$(_turno_value "$1" "$l")
+-    [[ -n "$v" ]] || { printf '%s\n' "$l"; continue; }
+-    [[ "$l" != "teto" || "$v" =~ ^[1-9][0-9]*$ ]] || printf '%s\n' "$l"
+-  done
++  # Uma passada só (ordem 056): eram 5 awk, um por rótulo, no caminho do Stop de turno.
++  awk -v labels="$TURNO_LABELS" '
++    BEGIN { n = split(labels, L, " ") }
++    /^## Turno[[:space:]]*$/ { f = 1; next }
++    /^## /                   { f = 0 }
++    f { s = $0; sub(/^[[:space:]]*-?[[:space:]]*/, "", s)
++        for (i = 1; i <= n; i++)
++          if (!(L[i] in v) && index(s, L[i] ":") == 1) { x = substr(s, length(L[i]) + 2); sub(/^[[:space:]]+/, "", x); v[L[i]] = x } }
++    END { for (i = 1; i <= n; i++) {
++            x = v[L[i]]
++            if (x == "" || substr(x, 1, 1) == "<") { print L[i]; continue }
++            if (L[i] == "teto" && x !~ /^[1-9][0-9]*$/) print L[i] } }' "$1" 2>/dev/null
+ }
+
+ _turno_has_block() { # <arquivo> → rc 0 se fatia, fim, teto e fora estão válidos (o relatório é outra lacuna)
+-  ! _turno_missing "$1" | grep -qE '^(fatia|fim|teto|fora)$'
++  local m; m=$(_turno_missing "$1")
++  [[ ! "$m" =~ (^|$'\n')(fatia|fim|teto|fora)($|$'\n') ]]
+ }
+
+ _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não traz `## Turno`
+@@ -50,15 +57,29 @@ _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não t
+ }
+
+ _turno_report_missing() { # <relatório.txt> → rótulos do relatório fixo ausentes, um por linha
+-  local f="$1" l
++  local txt l re nl=$'\n' q='"'   # ordem 056: uma leitura, sem grep por rótulo; a aspa cobre o 1º rótulo colado ao JSON da linha
++  txt=$(cat "$1" 2>/dev/null) || txt=""
++  shopt -s nocasematch
+   for l in $TURNO_REPORT_LABELS; do
+-    grep -qiE "^[[:space:]]*[-*]*[[:space:]]*\**${l}\**[[:space:]]*:" "$f" 2>/dev/null || printf '%s\n' "$l"
++    re="(^|[${nl}${q}])[[:space:]]*[-*]*[[:space:]]*\\**${l}\\**[[:space:]]*:"
++    [[ "$txt" =~ $re ]] || printf '%s\n' "$l"
+   done
++  shopt -u nocasematch
+ }
+
+ _turno_find_order() { # <proj> <branch> → arquivo da ordem cujo branch: é o dado, vazio se nenhuma
+-  local f
++  # Ordem 056: o branch carrega o NNN da ordem (order/NNN-slug). Olhar primeiro os
++  # arquivos desse NNN evita validar o carimbo das N ordens do projeto (2 awk cada,
++  # ~600 ms com 51 ordens); a varredura completa fica de reserva (branch sem NNN, ou
++  # arquivo cujo branch: aponta para outro lugar).
++  local f n=""
++  [[ "$2" =~ /([0-9]{3})- ]] && n="${BASH_REMATCH[1]}"
+   shopt -s nullglob
++  if [[ -n "$n" ]]; then
++    for f in "$1"/.maestro/orders/"$n"-*.md; do
++      _order_valid_stamp "$f" && [[ "$(_order_field "$f" branch)" == "$2" ]] && { printf '%s' "$f"; shopt -u nullglob; return 0; }
++    done
++  fi
+   for f in "$1"/.maestro/orders/*.md; do
+     _order_valid_stamp "$f" && [[ "$(_order_field "$f" branch)" == "$2" ]] && { printf '%s' "$f"; break; }
+   done
+@@ -117,6 +138,7 @@ _order_turno_check() { # <proj> <sid> <relatório.txt|""> → rc 0 libera (stdou
+   _turno_has_block "$of" || return 0   # ordem antiga/sem bloco: lacuna do conform, nunca trava o Stop
+   oid=$(_order_field "$of" id)
+   wproj=$(_order_work_project "$proj" "$of")
++  maestro_brief_prime "$proj"; [[ "$wproj" == "$proj" ]] || maestro_brief_prime "$wproj"   # ordem 056: a chave do ledger, uma vez
+   gaps=$(_turno_proof_gaps "$proj" "$wproj" "$of")
+   if [[ -z "$gaps" ]]; then rm -f "$(_turno_count_file "$sid" "$oid")" 2>/dev/null; return 0; fi
+   [[ -n "$rf" && -r "$rf" ]] && rep=$(_turno_report_missing "$rf")
+diff --git a/src/cli.ts b/src/cli.ts
+index e0ae491..edf640b 100644
+--- a/src/cli.ts
++++ b/src/cli.ts
+@@ -71,6 +71,7 @@ const EVENTS = [
+   "verify", // E23b — verificações obrigatórias por área
+   "route_fix", // ordem 030 — correção de rota
+   "turno_teto", // ordem 046 — teto de bloqueios do Stop de turno
++  "turno_timeout", // ordem 056 — o check do Stop estourou o teto de tempo (rc 124)
+   "conform", // ordem 042/048 — maestro conform --check
+ ] as const;
+
