@@ -152,6 +152,22 @@ confere o recibo que o executor gravou. Válvula escrita e visível: `maestro or
 --turno-livre <N>`, para a ordem cuja natureza não cabe em turno. Falha de qualquer parte
 degrada para liberar — a Prioridade 1 vence a 3.
 
+**Orçamento medido e o contrato do 124 (ordem 056).** O `order --turno-check` custava ~1,7 s
+(load 9–10 em 8 CPUs, worktree com 51 ordens) e estourava o `timeout` de 2 s; o hook tratava o
+124 como "libera" e o turno terminava sem relato. Medição por fase (mediana, mesmas condições):
+busca da ordem do branch ~600 ms (2 `awk` de carimbo por ordem × 51), `_order_status` ~200 ms,
+verificação por área ~400 ms, bloco `## Turno` ~65 ms (5 `awk`); por baixo, `_order_field`
+forkava 18× e a chave do ledger (`maestro_brief_file`: `cd -P`, `git rev-parse` no worktree,
+`$(...)` do chamador) era resolvida ~8×. Corte: ordem achada pelo NNN do branch (varredura só
+de reserva), `_order_field`/`_order_valid_stamp` em bash puro, bloco `## Turno` e rótulos do
+relatório em uma passada, chave do ledger resolvida uma vez (`maestro_brief_prime`). Depois:
+~500 ms sob a mesma carga (meta do Diretor: < 700 ms sob carga). O teto do `timeout` **fica em
+2 s** (`TURNO_TIMEOUT_S`): subir o teto mascararia a regressão. Contrato do 124, escolha (a) do
+Diretor: em timeout o hook confere LOCALMENTE os 5 rótulos de `TURNO_REPORT_LABELS` na última
+mensagem, sem chamar o CLI; faltou rótulo, bloqueia com a lista; os 5 presentes, libera; sem
+mensagem legível ou qualquer falha da checagem, libera (Prioridade 1). O evento `turno_timeout`
+(só metadados) vai ao log. O hook reconhece o 1º rótulo colado ao `"text":"` do JSON da linha.
+
 ## Limites da autoproteção (ordem 047) — trilho e honra
 
 A autoproteção de `self_paths` (`agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml

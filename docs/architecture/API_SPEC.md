@@ -211,9 +211,12 @@ sem `.maestro/orders` libera → branch lido do `.git/HEAD` por `read` (zero for
 segue o `gitdir:`) → ordem achada por glob `NNN-*.md` pelo número do branch → sem bloco
 `## Turno` libera → rodada que termina com `[spock] aguardando:` libera (o gate-report
 cuida) → **só então** chama `timeout 2 maestro order --turno-check` com o relatório da
-rodada num arquivo temporário. `rc 1` do CLI vira
-`{"decision":"block","reason":"…lista do que falta…"}` no stdout real; QUALQUER outro
-resultado (0, 124 de timeout, erro, CLI ausente) libera, exit 0, stdout vazio.
+rodada num arquivo temporário (teto `TURNO_TIMEOUT_S` = 2). `rc 1` do CLI vira
+`{"decision":"block","reason":"…lista do que falta…"}` no stdout real; `rc 124` (timeout,
+ordem 056) NÃO é silêncio: o hook confere localmente os 5 rótulos do relatório fixo, sem
+chamar o CLI, registra `turno_timeout` e bloqueia com a lista dos que faltam (os 5 presentes,
+ou mensagem ilegível, libera); QUALQUER outro resultado (0, erro, CLI ausente) libera,
+exit 0, stdout vazio. O hook nunca prende: a reentrada (`stop_hook_active`) sempre libera.
 
 **Orçamentos, medidos (forge, load 5,2/8 CPUs; N=31 e N=7):** caminho COMUM — sem ordem
 em curso ou ordem sem bloco — mediana 18 ms (min 11, max 26), zero fork de `git`,

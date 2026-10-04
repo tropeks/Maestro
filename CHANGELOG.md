@@ -6,6 +6,16 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Fixed
+- **Stop de turno liberava calado em 124 sob carga** (ordem 056): `order --turno-check` custava
+  ~1,7 s (busca da ordem por carimbo em todas as ordens, `_order_field` com 18 `awk`, chave do
+  ledger resolvida ~8×) e estourava o `timeout` de 2 s; o 124 liberava e o turno acabava sem
+  `director_report`. Custo cortado para ~500 ms sob a mesma carga; o teto de 2 s fica
+  (`TURNO_TIMEOUT_S`). Em 124 o hook agora confere localmente os 5 rótulos do relatório e
+  bloqueia com a lista dos que faltam; evento novo `turno_timeout`. O 1º rótulo colado ao JSON
+  da linha do transcrito passa a ser reconhecido. Conserto em `hooks/`, `lib/` e `src/`: patch
+  `docs/patches/056-stop-turno-timeout.patch`.
+
 ## [1.21.0] — 2026-10-03
 
 Papercuts do fluxo: o recibo de suíte passa a ser por ordem, o NFR do session-start respeita

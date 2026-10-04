@@ -1891,6 +1891,11 @@ Stop (inteiro em texto; recibo válido o apaga). Evento novo no vocabulário de 
 Stop liberou. `hooks/lib/common.sh::_maestro_event_valid` o aceita no mesmo changeset; o
 `EVENTS` de `src/cli.ts` ainda não o lista (mesmo débito declarado de `route_fix`/`conform`).
 
+Ordem 056: evento novo **`turno_timeout`** (`session_id`, `n` = número da ordem) — o
+`order --turno-check` estourou o teto de tempo do hook (rc 124) e o hook passou à checagem
+local dos rótulos do relatório. Só metadados, nunca o texto da mensagem. Aceito por
+`_maestro_event_valid` e listado no `EVENTS` de `src/cli.ts` no mesmo changeset.
+
 ## Flags para o orchestrator
 
 Nenhuma.
