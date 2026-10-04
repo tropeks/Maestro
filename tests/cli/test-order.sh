@@ -216,8 +216,8 @@ grep -q '^accepted_at: ' "$PV/.maestro/orders/001-"*.md 2>/dev/null \
 "$BIN" evidence --record --label suite --project "$PV" -- echo outro >/dev/null
 "$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1
 chk "recibo do rótulo com comando ≠ declarado → segue recusando" "$?" "1"
-grep -q 'comando ≠ o declarado' <<<"$("$BIN" order --status 1 --project "$PV")" \
-  && ok "status nomeia o motivo (comando ≠ o declarado)" || bad "motivo cmd_match no status"
+grep -q 'comando diferente do declarado' <<<"$("$BIN" order --status 1 --project "$PV")" \
+  && ok "status nomeia o motivo (comando diferente do declarado — veredito único, ordem 060)" || bad "motivo cmd_match no status"
 # Agora com o comando declarado, no conteúdo do tip.
 "$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
 grep -q 'suite: VÁLIDA' <<<"$("$BIN" order --status 1 --project "$PV")" \
@@ -230,8 +230,8 @@ git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm "a
 "$BIN" evidence --record --label order-1 --project "$PV" -- true >/dev/null
 "$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1; rc=$?
 chk "re-aceite com suite velha (árvore ≠ tip) → recusa" "$rc" "1"
-grep -q 'não é o conteúdo do tip' <<<"$("$BIN" order --status 1 --project "$PV")" \
-  && ok "e o motivo é 'não é o conteúdo do tip'" || bad "motivo de árvore no status"
+grep -q 'conteúdo mudou desde a prova' <<<"$("$BIN" order --status 1 --project "$PV")" \
+  && ok "e o motivo é 'conteúdo mudou desde a prova' (veredito único, ordem 060)" || bad "motivo de árvore no status"
 "$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
 "$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1; chk "re-aceite com a suite refeita no tip → passa" "$?" "0"
 

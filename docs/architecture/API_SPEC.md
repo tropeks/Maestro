@@ -652,6 +652,19 @@ maestro conduct --session <session_id>
   sabia inconclusivo antes de começar. Nenhuma sonda nova; nenhum campo novo
   no recibo (§8 intocado) — é só a MESMA leitura, dita mais cedo. O exit do
   CLI continua sendo o do comando medido; o aviso nunca muda o veredito.
+- **Emenda ordem 060 — veredito único da prova.** `maestro_proof_verdict <recibo> <proj>
+  <rótulo> <árvore_agora|""> [teto_s]` (`lib/core-proof-verdict.sh`) devolve os **motivos**
+  (vazio = VÁLIDO; rc 2 = recibo ilegível) e é a ÚNICA regra de validade: `evidence --check`
+  (árvore agora = conteúdo atual do projeto), `order --status|--json` (`_order_evidence_match`,
+  árvore agora = tip do branch) e `order --accept` (`_order_verif_report`/`_order_verif_gate`,
+  idem) a chamam e não mantêm critério próprio. Motivos, nesta ordem: árvore mudou durante a
+  corrida (`wtree_before ≠ wtree_after`) · idade no teto (`MAESTRO_EVIDENCE_MAX_AGE`, 86400 s) ·
+  sem git para comparar · conteúdo mudou desde a prova (`maestro_tree_same`, ordem 044) · exit ≠ 0
+  · `cmd_match=no` ou `cmd_hash` ≠ `commands.<rótulo>`. Carga e medições inconclusivas continuam
+  só qualificador do texto (ordem 055), fora do veredito. Formato do recibo e texto do
+  `evidence --check` inalterados; o `--status`/`--accept` passam a nomear os motivos (`VENCIDA
+  (…)`). Ordem já `aceita` deriva do registro, não do recibo: não reabre. Recibo de ordem cujo
+  branch foi apagado (árvore congelada, ordem 017) segue sem tip e fora desta regra.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
