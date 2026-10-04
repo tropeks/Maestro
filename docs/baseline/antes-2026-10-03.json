@@ -1,0 +1,620 @@
+{
+  "schema": "maestro-baseline-v1",
+  "gerado_em": "2026-10-03T22:34:45-0300",
+  "epoch": 1791077685,
+  "projeto": "Maestro",
+  "selecao": "todas",
+  "metricas": [
+    {
+      "id": 1,
+      "nome": "idade por estado e tempo parado em pronta (segundos)",
+      "ordens": [
+        {
+          "id": 1,
+          "aberta": 1789057484,
+          "execucao": "sem fonte",
+          "provada": 1789247766,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1829919
+        },
+        {
+          "id": 2,
+          "aberta": 1789072665,
+          "execucao": "sem fonte",
+          "provada": 1789250005,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1827680
+        },
+        {
+          "id": 3,
+          "aberta": 1789234468,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 4,
+          "aberta": 1789389810,
+          "execucao": "sem fonte",
+          "provada": 1789395921,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1681764
+        },
+        {
+          "id": 5,
+          "aberta": 1789401665,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 6,
+          "aberta": 1789408490,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 7,
+          "aberta": 1789423705,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 8,
+          "aberta": 1789476517,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 9,
+          "aberta": 1789489717,
+          "execucao": "sem fonte",
+          "provada": 1789492256,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1585429
+        },
+        {
+          "id": 10,
+          "aberta": 1789495394,
+          "execucao": "sem fonte",
+          "provada": 1789499739,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1577946
+        },
+        {
+          "id": 11,
+          "aberta": 1789501432,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 12,
+          "aberta": 1789551799,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 13,
+          "aberta": 1789551812,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 14,
+          "aberta": 1789561919,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 15,
+          "aberta": 1789569102,
+          "execucao": "sem fonte",
+          "provada": 1789582336,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1495349
+        },
+        {
+          "id": 16,
+          "aberta": 1789591335,
+          "execucao": "sem fonte",
+          "provada": 1789642157,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1435528
+        },
+        {
+          "id": 17,
+          "aberta": 1789595995,
+          "execucao": "sem fonte",
+          "provada": 1789642908,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1434777
+        },
+        {
+          "id": 18,
+          "aberta": 1789641544,
+          "execucao": "sem fonte",
+          "provada": 1789782557,
+          "aceita": 1789811802,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 29245
+        },
+        {
+          "id": 19,
+          "aberta": 1789652401,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 20,
+          "aberta": 1789652565,
+          "execucao": "sem fonte",
+          "provada": 1789764117,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1313568
+        },
+        {
+          "id": 21,
+          "aberta": 1789740461,
+          "execucao": "sem fonte",
+          "provada": 1789744274,
+          "aceita": 1789746601,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 2327
+        },
+        {
+          "id": 22,
+          "aberta": 1789746869,
+          "execucao": "sem fonte",
+          "provada": 1789749364,
+          "aceita": 1789752215,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 2851
+        },
+        {
+          "id": 23,
+          "aberta": 1789777587,
+          "execucao": "sem fonte",
+          "provada": 1789783684,
+          "aceita": 1789811802,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 28118
+        },
+        {
+          "id": 24,
+          "aberta": 1789777587,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 25,
+          "aberta": 1789778508,
+          "execucao": "sem fonte",
+          "provada": 1789812535,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1265150
+        },
+        {
+          "id": 26,
+          "aberta": 1789779038,
+          "execucao": "sem fonte",
+          "provada": 1789787611,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1290074
+        },
+        {
+          "id": 27,
+          "aberta": 1789786329,
+          "execucao": "sem fonte",
+          "provada": 1789788621,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1289064
+        },
+        {
+          "id": 28,
+          "aberta": 1789845423,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 29,
+          "aberta": 1789859621,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 30,
+          "aberta": 1789860377,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 31,
+          "aberta": 1789860378,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 32,
+          "aberta": 1789873656,
+          "execucao": "sem fonte",
+          "provada": 1789879517,
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 1198168
+        },
+        {
+          "id": 33,
+          "aberta": 1789898324,
+          "execucao": 1789898346,
+          "provada": "sem fonte",
+          "aceita": 1789962153,
+          "idade_aberta_s": 22,
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 34,
+          "aberta": 1789905925,
+          "execucao": "sem fonte",
+          "provada": 1789921532,
+          "aceita": 1789921681,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 149
+        },
+        {
+          "id": 35,
+          "aberta": 1789924780,
+          "execucao": "sem fonte",
+          "provada": 1789928769,
+          "aceita": 1789932043,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 3274
+        },
+        {
+          "id": 36,
+          "aberta": 1789941601,
+          "execucao": "sem fonte",
+          "provada": 1789961979,
+          "aceita": 1789962152,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 173
+        },
+        {
+          "id": 37,
+          "aberta": 1789949988,
+          "execucao": "sem fonte",
+          "provada": 1789953155,
+          "aceita": 1789953243,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 88
+        },
+        {
+          "id": 38,
+          "aberta": 1789962222,
+          "execucao": "sem fonte",
+          "provada": 1789963611,
+          "aceita": 1789963676,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 65
+        },
+        {
+          "id": 39,
+          "aberta": 1790069344,
+          "execucao": "sem fonte",
+          "provada": 1790075475,
+          "aceita": 1790075611,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 136
+        },
+        {
+          "id": 40,
+          "aberta": 1790069620,
+          "execucao": "sem fonte",
+          "provada": 1790077364,
+          "aceita": 1790077443,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 79
+        },
+        {
+          "id": 41,
+          "aberta": 1790083493,
+          "execucao": "sem fonte",
+          "provada": 1790092536,
+          "aceita": 1790093230,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 694
+        },
+        {
+          "id": 42,
+          "aberta": 1790370390,
+          "execucao": "sem fonte",
+          "provada": 1790419895,
+          "aceita": 1790420871,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 976
+        },
+        {
+          "id": 43,
+          "aberta": 1790380803,
+          "execucao": "sem fonte",
+          "provada": 1790424048,
+          "aceita": 1790425008,
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": 960
+        },
+        {
+          "id": 44,
+          "aberta": 1790935449,
+          "execucao": 1790937988,
+          "provada": 1790939161,
+          "aceita": 1790940283,
+          "idade_aberta_s": 2539,
+          "idade_execucao_s": 1173,
+          "parada_em_pronta_s": 1122
+        },
+        {
+          "id": 45,
+          "aberta": 1790936731,
+          "execucao": 1790940290,
+          "provada": 1790948614,
+          "aceita": 1790952616,
+          "idade_aberta_s": 3559,
+          "idade_execucao_s": 8324,
+          "parada_em_pronta_s": 4002
+        },
+        {
+          "id": 46,
+          "aberta": 1790943458,
+          "execucao": 1790943514,
+          "provada": 1790950335,
+          "aceita": 1790951306,
+          "idade_aberta_s": 56,
+          "idade_execucao_s": 6821,
+          "parada_em_pronta_s": 971
+        },
+        {
+          "id": 47,
+          "aberta": 1790946234,
+          "execucao": 1790946768,
+          "provada": 1790960155,
+          "aceita": 1790960186,
+          "idade_aberta_s": 534,
+          "idade_execucao_s": 13387,
+          "parada_em_pronta_s": 31
+        },
+        {
+          "id": 48,
+          "aberta": 1790993147,
+          "execucao": 1790993173,
+          "provada": 1791034653,
+          "aceita": 1791036780,
+          "idade_aberta_s": 26,
+          "idade_execucao_s": 41480,
+          "parada_em_pronta_s": 2127
+        },
+        {
+          "id": 49,
+          "aberta": 1791041963,
+          "execucao": 1791053782,
+          "provada": 1791056065,
+          "aceita": 1791052897,
+          "idade_aberta_s": 11819,
+          "idade_execucao_s": 2283,
+          "parada_em_pronta_s": "sem fonte"
+        },
+        {
+          "id": 54,
+          "aberta": 1791045801,
+          "execucao": 1791047739,
+          "provada": 1791048826,
+          "aceita": 1791049160,
+          "idade_aberta_s": 1938,
+          "idade_execucao_s": 1087,
+          "parada_em_pronta_s": 334
+        },
+        {
+          "id": 55,
+          "aberta": 1791059393,
+          "execucao": 1791066525,
+          "provada": 1791067707,
+          "aceita": 1791067760,
+          "idade_aberta_s": 7132,
+          "idade_execucao_s": 1182,
+          "parada_em_pronta_s": 53
+        },
+        {
+          "id": 58,
+          "aberta": 1791074033,
+          "execucao": "sem fonte",
+          "provada": "sem fonte",
+          "aceita": "sem fonte",
+          "idade_aberta_s": "sem fonte",
+          "idade_execucao_s": "sem fonte",
+          "parada_em_pronta_s": "sem fonte"
+        }
+      ],
+      "status": "ok"
+    },
+    {
+      "id": 2,
+      "nome": "tempo da CI verde até o merge",
+      "status": "sem fonte",
+      "motivo": "nenhum registro local do instante de CI verde (consultar o GitHub é rede; fora do contrato)",
+      "valor": "sem fonte"
+    },
+    {
+      "id": 3,
+      "nome": "rebases e conflitos por causa",
+      "status": "ok",
+      "rebases_no_reflog_do_HEAD": 0,
+      "commits_de_carimbo_de_aceite": 12,
+      "conflitos": "sem fonte",
+      "por_causa": {
+        "carimbo": "sem fonte",
+        "ordem_concorrente": "sem fonte",
+        "outra": "sem fonte"
+      },
+      "nota": "o git não registra conflito nem causa; o reflog cobre só este clone"
+    },
+    {
+      "id": 4,
+      "nome": "permissões por turno (gate_warn+gate_block)",
+      "status": "ok",
+      "turnos": 7,
+      "permissoes": 170,
+      "permissoes_por_turno_x100": 2428,
+      "quais": [
+        {
+          "alvo": "Edit",
+          "n": 77
+        },
+        {
+          "alvo": "rm_recursive",
+          "n": 70
+        },
+        {
+          "alvo": "Write",
+          "n": 6
+        },
+        {
+          "alvo": "privilege_escalation",
+          "n": 5
+        },
+        {
+          "alvo": "remote_pipe_shell",
+          "n": 5
+        },
+        {
+          "alvo": "git_discard",
+          "n": 3
+        },
+        {
+          "alvo": "git_reset_hard",
+          "n": 2
+        },
+        {
+          "alvo": "accept",
+          "n": 1
+        },
+        {
+          "alvo": "git_clean",
+          "n": 1
+        }
+      ],
+      "nota": "turno = sessão com decision registrada para o projeto"
+    },
+    {
+      "id": 5,
+      "nome": "CPU, memória e fila de runner (lab-ci)",
+      "status": "sem fonte",
+      "valor": "sem fonte",
+      "motivo": "MAESTRO_BASELINE_LAB_SSH ausente ou lab-ci inalcançável"
+    },
+    {
+      "id": 6,
+      "nome": "timeouts",
+      "turno": 0,
+      "teste": "sem fonte",
+      "runner": "sem fonte",
+      "status": "ok",
+      "nota": "turno = eventos turno_teto casados pelo número da ordem; teste e runner não têm registro"
+    }
+  ]
+}
