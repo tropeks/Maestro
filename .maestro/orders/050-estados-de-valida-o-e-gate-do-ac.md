@@ -61,12 +61,31 @@ a partir do tip do branch, testado antes e depois e aplicado pelo Capitão com U
 `suite-50` e `suite` (legado) no tip final, depois do patch aplicado. Roda **depois da 056** (um turno
 ativo por vez).
 
+## Turno de recibos
+
+O Capitão aplicou o patch do reparo da catraca da 050 em `4b2a0c8` (tip do branch, árvore limpa). Os
+recibos anteriores da 050 foram gravados com a catraca vermelha e estão **VENCIDOS** neste tip. Este turno
+**só grava a prova**, com o patch aplicado:
+
+1. Confirme árvore limpa e o tip (`git status --short` vazio, `git rev-parse --short HEAD` = `4b2a0c8`
+   ou o que o Capitão tiver por cima) e a carga (`uptime`, `pgrep -fa run-all` vazio: **uma suíte pesada
+   por vez**, sozinha neste worktree).
+2. Confirme `maestro habits` **antes** das corridas: `oversized-file` 13 e `oversized-function` 6, iguais
+   ao baseline (a régua não sobe). Se ainda houver slop acima do baseline, PARE e relate — não grave
+   recibo sobre catraca vermelha.
+3. Grave, **um de cada vez e em sequência** (cada um roda a suíte completa):
+   `maestro evidence --record --label order-50 -- bash tests/run-all.sh`, depois `--label suite-50`,
+   depois `--label suite` (rótulo legado, até a frota girar). Use o `bin/maestro` do worktree.
+4. `maestro order --status 50` diz **VÁLIDA** no tip.
+5. Se a suíte reprovar por **teste quebrado pelo patch**, **não conserte**: cole a saída exata do FAIL e
+   relate (causa e o que o teste esperava). Código e patch não mudam neste turno.
+
 ## Turno
 
-- fatia: o derivado dos três estados, `--validate` e o gate do `--accept` atrás da flag
-- fim: testes dos casos acima verdes; golden com flag desligada idêntico; `bash tests/run-all.sh` sai 0
-- teto: 5
-- fora: revisada/integrada/expedida (ordem M2), o runner da lab, o daemon e qualquer edição em hooks/bin/src
+- fatia: gravar os recibos no tip com o patch aplicado
+- fim: suite completa sozinha com SUITE OK, recibos order-50, suite-50 e suite gravados, habits na catraca, `maestro order --status 50` VÁLIDA
+- teto: 2
+- fora: mudar código, salvo teste quebrado pelo patch, que vira relato; aplicar patch; tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **Revisão de subagente:** a revisão (revisor read-only) termina em ARQUIVO em `~/.maestro/briefs/` — o relato do turno cita o caminho, não cola o achado. Arquivo se escreve **só com Write e Edit**: heredoc, `tee` e redirecionamento no Bash são barrados pelo guard (ordem 047) e nunca contam como escrita.
