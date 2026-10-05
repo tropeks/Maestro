@@ -7,6 +7,12 @@ from the decision log and tag messages when this file was introduced.
 ## [Unreleased]
 
 ### Added
+- **O recibo grava regravações e custo; o painel lê as seções 8 e 9** (ordem 067, Etapa 0 do plano v2). `maestro evidence
+  --record` grava `regravacoes`, `tokens`, `custo_centavos` e `custo_fonte` no fim do recibo (17 linhas, dentro da janela
+  de 20): inteiros lidos do transcrito do Claude Code, ou a palavra `ausente` (nunca 0, nunca estimativa). `tools/baseline.sh`
+  soma só o campo inteiro e declara N por lado do corte (`n_com_dado`/`n_sem_dado`); `ausente` ou inexistente é "sem dado",
+  não FALHA. Código de `lib/` em patch protegido (`docs/patches/067-*.patch`);
+  `tests/cli/test-order-067-{recibo-regravacoes,recibo-custo,baseline-secoes-8-9}.sh`.
 - **Inventário de controles com custo e ganho medidos** (ordem 061, v59 item 4 do INTENT do spock). `docs/INVENTARIO-CONTROLES.md`:
   uma linha por hook, guarda, sensor e verificação, com efeito, disparos (ledger e telemetria local), custo (tempo por
   chamada e manutenção), ganho e uma lista proposta `sai` / `vira opcional` / `fica`. Só leitura: nada foi removido.

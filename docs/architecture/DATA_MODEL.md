@@ -732,6 +732,10 @@ cmd_match=yes|no|free            # E23b — o comando rodado é o DECLARADO?
 load1m_x100=<int> / ncpu=<int>   # issue #11 (ordem 005) — carga no momento do record
 inconclusive=<int>               # issue #11 — nº de asserções INCONCLUSIVO sob carga
 probe_ms=<int>                   # ordem 016 PR1 — sonda de baseline (capacidade, não carga)
+regravacoes=<int>                # ordem 067 — vezes que ESTA label foi gravada de novo (1ª = 0)
+tokens=<int>|ausente             # ordem 067 — Σ tokens do transcrito da sessão (4 contadores de usage)
+custo_centavos=<int>|ausente     # ordem 067 — Σ costUSD em centavos INTEIROS (meio para cima)
+custo_fonte=transcrito|ausente   # ordem 067 — de onde vieram tokens/custo_centavos
 ```
 
 VÁLIDA exige: wtree atual == wtree_after (conteúdo byte-idêntico ao provado), before ==
@@ -849,6 +853,42 @@ testes de hook (mesmo arquivo). A hipótese de que a RAZÃO medição÷sonda can
 isola capacidade — o que justificaria um teto calibrado por sonda no lugar da folga
 binária — é do PR 2 desta ordem, condicionada à CI publicar `SONDA_REF`; esta emenda não
 a assume.
+
+#### Emenda (ordem 067, 2026-10-05) — `regravacoes`, `tokens`, `custo_centavos`, `custo_fonte`
+
+Causa: o painel `tools/baseline.sh` (seções 8, parcela "recibos regravados", e 9, custo por ordem)
+saía FALHA porque o recibo é sobrescrito (`_ev_write` grava por `tmp+mv`) e nada guardava a
+regravação, o tokens nem o custo. Quatro campos **aditivos, no FIM, em ordem fixa**
+(`regravacoes`, `tokens`, `custo_centavos`, `custo_fonte`), depois de `probe_ms`. O recibo
+tem 13 linhas e passa a ter **17**, dentro da janela de **20** de `_ev_field` e `_ev_read_vars`
+(sobram 3); `_ev_read_vars` ignora o que não casa por nome, então o recibo velho e o novo dão o
+mesmo veredito em `maestro_proof_verdict` (provado em `tests/cli/test-order-067-recibo-regravacoes.sh`).
+Schema **continua** `maestro-evidence-v1`, sem migração: recibo anterior não tem as linhas e o painel
+o conta como "sem dado".
+
+- `regravacoes` — inteiro ≥ 0, dono `_ev_write`: 1ª gravação grava `0`; se o arquivo da label
+  (`<chave>-<label>`, já por ordem) existe, grava `anterior + 1`; recibo velho **sem** o campo, ou com
+  valor inválido, conta como uma gravação anterior (grava `1`). Labels diferentes não se somam.
+- `tokens` — inteiro ou a palavra `ausente`. Σ de `input_tokens + output_tokens +
+  cache_creation_input_tokens + cache_read_input_tokens` das mensagens do assistente do transcrito
+  da sessão que rodou o `--record`, contando cada `message.id` **uma vez** (o transcrito repete a
+  mensagem por bloco). **Inclui `cache_read`**, que re-lê o mesmo contexto a cada mensagem: é medida
+  de volume de tokens processados, não de tokens únicos nem de preço. É a sessão que gravou o recibo,
+  **não a ordem inteira** (uma ordem pode ter várias sessões; o painel soma recibos, não sessões).
+- `custo_centavos` — inteiro ou `ausente`. Σ de `costUSD` por mensagem, **só** se toda mensagem traz,
+  convertido a **centavos inteiros, meio para cima** (a soma vira nano-USD inteiros antes de arredondar:
+  `0,145 USD` → `15`, `0,005 USD` → `1`, `0,0049 USD` → `0`). **Nunca float** no recibo. Nenhum
+  transcrito medido nesta máquina traz `costUSD`: na prática o campo grava `ausente`; a semântica
+  por mensagem vs acumulada do `costUSD` **não foi medida** (sem amostra real) e vale o contrato desta ordem.
+- `custo_fonte` — `transcrito` quando `tokens` ou `custo_centavos` é inteiro; `ausente` caso contrário.
+
+**Regra inegociável: sem fonte, a palavra `ausente`. Nunca `0`, nunca estimativa, nunca soma parcial.**
+Zero afirma "custou nada"; ausente é "não sei". Transcrito não encontrado, ilegível, vazio, ambíguo
+(sem `CLAUDE_CODE_SESSION_ID` e mais de um `.jsonl` no diretório), maior que o piso de leitura (50 MiB,
+`MAESTRO_EVIDENCE_TRANSCRIPT_MAX_BYTES`), `usage` parcial ou não inteiro, `jq` ausente → `ausente`,
+**sem erro** e sem alterar o exit do comando provado. A leitura é só leitura, sem rede e nunca grava
+texto do transcrito (só os inteiros). Painel: campo inteiro entra na soma; `ausente` ou inexistente fica
+fora da soma e dentro de `n_sem_dado`; campo presente e inválido (float, texto) é FALHA.
 
 ### 9. Work order — `<projeto>/.maestro/orders/NNN-slug.md` (E15, VERSIONADO)
 

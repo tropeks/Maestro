@@ -672,6 +672,18 @@ maestro conduct --session <session_id>
   idade passa a VÁLIDO; `MAESTRO_EVIDENCE_MAX_AGE` deixa de decidir). Formato do recibo inalterado; o `--status`/`--accept` passam a nomear os motivos (`VENCIDA
   (…)`). Ordem já `aceita` deriva do registro, não do recibo: não reabre. Recibo de ordem cujo
   branch foi apagado (árvore congelada, ordem 017) segue sem tip e fora desta regra.
+- **Emenda ordem 067 — o recibo grava regravações e custo.** `--record` grava, no fim do recibo
+  (DATA_MODEL §8), `regravacoes` (0 na 1ª gravação da label, `anterior + 1` depois; recibo velho sem o
+  campo vale uma gravação anterior), `tokens`, `custo_centavos` (inteiros, meio para cima, nunca float) e
+  `custo_fonte`, lidos **só como inteiros** do transcrito do Claude Code
+  (`$MAESTRO_CLAUDE_PROJECTS` ou `~/.claude/projects/<cwd>/<CLAUDE_CODE_SESSION_ID>.jsonl`; sem a sessão,
+  só um transcrito único). Sem fonte: a palavra `ausente`, nunca `0` e nunca estimativa. A leitura é só
+  leitura, sem rede, sem ponte.db, com piso de 50 MiB (`MAESTRO_EVIDENCE_TRANSCRIPT_MAX_BYTES`), e **nunca
+  altera o exit nem imprime texto do transcrito**. Leitura do painel: `tools/baseline.sh` (seções 8, parcela
+  `recibos_regravados`, e 9) soma só o campo inteiro, declara `n.antes`/`n.depois` (`populacao`, `n_com_dado`,
+  `n_sem_dado`) e `n_com_dado`/`n_sem_dado` totais; `ausente` ou inexistente = sem dado (nunca zero nem
+  FALHA; com `n_com_dado=0` a parcela sai `sem dado`, exit 0); FALHA só para ledger ilegível ou campo
+  presente e inválido (float, texto que não seja `ausente`), exit 3.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
