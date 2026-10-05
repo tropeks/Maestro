@@ -7,6 +7,12 @@ from the decision log and tag messages when this file was introduced.
 ## [Unreleased]
 
 ### Added
+- **Perfis de agente: um lançador declarado por perfil** (ordem 066). `maestro agente --perfil <dev|gerente|diretor|pesquisa>
+  [--dry-run] -- <args do provedor>`: núcleo agnóstico de provedor (E24) + adaptador do Claude Code, lendo as capacidades
+  de `config/perfis-agente.yaml`. Falha fechada (sem perfil ou perfil desconhecido, nada é lançado). O perfil `pesquisa`
+  não carrega Maestro, Ponte, MCP nem plugin e traz a própria negação de leitura de `.env*`, chaves e `~/.ponte`; a prova
+  é um socket de fixture que registra conexões (sem perfil conecta, `pesquisa` não). Matriz do mecanismo e limites
+  declarados no ENGINEERING_SPEC; ADR-012. Núcleo e adaptador entram por patch protegido (`docs/patches/066-*.patch`).
 - **Inventário de controles com custo e ganho medidos** (ordem 061, v59 item 4 do INTENT do spock). `docs/INVENTARIO-CONTROLES.md`:
   uma linha por hook, guarda, sensor e verificação, com efeito, disparos (ledger e telemetria local), custo (tempo por
   chamada e manutenção), ganho e uma lista proposta `sai` / `vira opcional` / `fica`. Só leitura: nada foi removido.

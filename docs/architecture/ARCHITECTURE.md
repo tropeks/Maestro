@@ -294,6 +294,25 @@ routing table — descarte é DESFECHO de um fluxo, não um fluxo; criá-lo tira
 dentro do `feature`, que é onde ele nasce. Importar código do pstack — é gstack v0.13.3,
 e a instalação desta máquina roda a v1.77.
 
+### ADR-012 — Perfis de agente: o que cada agente toca é declarado e imposto por um lançador (ordem 066)
+**Status:** Proposto (2026-10-05; origem: ordem direta do Capitão após um Opus de pesquisa do Spock carregar o MCP
+da Ponte, bater em `~/.ponte/mcp.sock` e gerar alerta de segurança). A escolha do mecanismo é do Diretor.
+**Contexto:** não havia lançador. Cada pane, runner e script montava `claude …` à mão e herdava os plugins e os MCPs
+da conta do usuário; um agente sem papel na ordem alcançava o canal do Diretor.
+**Decisão:** quatro perfis (`dev`, `gerente`, `diretor`, `pesquisa`) declarados por **capacidades** em
+`config/perfis-agente.yaml` e impostos por um comando único, `maestro agente --perfil`. Núcleo agnóstico de provedor
+(E24: núcleo + adaptadores) + adaptador do Claude Code, que traduz capacidades em flags e ambiente. **Falha fechada:**
+sem perfil, ou perfil desconhecido, nada é lançado; não existe perfil padrão que caia em "carrega tudo". O perfil
+`pesquisa` não carrega Maestro, Ponte, MCP nem plugin e **traz a própria negação de leitura de segredos**: a proteção
+não pode depender do plugin que ele não carrega.
+**Onde o trilho alcança e onde não:** mecânico = a resolução do perfil, a falha fechada e o comando/ambiente gerados
+(testáveis sem provedor pelo `--dry-run`), e a ausência de conexão ao socket sob `mcp list`. Honra declarada = os
+limites da proteção de segredos (ENGINEERING_SPEC) e a autenticação preservada, não verificadas sem modelo.
+**Alternativas rejeitadas:** `CLAUDE_CONFIG_DIR` por perfil — isola, mas o login mora em
+`~/.claude/.credentials.json` e some junto (reautenticar ou gravar credencial em lugar novo); `--bare` — não isola MCP
+de escopo user (medido: a Ponte conecta); perfil padrão — reabre o incidente.
+**Fora desta ordem:** adotar o lançador em panes, runner do daemon e scripts do Spock (outras ordens, outros repos).
+
 ### ADR-009 — Regência e profundidade declarada (E17)
 **Status:** Aceito (design doc aprovado 2026-08-31, office-hours D1-D11 + leitura fria do
 Codex + 3 rodadas de review).

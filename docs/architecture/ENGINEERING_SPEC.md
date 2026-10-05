@@ -205,6 +205,45 @@ absoluto, `./`, `../` e de worktree. **Honra declarada — o guard lê o comando
 O caminho legítimo é o molde das ordens 045/046: clone sandbox FORA do repo do plugin, patch em
 `docs/patches/`, `git apply` por mão humana. Nenhuma dessas lacunas é consentível.
 
+## Perfis de agente: matriz do mecanismo e limites declarados (ordem 066)
+
+Medido no Claude Code `2.1.289`, sem modelo e sem rede, com `HOME` e `PONTE_MCP_SOCKET` apontando para uma fixture
+(socket Unix em diretório temporário que registra cada conexão; `ponte-daemon` falso no `PATH`; a Ponte configurada
+no `~/.claude.json` falso). Sonda: `claude [flags] mcp list` e `claude plugin list`. Os comandos que tocariam a
+conta real (`claude auth status`, `mcp list` fora de `HOME` temporário, `claude -p`) ficaram **fora do escopo**.
+
+| candidato | Ponte configurada: conecta? | MCP listados | plugins (`plugin list`) | autenticação preservada |
+|---|---|---|---|---|
+| hoje (sem perfil) | **sim** (1 conexão) — o incidente | `ponte` | vazio (HOME falso) | n/v |
+| (a) `CLAUDE_CONFIG_DIR` vazio | não (0) | nenhum | vazio | **não**: o login mora em `$CLAUDE_CONFIG_DIR/.credentials.json`; reautenticar ou gravar credencial em lugar novo |
+| (a) `CLAUDE_CONFIG_DIR` com a Ponte | sim (1) | `ponte` | vazio | idem |
+| (b) `--strict-mcp-config` + `--mcp-config` vazio | **sim** (1): o `mcp list` ignora a flag | `ponte` | n/m | n/v |
+| (b) `--setting-sources project` | não (0) | nenhum (esconde o escopo user) | n/m | n/v |
+| (c) `--bare` | **sim** (1): não isola MCP de escopo user | `ponte` | n/m | não (só `ANTHROPIC_API_KEY`) |
+| (d) `--safe-mode` (`CLAUDE_CODE_SAFE_MODE=1`) | não (0) | nenhum | vazio | sim, segundo o `--help` (n/v) |
+
+`n/v` = não verificado (conta real fora do escopo); `n/m` = não medido (o fixture não tem plugin instalado). Nota:
+`--mcp-config` é variádica e engole o subcomando; use a forma `--mcp-config=<json>`.
+
+**Recomendação (a aprovar pelo Diretor):** a combinação mínima por perfil — `pesquisa`: `--safe-mode` +
+`--setting-sources project` + `--strict-mcp-config` com config vazia + `--settings` inline com a negação de segredos
+(medido: zero conexões, zero servidores listados; sem arquivo escrito na área do usuário; sem `CLAUDE_CONFIG_DIR`
+próprio, logo sem perder o login por construção). `diretor`: Ponte por `--mcp-config` (independente do plugin) +
+`--strict-mcp-config` + `--setting-sources project,local`. `dev` e `gerente`: sem flag de isolamento, só o marcador
+`MAESTRO_AGENTE_PERFIL`. (a) descartado pelo custo de login; (c) descartado por não isolar.
+
+**Limites declarados da proteção de segredos do perfil `pesquisa`** (o que não cobre fica escrito, não fingido):
+1. A negação é `permissions.deny` de `Read` (`.env`, `.env.*`, `*.pem`, `*.key`, `id_*`, `~/.ponte/**`,
+   `.maestro/credenciais/**`) no `--settings` do perfil, sem depender do plugin Maestro. Provado offline: a
+   **configuração gerada** cobre os arquivos falsos da fixture e não cobre arquivo comum.
+2. **Leitura por Bash, `python` ou `node`** (`cat`, `open`) não passa pela ferramenta Read: não coberta.
+3. O **enforcement** da regra pelo provedor não foi provado offline (exige sessão com modelo).
+4. Restrição de leitura no sandbox do provedor: não medida nesta versão (fica como próximo passo).
+5. A **sessão real** (`claude -p`) dos perfis e a **conexão da Ponte do `diretor`** via `--mcp-config` não foram
+   medidas (o `mcp list` ignora `--mcp-config`); plugins sincronizados do claude.ai podem carregar fora de
+   `--setting-sources` no `diretor`.
+6. A **autenticação preservada** do `--safe-mode` real não foi verificada (conta real fora do escopo).
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md

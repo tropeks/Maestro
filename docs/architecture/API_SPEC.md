@@ -673,6 +673,27 @@ maestro conduct --session <session_id>
   (…)`). Ordem já `aceita` deriva do registro, não do recibo: não reabre. Recibo de ordem cujo
   branch foi apagado (árvore congelada, ordem 017) segue sem tip e fora desta regra.
 
+### `maestro agente` (ordem 066)
+- `maestro agente --perfil <dev|gerente|diretor|pesquisa> [--adaptador <nome>] [--dry-run] -- <args do provedor>`:
+  lançador único por perfil. Núcleo (`lib/cmd-agente.sh`) agnóstico de provedor: lê a declaração, resolve o perfil,
+  entrega a um adaptador. **Falha fechada:** sem `--perfil`, `--perfil` vazio/sem valor, perfil desconhecido,
+  adaptador desconhecido ou declaração fora do vocabulário → exit 1 (validação) ou 2 (adaptador ausente), o erro
+  lista os perfis válidos e **nada é lançado**. Não existe perfil padrão. `--dry-run` imprime `perfil:`,
+  `adaptador:`, `capacidades:`, `comando:` (shell-quoted, exato), `ambiente:`, `arquivos:` e as notas do adaptador
+  (`deny:`, `limite:`), sem executar. Fora do dry-run o provedor roda em primeiro plano e o rc dele é o rc do
+  comando. `MAESTRO_AGENTE_BIN` troca o executável do provedor (stub de teste). Log (`$MAESTRO_HOME/logs/agente.log`):
+  só `perfil=`, `adaptador=`, `rc=`; nunca argumento do provedor nem caminho.
+- **Declaração** (`config/perfis-agente.yaml`, fora da `routing-table.yaml`): `versao`, `adaptador_padrao`,
+  `segredos_padroes` (lista de padrões de leitura negada) e `perfis.<nome>` com as capacidades `maestro: sim|nao`,
+  `ponte: envelope|sim|nao`, `mcp: envelope|herdados|nenhum`, `plugins: envelope|herdados|nenhum`,
+  `guardas: metodo|nenhuma`, `segredos: herda|nega`. Capacidades, nunca flag nem palavra de provedor. O perfil
+  `dev` só **declara** o envelope do runner (`envelope` = o que o ponte-daemon já monta); não o altera.
+- **Contrato do adaptador** (`lib/agente-adaptador-<nome>.sh`, dir sobrescrevível por `MAESTRO_AGENTE_ADAPTADOR_DIR`):
+  define `agente_adaptador_montar <perfil>`, que lê `AGENTE_CAP[<capacidade>]` e `AGENTE_SEGREDOS_PADROES[]` e
+  preenche `AGENTE_CMD[]` (argv sem os args do usuário), `AGENTE_ENV[]` (`K=V`), `AGENTE_ARQUIVOS[]` e
+  `AGENTE_NOTAS[]` (linhas impressas no dry-run). Retorno ≠ 0 recusa o perfil. Só o adaptador `claude-code` está
+  implementado; `tests/lib/agente-adaptador-falso.sh` prova que o núcleo não contém palavra do provedor.
+
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
   commit. `--check` sai 1 apenas em STALE (gatilho de `bin/maestro-graph-refresh`, a
