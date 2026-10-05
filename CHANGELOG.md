@@ -27,6 +27,13 @@ from the decision log and tag messages when this file was introduced.
   `docs/patches/064-esqueleto-headless.patch`.
 
 ### Changed
+- **Comando simples no turno: um comando por chamada de Bash** (ordem 069). O esqueleto do `## Turno` que
+  `order --create` emite ganha a terceira linha citada, "Comando simples" (um comando por chamada; caminho
+  absoluto em vez de `cd` e `&&`; sem pipe para cortar saída; `2>&1` permitido; a suíte como uma chamada só,
+  em segundo plano, com espera por Monitor), e a linha "Headless" da 064 é reescrita: a convenção `rc=` no log
+  sai, o recibo já grava o código de saída. Motivo: no replay da 093, 543 de 731 pedidos de permissão eram
+  compostos e 609 caíam em T3. Só o esqueleto das ordens novas muda; regra em ENGINEERING_SPEC.
+  `lib/core-order-turno.sh` entra por patch protegido; `test-order-064` ajustado ao texto novo.
 - **Painel de linha de base: permissões por janela e três medidas novas** (ordem 063, turno 2: itens 4 a 6).
   A métrica 4 (permissões da Ponte) sai cortada pela v59: cada run e cada projeto traz o `lado` (`antes` ou
   `depois`, pelo instante de criação do run). Três métricas novas, todas contagens ou inteiros, **nunca tempo do

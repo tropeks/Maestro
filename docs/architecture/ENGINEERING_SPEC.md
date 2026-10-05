@@ -166,6 +166,24 @@ libera; (f) `transcript_path` vazio ou ilegível ainda bloqueia. O cache ativo j
 contra a repetição (o `doctor`/`session-start` acusar cache atrás do repo; o headless recusar
 turno de ordem com hook defasado) é **proposta, decisão do Diretor**; não foi implementado.
 
+**Comando simples (ordem 069).** O Jev só julga o que é simples: um comando de leitura, escrita
+em área segura ou comando conhecido. Dado do replay da 093 no ponte-daemon (dado do Capitão; o
+replay vive no outro repo e não é reproduzido aqui): dos **731** pedidos de permissão dos turnos,
+**543** são comandos compostos (`cd x && …`, pipe para `tail` ou `head`, `2>&1`) e **609** caem em
+T3, então quase nada é julgável e tudo sobe ao Diretor. A regra, em cinco cláusulas, escrita igual
+aqui e no esqueleto do `## Turno` (terceira linha citada, depois de "Log e escrita" e "Headless";
+blockquote, não rótulo): **(1)** um comando por chamada de Bash, sem `&&`, `;` nem `||` encadeando
+comandos distintos; **(2)** caminho absoluto em vez de `cd` e `&&` (`cmd /x/…`, `git -C /x …`);
+**(3)** sem pipe para cortar saída (`| tail`, `| head`): a ferramenta já corta; **(4)** a suíte roda
+como UMA chamada só, `maestro evidence --record --label order-N -- <suíte>`, em segundo plano pelo
+`run_in_background` da ferramenta Bash (nada de subshell, `&` nem `echo rc=` encadeado), e a espera é
+por **Monitor**; o recibo já grava o código de saída, então a convenção `rc=` no log sai e a linha
+"Headless" da 064 é reescrita no mesmo patch; **(5)** `2>&1` é permitido: junta saídas, não grava
+arquivo, não é composição de comandos. Só o esqueleto das ordens novas muda; ordens já escritas e o
+corpo com `## Turno` próprio ficam como estão. Não há hook que bloqueie composto: é regra de método,
+escrita (um guard teria custo de falso positivo, pois os 543 incluem formas legítimas).
+`tests/cli/test-order-069-esqueleto-comando-simples.sh` prova o esqueleto gerado.
+
 **A catraca do `habits` é aviso (ordem 062).** `oversized-file`, `oversized-function` e
 `deep-nesting` acima do baseline (e a dívida declarada vencida) saem como `AVISO catraca` no
 relatório do `habits`, com exit 0: controle que custou três ordens de retrabalho e nunca

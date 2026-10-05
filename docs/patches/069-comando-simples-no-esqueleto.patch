@@ -1,0 +1,16 @@
+diff --git a/lib/core-order-turno.sh b/lib/core-order-turno.sh
+index 2084dd2..8d6f9d9 100644
+--- a/lib/core-order-turno.sh
++++ b/lib/core-order-turno.sh
+@@ -57,7 +57,10 @@ _order_turno_skeleton() { # esqueleto emitido por --create quando o corpo não t
+   # ordem 062 (C): blockquote, não rótulo — o conform e o Stop de turno não a leem como campo
+   printf '\n> **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run, /tmp/claude-<uid>/<cwd codificado>, nunca /tmp solto; escrita só com Edit ou Write.\n'
+   # ordem 064: mesma forma (linha citada, não rótulo) — o turno headless não encerra esperando notificação
+-  printf '\n> **Headless:** nunca encerre a resposta esperando uma notificação. Suíte em segundo plano se espera por laço até a linha rc= no log; só depois se relata.\n'
++  # ordem 069: a convenção rc= saiu — a suíte é uma chamada só, em segundo plano, e a espera é por Monitor
++  printf '\n> **Headless:** nunca encerre a resposta esperando uma notificação. A suíte roda como uma chamada só (maestro evidence --record --label order-N -- <suíte>) em segundo plano, pelo run_in_background da ferramenta Bash, e a espera é por Monitor; o recibo já grava o código de saída. Só depois se relata.\n'
++  # ordem 069: mesma forma — um comando por chamada de Bash (o Jev só julga o que é simples)
++  printf '\n> **Comando simples:** um comando por chamada de Bash; caminho absoluto em vez de cd e &&; sem pipe para cortar saída (| tail, | head), a ferramenta já corta; 2>&1 é permitido (junta saídas, não grava arquivo); a suíte roda como uma chamada só, maestro evidence --record --label order-N -- <suíte>, em segundo plano (run_in_background da ferramenta Bash) e a espera é por Monitor; o recibo já grava o código de saída.\n'
+ }
+ 
+ _turno_report_missing() { # <relatório.txt> → rótulos do relatório fixo ausentes, um por linha

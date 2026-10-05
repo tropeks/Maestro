@@ -23,7 +23,8 @@ P="$tmp/proj"; mkdir -p "$P"
 git -C "$P" init -q -b main
 echo a > "$P/f.txt"; G add -A; G commit -qm base
 
-REGRA='> **Headless:** nunca encerre a resposta esperando uma notificação. Suíte em segundo plano se espera por laço até a linha rc= no log; só depois se relata.'
+# ordem 069: a convenção rc= saiu — a suíte é uma chamada só, em segundo plano, e a espera é por Monitor
+REGRA='> **Headless:** nunca encerre a resposta esperando uma notificação. A suíte roda como uma chamada só (maestro evidence --record --label order-N -- <suíte>) em segundo plano, pelo run_in_background da ferramenta Bash, e a espera é por Monitor; o recibo já grava o código de saída. Só depois se relata.'
 
 printf '> **Execução headless:** prova em sandbox.\n' | "$BIN" order --create --title "sem turno" --project "$P" --session s0 >/dev/null
 F=$(ls "$P"/.maestro/orders/001-*.md 2>/dev/null | head -1)
