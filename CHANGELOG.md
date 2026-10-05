@@ -13,6 +13,13 @@ from the decision log and tag messages when this file was introduced.
   `tools/medir-controles.sh` mede o tempo por chamada em sandbox; `tests/cli/test-inventario-controles.sh` confere o
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
+### Fixed
+- **Stop de turno do cache atrás do repo liberava calado em 124** (ordem 064). O turno headless da 062 terminou
+  esperando notificação sem recibo e o Stop não bloqueou: o cache do plugin estava em 1.21.0, sem a checagem local
+  do 124 da 056. `tests/hooks/test-order-064-stop-sem-notificacao.sh` prova a causa e descarta (b) a (f). O esqueleto
+  de `order --create` ganha a regra do headless (nunca encerrar esperando notificação), em patch protegido
+  `docs/patches/064-esqueleto-headless.patch`.
+
 ### Changed
 - **Painel de linha de base: permissões por janela e três medidas novas** (ordem 063, turno 2: itens 4 a 6).
   A métrica 4 (permissões da Ponte) sai cortada pela v59: cada run e cada projeto traz o `lado` (`antes` ou

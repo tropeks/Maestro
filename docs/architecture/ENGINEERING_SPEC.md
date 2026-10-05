@@ -149,6 +149,23 @@ solto volta a gerar pedido de permissão. `<uid>` e `<cwd codificado>` ficam lit
 esqueleto. Só o esqueleto muda: ordem já escrita não é tocada e corpo com `## Turno` próprio
 não ganha a linha.
 
+**Regra do headless no esqueleto e a causa do Stop que não bloqueou (ordem 064).** O esqueleto
+traz, ao lado da linha "Log e escrita", outra linha citada (mesma forma, não rótulo): *nunca
+encerre a resposta esperando uma notificação. Suíte em segundo plano se espera por laço até a
+linha `rc=` no log; só depois se relata.* Causa provada de o Stop da 062 liberar a fala *"Suíte
+ainda rodando; aguardo a notificação"* sem recibo: **(a) cache atrás do repo**. O hook do cache
+**1.21.0** não tem a checagem local do 124 da 056; sob load o `order --turno-check` passa de 2 s,
+devolve 124 e aquele hook libera calado. `tests/hooks/test-order-064-stop-sem-notificacao.sh`
+(com `HOOK_UNDER_TEST=<raiz>`) mostra: hook do tip e do cache 1.21.0 bloqueiam o payload da 062
+com o CLI rápido (o critério é o recibo, não o texto); com o CLI em 124, o do tip bloqueia pelos
+rótulos e o 1.21.0 libera. Descartadas, cada uma ligada e desligada no teste: (b) reentrada
+libera por desenho; (c) o teto de 3 só gasta a sessão, a nova bloqueia; (d) `CLAUDE_PROJECT_DIR`
+fora do projeto libera, e sem a variável o cwd do worktree basta; (e) ordem sem `## Turno`
+libera; (f) `transcript_path` vazio ou ilegível ainda bloqueia. O cache ativo já é 1.22.0
+(`installed_plugins.json`); o descompasso 1.21.0→1.22.0 foi o do turno da 062. O mecanismo
+contra a repetição (o `doctor`/`session-start` acusar cache atrás do repo; o headless recusar
+turno de ordem com hook defasado) é **proposta, decisão do Diretor**; não foi implementado.
+
 **A catraca do `habits` é aviso (ordem 062).** `oversized-file`, `oversized-function` e
 `deep-nesting` acima do baseline (e a dívida declarada vencida) saem como `AVISO catraca` no
 relatório do `habits`, com exit 0: controle que custou três ordens de retrabalho e nunca
