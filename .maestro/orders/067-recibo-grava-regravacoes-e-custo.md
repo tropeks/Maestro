@@ -188,3 +188,7 @@ descrever a fonte real. Papercut: nenhum previsto.
 - Prove com o ledger: `maestro evidence --record --label order-67 -- <suíte>` no tip do branch, com o patch aplicado.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 067` (você não fecha a própria ordem).
+accepted_at: 2026-10-05T13:56:45-03:00
+accepted_session: desconhecido
+accepted_tree: 7dad9fffb835f28f4bdc43f9e0360641cefcfb3e
+accepted_intent: 6
