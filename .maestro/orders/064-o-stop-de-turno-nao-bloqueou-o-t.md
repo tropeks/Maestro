@@ -120,3 +120,7 @@ libera calado em 124".
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`), com a decisão do Capitão de 04/10 (v59) como autorização — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 064` (você não fecha a própria ordem).
+accepted_at: 2026-10-05T12:05:12-03:00
+accepted_session: desconhecido
+accepted_tree: f5e99aa621bdec3dc871d09b18c3d191d9ada342
+accepted_intent: 6
