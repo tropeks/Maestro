@@ -12,7 +12,8 @@
 # Nunca se estima. Campo sem fonte POR CONSTRUÇÃO dentro de uma métrica ok segue "sem fonte".
 # Métricas: 1 idade/parada em pronta · 2 CI→merge · 3 rebases · 4 permissões (por janela) · 5 lab-ci ·
 #   6 timeouts · 7 ações do Capitão · 8 retrabalho · 9 custo por ordem (7 a 9: lib/baseline-novas.sh;
-#   contagens e inteiros, nunca tempo do Capitão).
+#   contagens e inteiros, nunca tempo do Capitão). 8 (recibos regravados) e 9 leem os campos que o
+#   `maestro evidence --record` grava (ordem 067): ausente/inexistente = "sem dado" com N declarado, não FALHA.
 #
 # Uso: tools/baseline.sh --project <dir> [--format md|json] [--out ARQ]
 #                        [--since EPOCH --next N]   # só os N próximos aceites após EPOCH

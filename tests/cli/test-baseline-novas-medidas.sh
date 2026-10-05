@@ -127,16 +127,17 @@ jq -e '(.metricas[3].ponte.permissoes_por_projeto | map({(.lado):.n}) | add)=={"
 m=$(bash "$TOOL" --project "$P" --format md 2>/dev/null)
 if grep -qi 'minuto' <<<"$m$j"; then bad "a saída fala em minutos"; else ok "nenhuma saída contém 'minutos'"; fi
 
-# --- fonte que falta é FALHA nomeada, exit 3
+# --- ordem 067: campo ausente (ordem antiga ou sem fonte) NÃO é FALHA — fica fora da soma e dentro de n_sem_dado
+# (antes: FALHA nomeada, exit 3, para "recibo sem regravacoes" e "custo ausente"); campo inválido (float) segue FALHA.
 add 41 $((CORTE-4000)) - 2000            # recibo sem o campo regravacoes
 run --project "$P" --format json
-[[ $rc -eq 3 ]] && grep -q 'regravacoes' <<<"$err" && grep -q 'order-41' <<<"$err" \
-  && jq -e '.metricas[7].status=="FALHA" and .metricas[7].recibos_regravados.status=="FALHA" and .metricas[7].turnos_devolvidos.antes==2' <<<"$j" >/dev/null \
-  && ok "regravacoes ausente: FALHA nomeada (recibo e campo), exit 3, as outras contagens preservadas" || bad "regravacoes: rc=$rc err=$err m8=$(jq -c '.metricas[7]' <<<"$j")"
+[[ $rc -eq 0 ]] \
+  && jq -e '.metricas[7].status=="ok" and .metricas[7].recibos_regravados.status=="ok" and .metricas[7].recibos_regravados.n.antes=={populacao:2,n_com_dado:1,n_sem_dado:1} and .metricas[7].recibos_regravados.antes==1 and .metricas[7].turnos_devolvidos.antes==2' <<<"$j" >/dev/null \
+  && ok "regravacoes ausente: sem dado com N declarado (1 de 2 antes), exit 0, as outras contagens preservadas" || bad "regravacoes: rc=$rc err=$err m8=$(jq -c '.metricas[7]' <<<"$j")"
 add 41 $((CORTE-4000)) 0 -               # recibo sem custo
 run --project "$P" --format json
-[[ $rc -eq 3 ]] && grep -qE 'tokens|custo_centavos' <<<"$err" && jq -e '.metricas[8].status=="FALHA" and (.metricas[8].falhas[0].motivo|test("41"))' <<<"$j" >/dev/null \
-  && ok "custo ausente: FALHA nomeada, exit 3 (não zero, não estimado)" || bad "custo: rc=$rc err=$err m9=$(jq -c '.metricas[8]' <<<"$j")"
+[[ $rc -eq 0 ]] && jq -e '.metricas[8].status=="ok" and .metricas[8].n.antes=={populacao:2,n_com_dado:1,n_sem_dado:1} and .metricas[8].total_tokens_antes==1000' <<<"$j" >/dev/null \
+  && ok "custo ausente: sem dado com N declarado, exit 0 (não zero, não estimado)" || bad "custo: rc=$rc err=$err m9=$(jq -c '.metricas[8]' <<<"$j")"
 add 41 $((CORTE-4000)) 0 2.5             # float não é inteiro: recusado
 run --project "$P" --format json
 [[ $rc -eq 3 ]] && jq -e '.metricas[8].status=="FALHA"' <<<"$j" >/dev/null && ok "custo não inteiro (float) é FALHA, nunca aceito" || bad "float aceito: rc=$rc"

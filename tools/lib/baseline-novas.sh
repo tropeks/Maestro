@@ -12,6 +12,11 @@
 #                                                  sem manager_event review_requested/completed do run
 #                         recibos regravados     → ledger evidence/<chave>-order-<n>, campo regravacoes
 #   9 custo por ordem   → ledger evidence/<chave>-order-<n>, campo tokens ou custo_centavos (inteiro)
+# Fonte real (ordem 067): `maestro evidence --record` grava regravacoes, tokens, custo_centavos e custo_fonte
+# no recibo (DATA_MODEL §8). Campo inteiro entra na conta; campo `ausente` ou inexistente (ordem antiga ou
+# sem fonte) fica FORA da soma e DENTRO de n_sem_dado — nunca vira zero nem FALHA. Com n_com_dado=0 a
+# parcela sai "sem dado". FALHA só onde a fonte falha: ledger ilegível ou campo presente e inválido (float,
+# texto que não seja `ausente`). N declarado por lado do corte (n.antes / n.depois): populacao, n_com_dado, n_sem_dado.
 
 PROT_PATHS=(hooks bin lib src .claude-plugin/plugin.json)
 
@@ -83,21 +88,28 @@ m7_acoes_capitao() { # → JSON da métrica 7
     | fin($f; ($pontes or $gok>0) and ($a|length)>0)'
 }
 
-# população com recibo: [{projeto, ordem, lado, regravacoes, tokens, centavos}] (null = campo ausente ou não inteiro)
+# população com recibo: [{projeto, ordem, lado, regravacoes, tokens, centavos, invalidos}]
+#   inteiro → valor; null → campo ausente (inexistente ou a palavra `ausente`: "não sei", não zero);
+#   `invalidos` lista o campo PRESENTE e inválido (float, texto que não seja `ausente`) — isso é FALHA.
 recibos_json() {
-  local rows=() k id ac lado ev v rg tk ce
+  local rows=() k id ac lado ev v rg tk ce inv f
   while IFS=$'\t' read -r k id ac; do
     [[ -n "$id" ]] || continue
     ev="$HOME_M/evidence/$k-order-$id"
-    rg=null tk=null ce=null
+    rg=null tk=null ce=null inv=""
     if [[ -f "$ev" ]]; then
-      v=$(field "$ev" regravacoes); [[ "$v" =~ ^[0-9]+$ ]] && rg=$((10#$v))
-      v=$(field "$ev" tokens); [[ "$v" =~ ^[0-9]+$ ]] && tk=$((10#$v))
-      v=$(field "$ev" custo_centavos); [[ "$v" =~ ^[0-9]+$ ]] && ce=$((10#$v))
+      for f in regravacoes tokens custo_centavos; do
+        v=$(field "$ev" "$f")
+        if [[ "$v" =~ ^[0-9]+$ ]]; then
+          case "$f" in regravacoes) rg=$((10#$v));; tokens) tk=$((10#$v));; *) ce=$((10#$v));; esac
+        elif [[ -n "$v" && "$v" != ausente ]]; then
+          inv+="${inv:+,}$f"
+        fi
+      done
     fi
     lado=depois; [[ "$ac" -le "$CORTE" ]] && lado=antes
-    rows+=("$(jq -nc --arg p "$k" --argjson o "$id" --arg l "$lado" --argjson rg "$rg" --argjson tk "$tk" --argjson ce "$ce" \
-      '{projeto:$p, ordem:$o, lado:$l, regravacoes:$rg, tokens:$tk, centavos:$ce}')")
+    rows+=("$(jq -nc --arg p "$k" --argjson o "$id" --arg l "$lado" --argjson rg "$rg" --argjson tk "$tk" --argjson ce "$ce" --arg inv "$inv" \
+      '{projeto:$p, ordem:$o, lado:$l, regravacoes:$rg, tokens:$tk, centavos:$ce, invalidos:($inv | split(",") | map(select(length>0)))}')")
   done < <(jq -r --arg k "$key" '.[] | select((.aceita|type)=="number") | [(.projeto // $k), .id, .aceita] | @tsv' <<<"$ORDERS_JSON")
   jarr "${rows[@]}"
 }
@@ -118,10 +130,11 @@ m8_retrabalho() { # → JSON da métrica 8
     f+=("$(falha "ledger (evidence)" "$ledger_motivo")")
   else
     rec=$(recibos_json); rec_ok=1
-    local faltam; faltam=$(jq -r '[.[] | select(.regravacoes==null) | "\(.projeto)-order-\(.ordem)"] | join(", ")' <<<"$rec")
-    if [[ -n "$faltam" ]]; then
+    # campo ausente/inexistente NÃO é falha (fica fora da soma, dentro de n_sem_dado); só o campo presente e inválido
+    local invalidos; invalidos=$(jq -r '[.[] | select(.invalidos | index("regravacoes")) | "\(.projeto)-order-\(.ordem)"] | join(", ")' <<<"$rec")
+    if [[ -n "$invalidos" ]]; then
       rec_ok=0
-      f+=("$(falha "ledger evidence/<chave>-order-<n> (campo regravacoes)" "recibo sem o campo regravacoes inteiro: $faltam; o recibo é sobrescrito e nenhum evento guarda a regravação (proposta: maestro evidence --record incrementa regravacoes=N no mesmo rótulo)")")
+      f+=("$(falha "ledger evidence/<chave>-order-<n> (campo regravacoes)" "campo regravacoes presente e inválido (não é inteiro nem a palavra ausente): $invalidos")")
     fi
   fi
   f+=("${UNRES[@]}")
@@ -139,9 +152,15 @@ m8_retrabalho() { # → JSON da métrica 8
         fonte:"ponte.db director_inbox/manager_run/manager_event + ledger evidence",
         turnos_devolvidos:(sub_($dok; $d; null) + {nota:"director_inbox.state=returned; a tabela não tem projeto: vale a Ponte inteira"}),
         turnos_sem_relato:sub_($sok; $s; null),
-        recibos_regravados:(if $rok==0 and ($npop>0) then {status:"FALHA", nota:"sem contagem: ordens da população sem o campo regravacoes (ver falhas); nenhum zero no lugar de ausência"}
+        recibos_regravados:(
+          def nlado($l): ($rec|map(select(.lado==$l))) as $p | ($rg|map(select(.lado==$l))) as $c
+            | {populacao:($p|length), n_com_dado:($c|length), n_sem_dado:(($p|length)-($c|length))};
+          if $rok==0 and ($npop>0) then {status:"FALHA", nota:"campo regravacoes presente e inválido (ver falhas); o painel não adivinha"}
           elif $npop==0 then {status:"sem dado"}
-          else {status:"ok", antes:($rg|map(select(.lado=="antes")|.regravacoes)|add // 0), depois:($rg|map(select(.lado=="depois")|.regravacoes)|add // 0),
+          else {status:(if ($rg|length)==0 then "sem dado" else "ok" end),
+                antes:($rg|map(select(.lado=="antes")|.regravacoes)|add // 0), depois:($rg|map(select(.lado=="depois")|.regravacoes)|add // 0),
+                n:{antes:nlado("antes"), depois:nlado("depois")},
+                n_com_dado:($rg|length), n_sem_dado:(($rec|length)-($rg|length)), populacao:($rec|length),
                 por_ordem:($rg|map({ordem, n:.regravacoes}))} end) }
     | fin($f; ($dok+$sok+$rok)>0)'
 }
@@ -152,20 +171,25 @@ m9_custo() { # → JSON da métrica 9
     f+=("$(falha "ledger (evidence)" "$ledger_motivo")")
   else
     rec=$(recibos_json)
-    local faltam; faltam=$(jq -r '[.[] | select(.tokens==null and .centavos==null) | "\(.projeto)-order-\(.ordem)"] | join(", ")' <<<"$rec")
-    [[ -n "$faltam" ]] && f+=("$(falha "ledger evidence/<chave>-order-<n> (campo tokens ou custo_centavos)" "nenhum custo inteiro registrado para: $faltam; nenhuma telemetria local guarda custo por ordem (proposta: maestro evidence --record grava tokens=N ou custo_centavos=N)")")
+    # ausente/inexistente fica fora da soma e dentro de n_sem_dado; só campo presente e inválido (float, texto) é FALHA
+    local invalidos; invalidos=$(jq -r '[.[] | select(.invalidos | (index("tokens") or index("custo_centavos"))) | "\(.projeto)-order-\(.ordem)"] | join(", ")' <<<"$rec")
+    [[ -n "$invalidos" ]] && f+=("$(falha "ledger evidence/<chave>-order-<n> (campo tokens ou custo_centavos)" "campo presente e inválido (não é inteiro nem a palavra ausente): $invalidos")")
   fi
   f+=("${UNRES[@]}")
   jq -nc --argjson rec "$rec" --argjson f "$(jarr "${f[@]}")" "$FIN"'
     ($rec | map(select(.tokens != null or .centavos != null))) as $c
-    | { id:9, nome:"custo por ordem (inteiros)",
-        status:(if ($rec|length)==0 then "sem dado" else "ok" end),
-        fonte:"ledger evidence/<chave>-order-<n>, campos tokens ou custo_centavos",
+    | def nlado($l): ($rec|map(select(.lado==$l))) as $p | ($c|map(select(.lado==$l))) as $d
+        | {populacao:($p|length), n_com_dado:($d|length), n_sem_dado:(($p|length)-($d|length))};
+    { id:9, nome:"custo por ordem (inteiros)",
+        status:(if ($rec|length)==0 then "sem dado" elif ($c|length)==0 then "sem dado" else "ok" end),
+        fonte:"ledger evidence/<chave>-order-<n>, campos tokens ou custo_centavos (ausente = sem dado)",
+        n_com_dado:($c|length), n_sem_dado:(($rec|length)-($c|length)), populacao:($rec|length),
+        n:{antes:nlado("antes"), depois:nlado("depois")},
         por_ordem:($c | map({projeto, ordem, lado, tokens, centavos})),
         total_tokens_antes:($c|map(select(.lado=="antes")|.tokens // 0)|add // 0),
         total_tokens_depois:($c|map(select(.lado=="depois")|.tokens // 0)|add // 0),
         total_centavos_antes:($c|map(select(.lado=="antes")|.centavos // 0)|add // 0),
         total_centavos_depois:($c|map(select(.lado=="depois")|.centavos // 0)|add // 0) }
-    | if .status=="sem dado" then {id, nome, status, motivo:"ledger legível, nenhuma ordem na população"} else . end
-    | fin($f; ($c|length)>0)'
+    | if .status=="sem dado" then . + {motivo:(if ($rec|length)==0 then "ledger legível, nenhuma ordem na população" else "nenhuma ordem da população tem tokens ou custo_centavos inteiro (ausente = sem dado, nunca zero)" end)} else . end
+    | fin($f; ($rec|length)>0)'
 }
