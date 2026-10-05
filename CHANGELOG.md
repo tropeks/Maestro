@@ -20,6 +20,11 @@ from the decision log and tag messages when this file was introduced.
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
 ### Fixed
+- **Hook defasado nunca roda turno** (ordem 068). Um veredito de versão único (`maestro plugin-version`: ok / atrás /
+  indeterminado, semver por inteiros, falha de leitura nunca é atrás) acusa o cache do plugin atrás do repo em `doctor` e
+  `session-start`, e o `UserPromptSubmit` recusa (exit 2, com o motivo) o turno de ordem não atendido com defasagem
+  provada — a causa do relato falso da 062. Sessão atendida só avisa. Código em patch protegido
+  `docs/patches/068-*.patch`; `tests/cli/test-order-068-*.sh`, `tests/hooks/test-order-068-turno-recusado.sh`.
 - **Stop de turno do cache atrás do repo liberava calado em 124** (ordem 064). O turno headless da 062 terminou
   esperando notificação sem recibo e o Stop não bloqueou: o cache do plugin estava em 1.21.0, sem a checagem local
   do 124 da 056. `tests/hooks/test-order-064-stop-sem-notificacao.sh` prova a causa e descarta (b) a (f). O esqueleto

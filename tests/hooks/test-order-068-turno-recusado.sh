@@ -27,8 +27,9 @@ hook() { # <proj> <attended|-> [VAR=VAL...] → $rc, $so (stdout), $se (stderr)
   local proj="$1" att="$2"; shift 2
   local ef="$tmp/se"
   local envs=(CLAUDE_PROJECT_DIR="$proj" CLAUDE_PLUGIN_ROOT="$U" MAESTRO_REPO_DIR="$R")
+  local un=(-u CLAUDE_CODE_SESSION_ATTENDED)   # o ambiente de quem roda o teste pode trazer o sinal
   [[ "$att" == - ]] || envs+=(CLAUDE_CODE_SESSION_ATTENDED="$att")
-  so=$(printf '{"session_id":"s068","prompt":"faca o turno"}' | env "${envs[@]}" "$@" bash "$REPO/hooks/user-prompt-submit.sh" 2>"$ef"); rc=$?
+  so=$(printf '{"session_id":"s068","prompt":"faca o turno"}' | env "${un[@]}" "${envs[@]}" "$@" bash "$REPO/hooks/user-prompt-submit.sh" 2>"$ef"); rc=$?
   se=$(cat "$ef")
 }
 

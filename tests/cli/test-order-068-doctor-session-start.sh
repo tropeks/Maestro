@@ -30,7 +30,7 @@ printf '%s\n' "$dout" | grep -E '^warn.*cache 1\.21\.0 < repo 1\.22\.0' >/dev/nu
 [[ "$dout" == *"gire o cache"* ]] && ok "doctor: traz o conserto (gire o cache)" || bad "doctor sem o conserto"
 
 dout=$(cd "$P" && CLAUDE_PLUGIN_ROOT="$R" "$R/bin/maestro" doctor 2>&1 || true)
-[[ "$dout" != *"cache 1."* && "$dout" != *"hook defasado"* ]] && ok "doctor: repo como raiz viva não acusa cache atrás" || bad "doctor acusa com o repo como raiz viva"
+[[ "$dout" != *"defasado"* && "$dout" != *"gire o cache"* ]] && ok "doctor: repo como raiz viva não acusa cache atrás" || bad "doctor acusa com o repo como raiz viva"
 
 dout=$(cd "$P" && env -u CLAUDE_PLUGIN_ROOT "$R/bin/maestro" doctor 2>&1 || true)
 [[ "$dout" != *"gire o cache"* ]] && ok "doctor: sem CLAUDE_PLUGIN_ROOT (indeterminado) não acusa atraso" || bad "doctor acusa atraso sem ter lido a versão em uso"

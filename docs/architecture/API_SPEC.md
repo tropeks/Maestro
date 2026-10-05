@@ -141,6 +141,16 @@ não destrava. Módulo: `hooks/lib/self-paths.sh`. Teste: `tests/hooks/test-orde
 
 ### `hooks/user-prompt-submit.sh` — evento UserPromptSubmit (ADR-008)
 - Prompt inicia com `/` → log `override_manual` com **apenas o nome do comando** (vocabulário fechado). Sempre exit 0; nunca altera o prompt.
+- **Recusa de turno com hook defasado (ordem 068) — a ÚNICA exceção ao "sempre exit 0" e à Prioridade 1
+  ("nunca bloqueia trabalho").** Decidida pelo Capitão (v59, integridade). Vale só quando as **quatro** condições
+  são provadas: `CLAUDE_CODE_SESSION_ATTENDED` é exatamente `0` (turno não atendido); `CLAUDE_PLUGIN_ROOT` definido;
+  branch `order/NNN-…` num projeto com `.maestro/orders/`; veredito de versão `atrás` (as duas versões lidas, a
+  em uso menor). Então sai com **exit 2** e, no stderr: `hook defasado: o cache do plugin está em X e o repo em Y — o
+  turno não roda com hook antigo; peça o giro do cache ao Capitão`; o Claude Code descarta o prompt e mostra o
+  motivo (medido em `claude -p` 2.1.289: o turno não executa; o processo sai 0 com o motivo na saída). Sessão
+  atendida, sinal ausente ou diferente de `0`, branch comum, `MAESTRO_OFF=1` e veredito `indeterminado` seguem
+  como hoje (exit 0). O repo é achado por `MAESTRO_REPO_DIR` ou pelo `installLocation` do marketplace de diretório
+  `maestro` em `known_marketplaces.json`. `SessionStart` **não** impede o turno (medido: exit 2 não interrompe).
 
 ### `hooks/session-end.sh` — evento SessionEnd (S-1811, v1.11.1)
 - **Lê:** `session_id` do stdin (regex; `CLAUDE_SESSION_ID` como fallback) e o decision
@@ -738,7 +748,20 @@ maestro conduct --session <session_id>
   o comando manual sempre roda (`UPD_MANUAL=1`). Costuras de teste: `MAESTRO_UPDATE_REPO`,
   `MAESTRO_UPDATE_REMOTE`, `MAESTRO_UPDATE_BRANCH`, `MAESTRO_UPDATE_INTERVAL`.
 
+### `maestro plugin-version` (ordem 068)
+Veredito de versão do plugin **em uso** (`CLAUDE_PLUGIN_ROOT`, `.claude-plugin/plugin.json`) contra o **repo** de
+onde o CLI roda (`REPO_DIR`). Uma função (`maestro_version_verdict`, `hooks/lib/version.sh`), usada também por
+`doctor`, `session-start` e `user-prompt-submit`: nenhuma segunda comparação. Semver por inteiros; só é `atrás` com as
+duas versões lidas e a em uso menor. Saída: `ok|atrás|indeterminado: <razão>` (a razão traz só versões:
+`cache 1.21.0 < repo 1.22.0`). **Exit:** `0` ok (em uso igual ou maior) · `1` atrás · `2` indeterminado (arquivo
+ausente, JSON ilegível, `CLAUDE_PLUGIN_ROOT` indefinido, versão fora de `major.minor.patch`) — falha de leitura nunca é `atrás`.
+
 ### `maestro doctor`
+**Checagem de versão (ordem 068):** `warn` "plugin em uso defasado: cache X < repo Y" com o conserto ("gire o cache")
+quando o veredito é `atrás`; substitui o aviso por conteúdo da cópia registrada (S-710) quando a causa é a versão; repo como
+raiz viva (`CLAUDE_PLUGIN_ROOT` = repo) não é cache atrás. `session-start` injeta uma linha no cabeçalho
+(`⚠ hook defasado: cache X < repo Y`), só quando há defasagem, dentro do orçamento de 8000 bytes.
+
 **Checagem S-1709 (E17):** `doctor` compara `meta.repository.revision` de `docs/assets/architecture.json` (quando o projeto o declara) com o commit da última tag git **ou com o pai dele** (rito desde a v1.14.2: o retrato é pinado no commit de release, commitado em seguida, e a tag vai no commit do diagrama — quem está exatamente na tag já tem o retrato certo) — divergência é warn acionável ("regenere com archify"), ausência é skip; nunca falha o doctor.
 
 - Valida: schemas YAML/JSON, hooks registrados no settings do Claude Code, permissões, versão de Bun.

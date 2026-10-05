@@ -1,0 +1,218 @@
+diff --git a/bin/maestro b/bin/maestro
+index d4c6ea4..5f58301 100755
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -723,6 +723,40 @@ check_accept_proof_key() { # ordem 041: âncora de confiança do aceite por iden
+   fi
+ }
+ 
++_pv_lib_load() { # ordem 068: o veredito de versão (hooks/lib/version.sh) — uma função, um veredito
++  declare -f maestro_version_verdict >/dev/null 2>&1 && return 0
++  # shellcheck source=hooks/lib/version.sh
++  [[ -f "$REPO_DIR/hooks/lib/version.sh" ]] && source "$REPO_DIR/hooks/lib/version.sh" && return 0
++  return 1
++}
++
++cmd_plugin_version() { # ordem 068: veredito do plugin EM USO (CLAUDE_PLUGIN_ROOT) contra este repo
++  # exit 0 ok · 1 atrás · 2 indeterminado; a razão legível vai no stdout (só versões, nunca caminho)
++  _pv_lib_load || die env "hooks/lib/version.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
++  local rc=0
++  maestro_version_verdict "${CLAUDE_PLUGIN_ROOT:-}" "$REPO_DIR" || rc=$?
++  case "$MV_VERDICT" in
++    atras) printf 'atrás: %s\n' "$MV_REASON" ;;
++    ok) printf 'ok: %s\n' "$MV_REASON" ;;
++    *) printf 'indeterminado: %s\n' "$MV_REASON" ;;
++  esac
++  exit "$rc"
++}
++
++check_plugin_version() { # ordem 068: o cache do plugin em uso está ATRÁS do repo? (mesmo veredito do núcleo)
++  CAP_VERSION_ATRAS=0
++  _pv_lib_load || { report skip "versão do plugin em uso vs repo" "hooks/lib/version.sh ausente"; return 0; }
++  maestro_version_verdict "${CLAUDE_PLUGIN_ROOT:-}" "$REPO_DIR" || true
++  case "$MV_VERDICT" in
++    atras)
++      CAP_VERSION_ATRAS=1
++      report warn "plugin em uso defasado: $MV_REASON" \
++        "turno de ordem headless não roda com hook antigo (fix: gire o cache — peça ao Capitão; reinstale o plugin apontando para este repo)" ;;
++    ok) report ok "plugin em uso: $MV_REASON" ;;
++    *) report ok "plugin em uso: versão indeterminada ($MV_REASON)" ;;
++  esac
++}
++
+ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste repo
+   # O Claude Code resolve `${CLAUDE_PLUGIN_ROOT}` (o que o hooks.json usa) a
+   # partir de ~/.claude/plugins, e o `installPath` de installed_plugins.json
+@@ -810,6 +844,9 @@ check_plugin_install() { # S-710: cópia instalada do plugin divergente deste re
+   elif (( repo_is_live == 1 )); then
+     report ok "instalação do plugin: o repo é a raiz viva (${#stale[@]} cópia(s) em cache inerte(s))" \
+       "marketplace de diretório aponta para $repo_real — a cópia registrada não executa"
++  elif (( ${CAP_VERSION_ATRAS:-0} == 1 )); then
++    # ordem 068: a causa é a VERSÃO (já acusada acima, com a razão e o conserto); não repete por conteúdo
++    report ok "instalação do plugin: divergência explicada pela versão defasada (ver o aviso acima)"
+   else
+     report warn "instalação do plugin: cópia registrada idêntica a este repo" \
+       "$(join_semi "${stale[@]}") — sessão que resolver por essa cópia roda Maestro antigo (fix: reinstale o plugin apontando para $repo_real, ou remova a cópia)"
+@@ -1591,6 +1628,7 @@ doctor() {
+   check_evidence
+   check_vendor_integrity
+   check_accept_proof_key
++  check_plugin_version
+   check_plugin_install
+   check_update_state
+   check_upstream
+@@ -2355,6 +2393,7 @@ delegate() { # decide|status|log → src/cli.ts (CONTRATO §4)
+ cmd="${1:-}"
+ case "$cmd" in
+   doctor) shift; doctor "$@" ;;
++  plugin-version) shift; cmd_plugin_version "$@" ;;   # ordem 068
+   decide|status|log) shift; delegate "$cmd" "$@" ;;
+   brief) shift; _brief_lib_load; cmd_brief "$@" ;;
+   papercut) shift; _papercut_lib_load; cmd_papercut "$@" ;;   # ordem 026
+diff --git a/hooks/lib/version.sh b/hooks/lib/version.sh
+new file mode 100644
+index 0000000..1f5179c
+--- /dev/null
++++ b/hooks/lib/version.sh
+@@ -0,0 +1,70 @@
++#!/usr/bin/env bash
++# maestro hooks/lib/version.sh — ordem 068: o veredito de versão do plugin EM USO contra o repo.
++#
++# UMA função, UM veredito: `maestro plugin-version`, o `maestro doctor`, o `session-start` e o
++# `user-prompt-submit` chamam `maestro_version_verdict`; nenhum faz a própria comparação.
++#
++#   maestro_version_verdict <raiz em uso> <raiz do repo>
++#     define MV_VERDICT  ok | atras | indeterminado
++#            MV_REASON   razão legível ("cache 1.21.0 < repo 1.22.0"; só versões, nunca caminho)
++#            MV_USO / MV_REPO  as versões lidas (vazias quando não lidas)
++#     retorna 0 (ok) · 1 (atrás) · 2 (indeterminado)
++#
++# Semver por INTEIROS (major.minor.patch, base 10 forçada — "09" não é octal). Só é `atras` quando as
++# DUAS versões foram lidas e a em uso é MENOR; em uso maior ou igual é `ok`. Qualquer falha de leitura
++# (raiz vazia, plugin.json ausente ou ilegível, versão fora de major.minor.patch) é `indeterminado`,
++# NUNCA `atras` (CLAUDE.md: falha de componente não bloqueia).
++#
++# Bash puro, sem fork: o plugin.json (arquivo pequeno) é lido linha a linha por `read` + regex.
++
++_mv_read() { # <raiz> → MV_READ="maj min pat" · rc 0 lido, 1 não lido
++  MV_READ=""
++  local f="$1/.claude-plugin/plugin.json" line
++  [[ -n "$1" && -r "$f" ]] || return 1
++  while IFS= read -r line || [[ -n "$line" ]]; do
++    if [[ "$line" =~ ^[[:space:]]*\"version\"[[:space:]]*:[[:space:]]*\"([0-9]{1,9})\.([0-9]{1,9})\.([0-9]{1,9})\"[[:space:]]*,?[[:space:]]*$ ]]; then
++      MV_READ="${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
++      return 0
++    fi
++  done < "$f"
++  return 1
++}
++
++maestro_version_verdict() { # <raiz em uso> <raiz do repo>
++  MV_VERDICT="indeterminado"; MV_REASON=""; MV_USO=""; MV_REPO=""
++  local uso_t repo_t
++  if [[ -z "${1:-}" ]]; then MV_REASON="raiz em uso indefinida"; return 2; fi
++  if ! _mv_read "$1"; then MV_REASON="versão em uso ilegível"; return 2; fi
++  uso_t="$MV_READ"
++  if [[ -z "${2:-}" ]] || ! _mv_read "$2"; then MV_REASON="versão do repo ilegível"; return 2; fi
++  repo_t="$MV_READ"
++  local -a u r; read -r -a u <<< "$uso_t"; read -r -a r <<< "$repo_t"
++  MV_USO="${u[0]}.${u[1]}.${u[2]}"; MV_REPO="${r[0]}.${r[1]}.${r[2]}"
++  local i a b
++  for i in 0 1 2; do
++    a=$((10#${u[i]})); b=$((10#${r[i]}))
++    if (( a < b )); then
++      MV_VERDICT="atras"; MV_REASON="cache $MV_USO < repo $MV_REPO"; return 1
++    elif (( a > b )); then
++      break
++    fi
++  done
++  MV_VERDICT="ok"; MV_REASON="cache $MV_USO >= repo $MV_REPO"
++  return 0
++}
++
++# maestro_repo_root → imprime a raiz do repo do Maestro para quem roda DENTRO do plugin (hooks), que
++# não tem um REPO_DIR próprio: MAESTRO_REPO_DIR (override) ou o `installLocation` do marketplace de
++# diretório do Maestro em known_marketplaces.json (o checkout canônico que o Capitão gira).
++# Vazio = não achou (veredito indeterminado). Só roda no caminho raro (turno de ordem headless,
++# session-start), nunca no caminho comum de um prompt.
++maestro_repo_root() {
++  if [[ -n "${MAESTRO_REPO_DIR:-}" ]]; then printf '%s' "$MAESTRO_REPO_DIR"; return 0; fi
++  local mk="${MAESTRO_PLUGINS_DIR:-$HOME/.claude/plugins}/known_marketplaces.json" loc=""
++  [[ -r "$mk" ]] && command -v jq >/dev/null 2>&1 || return 0
++  loc=$(jq -r '(to_entries // [])[]
++      | select((.key == "maestro") and ((.value.source.source // "") == "directory"))
++      | .value.installLocation // empty' "$mk" 2>/dev/null | head -1) || loc=""
++  [[ -n "$loc" && -d "$loc" ]] && printf '%s' "$loc"
++  return 0
++}
+diff --git a/hooks/session-start.sh b/hooks/session-start.sh
+index b735111..456c14f 100755
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -633,6 +633,9 @@ build_and_emit() {
+   # E19: a linha de atualização mora no cabeçalho (nunca trunca) — é curta e é
+   # instrução de ação; ausência de linha não é sinal de nada (o doctor é).
+   [[ -n "$UPDATE_NOTICE" ]] && sec_head+="$UPDATE_NOTICE"$'\n'
++  # ordem 068: hook defasado (cache do plugin em uso atrás do repo) — no cabeçalho, que nunca trunca;
++  # a linha só existe quando há defasagem PROVADA (as duas versões lidas). O veredito é o do núcleo.
++  [[ -n "${VERSION_NOTICE:-}" ]] && sec_head+="$VERSION_NOTICE"$'\n'
+   if (( SESSION_ID_OK == 1 )); then
+     sec_head+="session_id: $SESSION_ID"$'\n'
+   else
+@@ -967,9 +970,20 @@ build_and_emit() {
+   return 0
+ }
+ 
++VERSION_NOTICE=""
++version_notice() { # ordem 068 → VERSION_NOTICE (uma linha, só versões): o veredito do núcleo, sem 2ª comparação
++  [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] || return 0   # sem raiz em uso o veredito é indeterminado: nada a acusar
++  source "$SCRIPT_DIR/lib/version.sh" 2>/dev/null || return 0
++  local repo; repo=$(maestro_repo_root)
++  maestro_version_verdict "$CLAUDE_PLUGIN_ROOT" "$repo" || :
++  [[ "$MV_VERDICT" == "atras" ]] || return 0
++  VERSION_NOTICE="⚠ hook defasado: $MV_REASON"
++}
++
+ main() {
+   read_session_id   || :
+   update_step       || :   # E19: pode exec o hook novo; nunca falha a sessão
++  version_notice    || :   # ordem 068
+   parse_routing_table || :
+   collect_gates     || :
+   parse_profile     || :
+diff --git a/hooks/user-prompt-submit.sh b/hooks/user-prompt-submit.sh
+index d6f6396..230ca87 100755
+--- a/hooks/user-prompt-submit.sh
++++ b/hooks/user-prompt-submit.sh
+@@ -46,6 +46,31 @@ maestro_killswitch
+ # Code NÃO injeta no contexto.
+ exec 1>&2
+ 
++# ordem 068 — hook defasado nunca roda turno. ÚNICA exceção ao "sempre exit 0" (Prioridade 1):
++# turno de ordem NÃO ATENDIDO (CLAUDE_CODE_SESSION_ATTENDED=0 exato, branch order/NNN-… com
++# .maestro/orders/) com o cache do plugin em uso PROVADAMENTE atrás do repo (as duas versões lidas)
++# → exit 2 com o motivo no stderr (o Claude Code descarta o prompt e mostra o motivo). Qualquer
++# dúvida (sinal ausente ou ≠ 0, branch comum, versão não lida) segue o fluxo de sempre. Caminho
++# comum: dois testes de variável e zero fork; a leitura de versão só roda dentro de turno de ordem.
++if [[ "${CLAUDE_CODE_SESSION_ATTENDED:-}" == "0" && -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
++  _p="${CLAUDE_PROJECT_DIR:-$PWD}"
++  if [[ -d "$_p/.maestro/orders" ]]; then
++    _gd="$_p/.git"; _gh=""
++    if [[ -f "$_gd" ]]; then read -r _gl < "$_gd" 2>/dev/null || _gl=""; _gd="${_gl#gitdir: }"; fi
++    [[ -r "$_gd/HEAD" ]] && read -r _gh < "$_gd/HEAD" 2>/dev/null || :
++    if [[ "$_gh" =~ ^ref:\ refs/heads/order/[0-9]{3}- ]]; then
++      # shellcheck source=lib/version.sh
++      if source "$SCRIPT_DIR/lib/version.sh" 2>/dev/null; then
++        maestro_version_verdict "$CLAUDE_PLUGIN_ROOT" "$(maestro_repo_root)" || :
++        if [[ "$MV_VERDICT" == "atras" ]]; then
++          printf 'maestro: hook defasado: o cache do plugin está em %s e o repo em %s — o turno não roda com hook antigo; peça o giro do cache ao Capitão\n' "$MV_USO" "$MV_REPO"
++          exit 2
++        fi
++      fi
++    fi
++  fi
++fi
++
+ # E21/S-2101 — o humano respondeu: o gate deste pane deixa de estar pendente.
+ # Apaga o arquivo que o Stop hook deixou para o forwarder e libera a autoridade
+ # de estado no herdr (best-effort, 2s). Um teste de arquivo por prompt; fora do

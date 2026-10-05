@@ -127,6 +127,12 @@ meu; falso negativo custou 6h hoje"*. Na dúvida, avisar.
 
 ## O turno da ordem e o relatório de fim de turno (ordem 046)
 
+**O turno não roda com hook antigo (ordem 068).** Turno de ordem não atendido (`CLAUDE_CODE_SESSION_ATTENDED=0`, branch
+`order/NNN-…`) cujo cache do plugin está atrás do repo é recusado no `UserPromptSubmit` (exit 2) com o motivo `hook
+defasado: o cache do plugin está em X e o repo em Y — o turno não roda com hook antigo; peça o giro do cache ao Capitão`.
+Não é o relatório fixo (`feito:`…`próximo:`): o turno nem começa; o gerente que ler isso relata o motivo e para. Só defasagem
+**provada** recusa; qualquer dúvida segue como hoje. Contrato em API_SPEC (`user-prompt-submit.sh`, `maestro plugin-version`).
+
 A ordem diz o QUE entregar; o bloco `## Turno` diz o que cabe num turno e quando ele
 termina. Cinco rótulos, uma linha cada, dentro da seção `## Turno` (esqueleto emitido por
 `maestro order --create`):
