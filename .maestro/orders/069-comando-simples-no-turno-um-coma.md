@@ -27,13 +27,17 @@ O turno é onde esses compostos nascem: o executor escreve o hábito de shell qu
 
 ## O que entrega
 
-**A regra, em quatro cláusulas** (decisão do Diretor), escrita **igual** nos dois lugares:
+**A regra, em cinco cláusulas** (decisão do Diretor; a 4 e a 5 fechadas em 05/10), escrita **igual** nos dois lugares:
 
 1. **Um comando por chamada de Bash.** Sem `&&`, `;` nem `||` encadeando comandos distintos.
 2. **Caminho absoluto em vez de `cd` e `&&`.** Em vez de `cd /x && cmd`, `cmd /x/…` (ou `git -C /x …`).
 3. **Sem pipe para cortar saída.** Nada de `| tail` e `| head`: a ferramenta já corta a saída.
-4. **Espera de suíte por Monitor ou por laço `until` sozinho.** A espera é uma chamada própria que contém **só** o
-   laço (ou o Monitor), nunca encadeada ao comando que lançou a suíte.
+4. **A suíte roda como UMA chamada só, em segundo plano, e a espera é por Monitor.** O comando é
+   `maestro evidence --record --label order-N -- <suíte>`, lançado em segundo plano pelo **`run_in_background` da
+   ferramenta Bash** (nada de subshell, `&` nem `echo rc=` encadeado); a espera é por **Monitor**. O recibo **já
+   grava o código de saída**, então o `rc=` no log deixa de ser necessário.
+5. **`2>&1` é permitido.** Ele **junta saídas, não grava arquivo**; não é composição de comandos e não entra na
+   regra de "um comando por chamada".
 
 ### No esqueleto do Turno (núcleo, `lib/core-order-turno.sh`)
 
@@ -42,22 +46,34 @@ O turno é onde esses compostos nascem: o executor escreve o hábito de shell qu
 Stop de turno não a lerem como campo do Turno):
 
 `> **Comando simples:** um comando por chamada de Bash; caminho absoluto em vez de cd e &&; sem pipe para cortar
-saída (| tail, | head), a ferramenta já corta; espera de suíte por Monitor ou por laço until sozinho.`
+saída (| tail, | head), a ferramenta já corta; 2>&1 é permitido (junta saídas, não grava arquivo); a suíte roda
+como uma chamada só, maestro evidence --record --label order-N -- <suíte>, em segundo plano (run_in_background da
+ferramenta Bash) e a espera é por Monitor; o recibo já grava o código de saída.`
+
+**E a linha `Headless` da 064 é reescrita no MESMO patch**, porque ela mandava esperar "por laço até a linha
+`rc=` no log" (a convenção que sai). O texto novo, na mesma forma de linha citada:
+
+`> **Headless:** nunca encerre a resposta esperando uma notificação. A suíte roda como uma chamada só (maestro
+evidence --record --label order-N -- <suíte>) em segundo plano, pelo run_in_background da ferramenta Bash, e a
+espera é por Monitor; o recibo já grava o código de saída. Só depois se relata.`
 
 ### No ENGINEERING_SPEC
 
 Em "O turno da ordem e o relatório de fim de turno (ordem 046)", um parágrafo **Comando simples (ordem 069)** com as
-quatro cláusulas, o **dado do replay da 093** (731/543/609, citado como dado do Capitão) e o porquê (o Jev só julga
+cinco cláusulas (incluindo a suíte como uma chamada só e o `2>&1` permitido), o **dado do replay da 093** (731/543/609, citado como dado do Capitão) e o porquê (o Jev só julga
 o que é simples). Uma só vez; o esqueleto aponta para ele.
 
 ### O teste que prova a regra no esqueleto gerado
 
 `tests/cli/test-order-069-esqueleto-comando-simples.sh` roda `order --create` numa **fixture** e afirma que a ordem
-**gerada** contém a linha `Comando simples` com **cada uma das quatro cláusulas** (um comando por chamada;
-caminho absoluto em vez de `cd`/`&&`; sem pipe para cortar saída; espera por Monitor ou `until` sozinho), que os
-**cinco rótulos** do Turno seguem os mesmos e preenchíveis, que as linhas `Log e escrita` e `Headless` seguem
-presentes e que o `conform --check` **não acusa** a linha. **Vermelho hoje** (o esqueleto não a traz), saída
-colada; verde depois. Os testes do esqueleto das ordens 046, 062 e 064 seguem verdes.
+**gerada** contém a linha `Comando simples` com **cada uma das cláusulas** (um comando por chamada; caminho absoluto em
+vez de `cd`/`&&`; sem pipe para cortar saída; `2>&1` permitido; a suíte como uma chamada só em segundo plano com
+espera por Monitor), que os **cinco rótulos** do Turno seguem os mesmos e preenchíveis, que a linha `Log e escrita`
+segue presente, que a linha `Headless` traz o **texto novo** (`run_in_background`, Monitor, recibo grava o código
+de saída) e **não menciona mais `rc=`**, e que o `conform --check` **não acusa** nenhuma das linhas. **Vermelho
+hoje** (o esqueleto não traz a linha nova e a `Headless` ainda manda esperar o `rc=`), saída colada; verde depois.
+Os testes do esqueleto das ordens 046 e 062 seguem verdes; o de 064 (`test-order-064-esqueleto-headless.sh`) é
+**ajustado ao texto novo** da `Headless` e a mudança é listada no relatório.
 
 ## O que fica de fora (e por quê)
 
@@ -69,15 +85,15 @@ colada; verde depois. Os testes do esqueleto das ordens 046, 062 e 064 seguem ve
 
 ## Ask-First
 
-- **A convenção do `rc=` conflita com a regra.** As ordens 060/062/064 mandam lançar a suíte em segundo plano
-  com `( cmd > LOG 2>&1; echo "rc=$?" >> LOG ) &` e esperar por laço até `rc=`. Isso é **composto** (subshell,
-  `;`, redirecionamento, `&`) e vai contra a cláusula 1. **Não reescreva** a convenção por conta própria: relate
-  quais ordens e esqueletos a usam e **proponha** a forma de um comando só (ex.: a suíte lançada por uma única
-  chamada em segundo plano da ferramenta, com o resultado lido por Monitor ou pelo laço `until` sozinho sobre o
-  log), **medida** no ambiente; a escolha é do Diretor. A linha `Headless` (064) pode precisar de ajuste de
-  texto: só com a escolha.
-- **`2>&1` aparece entre os compostos medidos**, mas a regra do Capitão **não o menciona**. O teste **não o
-  proíbe**. Se o executor puder medir quantos dos compostos são só por `2>&1`, relate; não decida.
+- **Decidido pelo Diretor (05/10), não reabra:**
+  1. **A convenção `rc=` sai.** A suíte roda como **uma chamada só**,
+     `maestro evidence --record --label order-N -- <suíte>`, em segundo plano pelo `run_in_background` da
+     ferramenta Bash, e a espera é por **Monitor**; o recibo já grava o código de saída. A linha `Headless` da
+     064 é **reescrita no mesmo patch** (texto no item "No esqueleto do Turno"), e este bloco Turno já a segue.
+  2. **`2>&1` é permitido**: junta saídas, não grava arquivo. A regra o diz.
+- **Já escritas, não mexa:** as ordens 060, 062 e 064 e seus Turnos continuam com o texto antigo do `rc=`; só o
+  **esqueleto das novas** muda. Liste no relatório onde mais a convenção antiga aparece (ENGINEERING_SPEC,
+  ordens abertas) para o Diretor decidir a limpeza; **não** a reescreva fora do esqueleto e do parágrafo da 069.
 - **Toca `lib/core-order-turno.sh` (autoprotegida):** a entrega é **UM patch** em `docs/patches/069-*.patch`,
   feito em clone sandbox FORA do repo, testado antes e depois, aplicado pelo Capitão com um `git apply`;
   `git apply --check` no worktree. `tests/` e `docs/` direto no branch.
@@ -99,10 +115,10 @@ linha do esqueleto em **UM patch protegido**. Emendas no mesmo changeset: ENGINE
 
 ## Turno
 
-- fatia: o teste vermelho do esqueleto, a linha `Comando simples` no esqueleto (sandbox) e o parágrafo do ENGINEERING_SPEC
-- fim: `bash tests/cli/test-order-069-esqueleto-comando-simples.sh` sai 1 antes (colado) e 0 depois, no sandbox; os testes de esqueleto de 046, 062 e 064 verdes; patch protegido pronto e `git apply --check` ok; `bash tests/run-all.sh` completa no sandbox sai 0
+- fatia: o teste vermelho do esqueleto, a linha `Comando simples` e a nova linha `Headless` (a convenção rc= sai) no esqueleto (sandbox), o ajuste do teste da 064 e o parágrafo do ENGINEERING_SPEC
+- fim: `bash tests/cli/test-order-069-esqueleto-comando-simples.sh` sai 1 antes (colado) e 0 depois, no sandbox; os testes de esqueleto de 046 e 062 verdes e o da 064 ajustado e verde; patch protegido pronto e `git apply --check` ok; `bash tests/run-all.sh` completa no sandbox sai 0
 - teto: 3
-- fora: mecanizar a regra em hook ou guard, reescrever a convenção do rc= sem a escolha do Diretor, reproduzir o replay da 093, alterar ordens já escritas, aplicar o patch e tocar vendor/
+- fora: mecanizar a regra em hook ou guard, reescrever o `rc=` fora do esqueleto e do parágrafo da 069, reproduzir o replay da 093, alterar ordens já escritas, aplicar o patch e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **`director_report` obrigatório.** O turno **só termina** com o `director_report` enviado (relato fixo da v54,
@@ -114,14 +130,17 @@ linha do esqueleto em **UM patch protegido**. Emendas no mesmo changeset: ENGINE
 > Patch gerado por `git diff` do sandbox para `docs/patches/` é a única saída por redirecionamento admitida.
 
 > **Comando simples:** um comando por chamada de Bash; caminho absoluto em vez de cd e &&; sem pipe para cortar
-> saída (| tail, | head), a ferramenta já corta; espera de suíte por Monitor ou por laço until sozinho. (Esta
+> saída (| tail, | head), a ferramenta já corta; 2>&1 é permitido (junta saídas, não grava arquivo); a suíte roda
+> como uma chamada só, maestro evidence --record --label order-N -- <suíte>, em segundo plano
+> (run_in_background da ferramenta Bash) e a espera é por Monitor; o recibo já grava o código de saída. (Esta
 > ordem aplica a regra que entrega: o executor a segue já neste turno.)
 
 > **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run,
 > `/tmp/claude-<uid>/<cwd codificado>`, nunca `/tmp` solto; escrita só com Edit ou Write.
 
-> **Headless:** nunca encerre a resposta esperando uma notificação. Suíte em segundo plano se espera **por
-> laço** até a linha `rc=` no log; só depois se relata.
+> **Headless:** nunca encerre a resposta esperando uma notificação. A suíte roda como uma chamada só
+> (`maestro evidence --record --label order-N -- <suíte>`) em segundo plano, pelo `run_in_background` da
+> ferramenta Bash, e a espera é por **Monitor**; o recibo já grava o código de saída. Só depois se relata.
 
 > **Revisão de subagente:** termina em ARQUIVO em `~/.maestro/briefs/` — o relato cita o caminho, não cola o achado. Arquivo se escreve **só com Write e Edit**.
 
