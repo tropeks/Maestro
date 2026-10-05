@@ -1,0 +1,60 @@
+# Perfis de agente (ordem 066) — o que cada agente pode tocar, DECLARADO e imposto
+# por um lançador único (`maestro agente --perfil <nome>`). Núcleo agnóstico de
+# provedor: este arquivo fala em CAPACIDADES, nunca em flag ou palavra de provedor
+# (quem traduz é o adaptador, lib/agente-adaptador-<nome>.sh). Fora da routing-table.
+#
+# Capacidades (valores fechados):
+#   maestro: sim|nao            plugin Maestro, hooks e guardas do método
+#   ponte:   envelope|sim|nao   canal do Diretor (MCP da Ponte); envelope = o do runner, como hoje
+#   mcp:     envelope|herdados|nenhum    demais servidores MCP
+#   plugins: envelope|herdados|nenhum    demais plugins
+#   guardas: metodo|nenhuma     guardas do método (vêm do plugin Maestro)
+#   segredos: herda|nega        nega = o perfil traz a própria negação de leitura (segredos_padroes)
+#
+# Perfil não declarado aqui NÃO existe; sem perfil não há padrão (falha fechada).
+versao: 1
+adaptador_padrao: claude-code
+
+# Padrões de leitura negados quando segredos: nega — independem do plugin Maestro.
+segredos_padroes:
+  - .env
+  - .env.*
+  - "*.pem"
+  - "*.key"
+  - "id_*"
+  - "~/.ponte/**"
+  - ".maestro/credenciais/**"
+
+perfis:
+  dev:
+    descricao: turno de ordem (envelope do runner, como hoje)
+    maestro: sim
+    ponte: envelope
+    mcp: envelope
+    plugins: envelope
+    guardas: metodo
+    segredos: herda
+  gerente:
+    descricao: pane de projeto
+    maestro: sim
+    ponte: sim
+    mcp: herdados
+    plugins: herdados
+    guardas: metodo
+    segredos: herda
+  diretor:
+    descricao: o Spock
+    maestro: nao
+    ponte: sim
+    mcp: nenhum
+    plugins: nenhum
+    guardas: nenhuma
+    segredos: herda
+  pesquisa:
+    descricao: agente sem papel na ordem (pesquisa, estudo, avaliação, codex)
+    maestro: nao
+    ponte: nao
+    mcp: nenhum
+    plugins: nenhum
+    guardas: nenhuma
+    segredos: nega

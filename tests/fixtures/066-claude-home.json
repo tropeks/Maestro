@@ -1,0 +1,11 @@
+{
+  "hasCompletedOnboarding": true,
+  "mcpServers": {
+    "ponte": {
+      "type": "stdio",
+      "command": "ponte-daemon",
+      "args": ["mcp"],
+      "env": { "PONTE_MCP_SOCKET": "@SOCK@" }
+    }
+  }
+}
