@@ -158,6 +158,60 @@ _ev_cmd_preload_warn() { # <load1m_x100> <load_limiar> → imprime aviso (stdout
   return 0
 }
 
+# ordem 067: tokens e custo do transcrito do Claude Code, SÓ INTEIROS. SOMENTE LEITURA, sem rede, nunca
+# imprime nem grava texto do transcrito (o jq só emite três campos numéricos ou a palavra `ausente`).
+#   fonte   : $MAESTRO_CLAUDE_PROJECTS (padrão ~/.claude/projects)/<cwd com não-alfanuméricos→'-'>/<sessão>.jsonl
+#   sessão  : $CLAUDE_CODE_SESSION_ID (o runner headless e a sessão interativa a exportam); sem ela, só vale
+#             um transcrito ÚNICO no diretório — dois ou mais é ambíguo → ausente. Não lê o ponte.db.
+#   tokens  : Σ input+output+cache_creation+cache_read das mensagens do assistente (uma vez por message.id —
+#             o transcrito repete a mensagem por bloco), TODAS com usage inteiro; senão ausente.
+#   centavos: Σ costUSD por mensagem, só se TODAS trazem; Σ em nano-USD inteiros, depois meio-para-cima a centavos.
+#   piso    : transcrito > $MAESTRO_EVIDENCE_TRANSCRIPT_MAX_BYTES (padrão 50 MiB; jq lê ~25 MB/s) não é lido.
+# Qualquer falha (jq ausente, ilegível, ambíguo, parcial, piso, timeout) degrada para ausente — nunca erro, nunca 0.
+# Saída: "tokens<US>custo_centavos<US>custo_fonte" (US=\x1f).
+_ev_cmd_measure_usage() { # <proj>
+  local proj="$1" aus=$'ausente\x1fausente\x1fausente' root dir f="" sid max size out tk ce fo
+  root="${MAESTRO_CLAUDE_PROJECTS:-$HOME/.claude/projects}"
+  sid="${CLAUDE_CODE_SESSION_ID:-}"
+  max="${MAESTRO_EVIDENCE_TRANSCRIPT_MAX_BYTES:-52428800}"; [[ "$max" =~ ^[0-9]+$ ]] || max=52428800
+  command -v jq >/dev/null 2>&1 || { printf '%s\n' "$aus"; return 0; }
+  dir="$root/$(printf '%s' "$proj" | sed 's/[^A-Za-z0-9]/-/g')"
+  [[ -d "$dir" ]] || { printf '%s\n' "$aus"; return 0; }
+  if [[ "$sid" =~ ^[A-Za-z0-9-]{8,64}$ ]]; then
+    f="$dir/$sid.jsonl"
+  else
+    local cand=(); shopt -s nullglob; cand=("$dir"/*.jsonl); shopt -u nullglob
+    (( ${#cand[@]} == 1 )) && f="${cand[0]}"
+  fi
+  [[ -n "$f" && -f "$f" && -r "$f" ]] || { printf '%s\n' "$aus"; return 0; }
+  size=$(stat -c %s "$f" 2>/dev/null) || size=""
+  [[ "$size" =~ ^[0-9]+$ ]] && (( size <= max )) || { printf '%s\n' "$aus"; return 0; }
+  out=$(timeout 10 jq -rn '
+    def inteiro: type == "number" and . == floor and . >= 0;
+    [inputs | select(type == "object" and .type == "assistant")] as $l
+    | if ($l | length) == 0 then "ausente\tausente"
+      else
+        (reduce $l[] as $m ({}; .[([$m.message | objects | .id | strings] | first // "")] = $m) ) as $u
+        | ([$u | to_entries[]] ) as $e
+        | ($e | all(.key != "")) as $ids
+        | ($e | map([.value.message | objects | .usage | objects] | first // {})) as $us
+        | ($e | map(.value.costUSD)) as $cs
+        | (if $ids and ($us | all(. as $x | ["input_tokens","output_tokens","cache_creation_input_tokens","cache_read_input_tokens"] | all($x[.] | inteiro)))
+             then ($us | map(.input_tokens + .output_tokens + .cache_creation_input_tokens + .cache_read_input_tokens) | add | tostring)
+             else "ausente" end) as $tk
+        | (if ($cs | all(type == "number" and . >= 0))
+             then ((($cs | add) * 1e9 | round) as $n | (($n + 5000000) / 10000000 | floor) | tostring)
+             else "ausente" end) as $ce
+        | "\($tk)\t\($ce)"
+      end' "$f" 2>/dev/null) || { printf '%s\n' "$aus"; return 0; }
+  IFS=$'\t' read -r tk ce <<<"$out"
+  [[ "$tk" =~ ^[0-9]+$ ]] || tk=ausente
+  [[ "$ce" =~ ^[0-9]+$ ]] || ce=ausente
+  fo=ausente; [[ "$tk" != ausente || "$ce" != ausente ]] && fo=transcrito
+  printf '%s\x1f%s\x1f%s\n' "$tk" "$ce" "$fo"
+  return 0
+}
+
 _ev_cmd_record() { # <proj> <label> <arquivo do recibo> <load_limiar> -- <comando...> → grava; rc = exit do comando
   local proj="$1" label="$2" ef="$3" load_limiar="$4"; shift 4
   [[ "${1:-}" == "--" ]] && shift
@@ -180,8 +234,12 @@ _ev_cmd_record() { # <proj> <label> <arquivo do recibo> <load_limiar> -- <comand
   _ev_cmd_run "$proj" -- "$@"
   [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
     w_after=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_after="none"
+  # ordem 067: custo lido DEPOIS do comando (o transcrito já tem o trabalho até aqui); falha = ausente.
+  local u_tokens u_cents u_fonte
+  IFS=$'\x1f' read -r u_tokens u_cents u_fonte <<<"$(_ev_cmd_measure_usage "$proj" 2>/dev/null)"
   _ev_write "$ef" "$label" "$cmd_hash" "$EV_RUN_RC" "$w_before" "$w_after" "$cmd_match" \
     "$load1m_x100" "$ncpu" "$EV_RUN_INCONCLUSIVE" "$probe_ms" \
+    "${u_tokens:-ausente}" "${u_cents:-ausente}" "${u_fonte:-ausente}" \
     || die env "falha ao gravar recibo" "cheque permissões/MAESTRO_HOME" 2
   if [[ "$w_before" != "$w_after" ]]; then
     printf 'evidência gravada: %s — exit %s, mas a árvore MUDOU durante a execução (recibo nasce contaminado)\n' \

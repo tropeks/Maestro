@@ -62,7 +62,7 @@ _ev_read_vars() { # <arquivo> → linhas "e_x=valor" (aspas simples), só campos
 }
 
 # ------------------------------------------------------------------- escrita
-_ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after> <cmd_match> <load1m_x100> <ncpu> <inconclusive> [probe_ms] → grava (tmp+mv); rc 0/2
+_ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after> <cmd_match> <load1m_x100> <ncpu> <inconclusive> [probe_ms] [tokens] [custo_centavos] [custo_fonte] → grava (tmp+mv); rc 0/2
   local ef="$1" label="$2" cmd_hash="$3" rc="$4" w_before="$5" w_after="$6" \
         cmd_match="$7" load1m_x100="$8" ncpu="$9" inconclusive="${10}"
   # ordem 016 PR1: `probe_ms` é o 11º parâmetro, OPCIONAL na assinatura —
@@ -73,6 +73,20 @@ _ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after>
   # chamador com "unbound variable" — quebra a garantia ADITIVA que esta
   # própria ordem promete (campo novo não pode quebrar chamador antigo).
   local probe_ms="${11:-0}"
+  # ordem 067: tokens, custo_centavos e custo_fonte (12º a 14º, OPCIONAIS pelo mesmo motivo): sem fonte
+  # gravam a palavra `ausente` — nunca 0 (zero afirma "custou nada"; ausente é "não sei").
+  local tokens="${12:-ausente}" custo_centavos="${13:-ausente}" custo_fonte="${14:-ausente}"
+  # regravacoes: quantas vezes ESTA label foi gravada de novo (o arquivo já é por ordem). Recibo novo → 0;
+  # recibo velho com o campo inteiro → anterior+1; recibo velho SEM o campo (ou inválido) conta como uma
+  # gravação anterior → 1. Lido ANTES do tmp+mv que sobrescreve.
+  local regravacoes=0 anterior
+  if [[ -e "$ef" ]]; then
+    anterior=$(_ev_field "$ef" regravacoes)
+    if [[ "$anterior" =~ ^[0-9]+$ ]]; then regravacoes=$(( 10#$anterior + 1 )); else regravacoes=1; fi
+  fi
+  [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=ausente
+  [[ "$custo_centavos" =~ ^[0-9]+$ ]] || custo_centavos=ausente
+  [[ "$custo_fonte" == transcrito ]] || custo_fonte=ausente
   mkdir -p "${ef%/*}" 2>/dev/null || return 2
   local tmp="$ef.tmp.$$"
   {
@@ -89,6 +103,10 @@ _ev_write() { # <arquivo> <label> <cmd_hash> <exit> <wtree_before> <wtree_after>
     # nesta corrida, ao lado da CARGA que já era gravada acima. Também
     # ADITIVO, no FIM (mesma regra): nenhum campo existente sai da janela.
     printf 'probe_ms=%s\n' "$probe_ms"
+    # ordem 067: instrumento do painel (seções 8 e 9). Também ADITIVOS, no FIM, em ordem fixa: o recibo
+    # (13 linhas + 4 = 17) segue dentro da janela de 20 do leitor, velho ou novo.
+    printf 'regravacoes=%s\ntokens=%s\ncusto_centavos=%s\ncusto_fonte=%s\n' \
+      "$regravacoes" "$tokens" "$custo_centavos" "$custo_fonte"
   } > "$tmp" 2>/dev/null && mv -f "$tmp" "$ef" 2>/dev/null && return 0
   rm -f "$tmp" 2>/dev/null
   return 2
