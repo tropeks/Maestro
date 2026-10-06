@@ -6,7 +6,21 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-10-06
+
+Fase 0 e Fase 1 da auditoria de 05/10 (INTENT v62): kill-switch na linha 2 de todo hook, CI do shellcheck verde e a **sombra de
+7 dias** (`gate.mode: warn` e o `pre-bash-guard` só registrando). **Os hooks rodam do cache do plugin: a sombra só começa quando o
+cache 1.23.0 carregar** (`claude plugin marketplace update maestro` e `claude plugin update maestro@maestro`, depois sessão nova).
+
 ### Added
+- **Painel dos 7 dias da Fase 1** (`tools/fase1-painel.sh`, `docs/fase1/`): somente leitura, só inteiros, exit 3 se uma fonte esperada
+  sumir. Mede prompts e negações nativos (Ponte, `decision.kind=permission`), incidentes destrutivos (`INCIDENTES.md` mais o reflog como
+  indício) e o A/B do gate no ledger (decisões espontâneas **≥ o baseline medido pelo painel**, e fração subagent/multi sem queda
+  maior que 5 p.p.). `docs/fase1/INICIO` é a data de início da janela: **vale a hora em que o cache novo carregar**, não a do merge.
+  Rollback escrito em `docs/fase1/ROLLBACK.md`; testes do sandbox, da rede, do `--permission-prompt-tool` e do `git pull` em
+  `docs/fase1/TESTE-SANDBOX.md` (o bloco `sandbox` **não** foi aplicado).
+- **Bloco `permissions.deny`** testado em sandbox (`docs/fase0/permissions-deny.json`, `TESTE-PERMISSIONS-DENY.md`) e a linha de base de
+  14 dias (`docs/fase0/LINHA-DE-BASE-14d.md`).
 - **O recibo grava regravações e custo; o painel lê as seções 8 e 9** (ordem 067, Etapa 0 do plano v2). `maestro evidence
   --record` grava `regravacoes`, `tokens`, `custo_centavos` e `custo_fonte` no fim do recibo (17 linhas, dentro da janela
   de 20): inteiros lidos do transcrito do Claude Code, ou a palavra `ausente` (nunca 0, nunca estimativa). `tools/baseline.sh`
@@ -20,6 +34,10 @@ from the decision log and tag messages when this file was introduced.
   universo contra `hooks/hooks.json` e `config/habit-guides/`.
 
 ### Fixed
+- **Kill-switch na linha 2 de todo `hooks/*.sh`** e `if ! source … then exit 0; fi` nos quatro hooks que faziam `source` solto de
+  `common.sh` (D10 da auditoria): `MAESTRO_OFF=1` sai antes de qualquer `source` e uma `common.sh` quebrada não bloqueia mais a
+  ferramenta. `# shellcheck shell=bash` em `hooks/lib/transcript.sh:1` (a CI do shellcheck voltava vermelha por SC2148). Patch
+  `docs/patches/fase0-hooks-killswitch-shellcheck.patch` (aplicado como `900-fase0-…`); `tests/hooks/test-killswitch-linha2.sh`.
 - **Stop de turno do cache atrás do repo liberava calado em 124** (ordem 064). O turno headless da 062 terminou
   esperando notificação sem recibo e o Stop não bloqueou: o cache do plugin estava em 1.21.0, sem a checagem local
   do 124 da 056. `tests/hooks/test-order-064-stop-sem-notificacao.sh` prova a causa e descarta (b) a (f). O esqueleto
@@ -27,6 +45,11 @@ from the decision log and tag messages when this file was introduced.
   `docs/patches/064-esqueleto-headless.patch`.
 
 ### Changed
+- **`gate.mode: warn` e o `pre-bash-guard` só registra (Fase 1, sombra de 7 dias).** `config/routing-table.yaml:3` passa de `block`
+  para `warn`, e o guard, com a política da sessão em `warn`, registra `gate_warn` e sai 0 em vez de bloquear (risco destrutivo e
+  escrita por Bash em `self_paths`); política em `block`, ausente ou ilegível mantém o comportamento de antes. **Rollback =
+  `gate.mode: block`** (vale para sessões novas). Patch `docs/patches/901-fase1-gate-warn-guard-sombra.patch`;
+  `tests/hooks/test-fase1-guarda-sombra.sh` e quatro testes que supunham `block` na tabela real foram ajustados.
 - **Painel de linha de base: permissões por janela e três medidas novas** (ordem 063, turno 2: itens 4 a 6).
   A métrica 4 (permissões da Ponte) sai cortada pela v59: cada run e cada projeto traz o `lado` (`antes` ou
   `depois`, pelo instante de criação do run). Três métricas novas, todas contagens ou inteiros, **nunca tempo do
