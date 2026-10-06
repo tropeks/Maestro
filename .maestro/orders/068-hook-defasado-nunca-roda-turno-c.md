@@ -8,6 +8,7 @@ frozen: vendor/
 intent_version: 6
 intent_hash: 31205cc5
 author_session: desconhecido
+deferred_by: spock 2026-10-06 regra da subtracao
 -->
 # Ordem 068 — hook defasado nunca roda turno: cache atras do repo recusa o turno e doctor e session-start acusam
 
