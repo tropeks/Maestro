@@ -354,11 +354,12 @@ if [[ -s "$IHOME/gate-policy.sh" ]]; then
   check "política real: README.md → exit 0" "$RC" "0"
   igate "$PROJ/src/algo.ts" "$PROJ"
   check "política real: src/algo.ts COM decisão → exit 0" "$RC" "0"
-  # block promovido: SEM record, código bloqueia — a fresta do one-shot fechou
+  # Fase 1 (sombra de 7 dias, INTENT v62): a tabela real está em warn — SEM record, código só avisa.
+  # O rollback é `gate.mode: block` na tabela; o bloqueio com record ausente segue coberto pelos casos de MAESTRO_GATE_MODE=block acima.
   RC=0
   jq -n --arg p "$PROJ/src/app.go" '{session_id:"sess-sem-record",tool_name:"Edit",tool_input:{file_path:$p}}' \
     | MAESTRO_HOME="$IHOME" CLAUDE_PROJECT_DIR="$PROJ" "$GATE" >/dev/null 2>&1 || RC=$?
-  check "política real: código SEM decisão → exit 2 (block promovido)" "$RC" "2"
+  check "política real: código SEM decisão → exit 0 (sombra: gate.mode warn)" "$RC" "0"
   # Dogfood (projeto == repo do plugin): a autoproteção cobre o caminho de
   # enforcement, NÃO a árvore inteira. Fechar o repo todo — inclusive README e
   # docs — inviabilizaria desenvolver o Maestro com agente, e o ADR-003 v1.1

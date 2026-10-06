@@ -150,8 +150,8 @@ if [[ -f "$POL" ]]; then
   ( set -euo pipefail
     # shellcheck disable=SC1090
     source "$POL"
-    # promovido a block em 2026-08-29 (retro 14d + live E2E) — acompanhar a tabela
-    [[ "$MAESTRO_GATE_MODE" == "block" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
+    # Fase 1 (sombra de 7 dias, INTENT v62): a tabela real está em warn; o rollback é voltar block (e este valor)
+    [[ "$MAESTRO_GATE_MODE" == "warn" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_EXT" == "$EXP_EXT" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT esperado=$EXP_EXT" >&2; exit 1; }
     [[ "$MAESTRO_GATE_ALLOW_PATHS" == "$EXP_ALLOW" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS esperado=$EXP_ALLOW" >&2; exit 1; }
     # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)

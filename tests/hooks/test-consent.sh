@@ -30,6 +30,9 @@ H="$tmp/home"
 printf '{"session_id":"cons-1"}' | MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$REPO" \
   bash "$REPO/hooks/session-start.sh" >/dev/null 2>&1
 [[ -f "$H/gate-policy.sh" ]] && ok "política compilada (pré-condição)" || bad "política compilada"
+# Fase 1 (sombra, INTENT v62): a tabela real compila em warn, e o guard então só registra. Este teste é do CONSENT
+# sob block (o que vale depois do rollback): fixa o modo na política temporária, sem tocar a tabela.
+sed -i 's/^MAESTRO_GATE_MODE=.*/MAESTRO_GATE_MODE="block"/' "$H/gate-policy.sh"
 # gate.mode block (2026-08-29): consent levanta a DENYLIST, não o decision record —
 # as sondas de edição precisam de record válido para isolar a pergunta do escopo.
 MAESTRO_HOME="$H" "$BIN" decide --session cons-1 --workflow custom --mode direct >/dev/null 2>&1

@@ -65,6 +65,16 @@ set -f
 
 _guard_debug() { [[ "${MAESTRO_DEBUG:-0}" == "1" ]] && echo "maestro: guard: $*" >&2 || true; }
 
+# Fase 1, sombra de 7 dias (INTENT v62): com `gate.mode: warn` na política da sessão o guarda só
+# REGISTRA o que bloquearia (gate_warn) e sai 0, para medir o nativo contra o léxico.
+# Política ausente, ilegível ou em block → rc 1 (o guarda segue como era). Rollback: gate.mode: block.
+_g_shadow() {
+  local MAESTRO_GATE_MODE="" pol="${MAESTRO_GATE_POLICY:-${MAESTRO_HOME:-$HOME/.maestro}/gate-policy.sh}"
+  [[ -r "$pol" ]] || return 1
+  source "$pol" 2>/dev/null || return 1
+  [[ "$MAESTRO_GATE_MODE" == "warn" ]]
+}
+
 # ── 2. stdin ───────────────────────────────────────────────────────────────
 # Mesmas duas defesas do gate contra pendurar: tty (sem payload) e stdin que
 # nunca fecha. Um PreToolUse travado congela a sessão, o que é pior que tudo.
@@ -210,6 +220,10 @@ case "$FLAT" in
     # shellcheck source=lib/self-paths.sh
     if source "$SCRIPT_DIR/lib/self-paths.sh" 2>/dev/null \
        && maestro_bash_self_write "$FLAT" "$G_ROOT" "${SCRIPT_DIR%/hooks}"; then
+      if _g_shadow; then
+        log_event gate_warn ${SID:+session_id="$SID"} cmd=self_path_write gate_mode=warn
+        exit 0
+      fi
       maestro_bash_self_message
       log_event gate_block ${SID:+session_id="$SID"} cmd=self_path_write gate_mode=block
       exit 2
@@ -613,7 +627,7 @@ if [[ "$MODE" == "subagent" || "$MODE" == "multi" ]]; then
   fi
 fi
 
-if [[ -z "$OPS_CONSENTED" && ( "$MODE" == "subagent" || "$MODE" == "multi" ) ]]; then
+if [[ -z "$OPS_CONSENTED" && ( "$MODE" == "subagent" || "$MODE" == "multi" ) ]] && ! _g_shadow; then
   # Mensagem ANTES do log: `log_event` fecha o fd 9 com `exec` e, apesar do
   # grupo protetor na common.sh, a ordem mantida aqui é a mesma do gate —
   # a mensagem instrutiva é o produto do exit 2 e não pode se perder.

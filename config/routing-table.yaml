@@ -1,6 +1,8 @@
 version: 2   # v2 = bloco `bindings` (S-401). Emenda v1.3 do DATA_MODEL §1.
 gate:
-  mode: block           # promovido warn→block em 2026-08-29 COM dados: retro de 14d
+  mode: warn            # FASE 1, SOMBRA de 7 dias (INTENT v62, 2026-10-06): block→warn, e o pre-bash-guard
+                        # só registra. Painel: docs/fase1/PAINEL-7-DIAS.md. ROLLBACK = esta linha de volta a block.
+                        # Antes: block, promovido warn→block em 2026-08-29 COM dados: retro de 14d
                         # (133 decisões, override 13% < 20%) + live E2E provando que warn
                         # deixa sessão one-shot editar sem decide. Critério de estabilidade:
                         # tests/e2e/test-live-dispatch.sh PASS em block (EPICS E13).
