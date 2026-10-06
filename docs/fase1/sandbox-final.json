@@ -1,0 +1,29 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "filesystem": {
+      "denyWrite": [
+        "~/dev/Maestro/hooks",
+        "~/dev/Maestro/lib",
+        "~/dev/Maestro/bin",
+        "~/dev/Maestro/src",
+        "~/dev/Maestro/agents",
+        "~/dev/Maestro/config/routing-table.yaml",
+        "~/dev/Maestro/config/accept-proof.pub",
+        "~/dev/Maestro/.claude-plugin",
+        "~/.claude/plugins"
+      ]
+    }
+  },
+  "permissions": {
+    "deny": [
+      "Bash(git push -f*)"
+    ],
+    "ask": [
+      "Edit(//home/rcosta00/.claude/settings*.json)",
+      "Edit(.github/workflows/**)",
+      "Bash(gh pr merge:*)"
+    ]
+  }
+}

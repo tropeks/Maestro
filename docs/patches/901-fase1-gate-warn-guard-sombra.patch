@@ -1,0 +1,209 @@
+diff --git a/config/routing-table.yaml b/config/routing-table.yaml
+index e802e39..5a5c82c 100644
+--- a/config/routing-table.yaml
++++ b/config/routing-table.yaml
+@@ -1,6 +1,8 @@
+ version: 2   # v2 = bloco `bindings` (S-401). Emenda v1.3 do DATA_MODEL §1.
+ gate:
+-  mode: block           # promovido warn→block em 2026-08-29 COM dados: retro de 14d
++  mode: warn            # FASE 1, SOMBRA de 7 dias (INTENT v62, 2026-10-06): block→warn, e o pre-bash-guard
++                        # só registra. Painel: docs/fase1/PAINEL-7-DIAS.md. ROLLBACK = esta linha de volta a block.
++                        # Antes: block, promovido warn→block em 2026-08-29 COM dados: retro de 14d
+                         # (133 decisões, override 13% < 20%) + live E2E provando que warn
+                         # deixa sessão one-shot editar sem decide. Critério de estabilidade:
+                         # tests/e2e/test-live-dispatch.sh PASS em block (EPICS E13).
+diff --git a/hooks/pre-bash-guard.sh b/hooks/pre-bash-guard.sh
+index eada29e..f50f541 100755
+--- a/hooks/pre-bash-guard.sh
++++ b/hooks/pre-bash-guard.sh
+@@ -65,6 +65,16 @@ set -f
+ 
+ _guard_debug() { [[ "${MAESTRO_DEBUG:-0}" == "1" ]] && echo "maestro: guard: $*" >&2 || true; }
+ 
++# Fase 1, sombra de 7 dias (INTENT v62): com `gate.mode: warn` na política da sessão o guarda só
++# REGISTRA o que bloquearia (gate_warn) e sai 0, para medir o nativo contra o léxico.
++# Política ausente, ilegível ou em block → rc 1 (o guarda segue como era). Rollback: gate.mode: block.
++_g_shadow() {
++  local MAESTRO_GATE_MODE="" pol="${MAESTRO_GATE_POLICY:-${MAESTRO_HOME:-$HOME/.maestro}/gate-policy.sh}"
++  [[ -r "$pol" ]] || return 1
++  source "$pol" 2>/dev/null || return 1
++  [[ "$MAESTRO_GATE_MODE" == "warn" ]]
++}
++
+ # ── 2. stdin ───────────────────────────────────────────────────────────────
+ # Mesmas duas defesas do gate contra pendurar: tty (sem payload) e stdin que
+ # nunca fecha. Um PreToolUse travado congela a sessão, o que é pior que tudo.
+@@ -210,6 +220,10 @@ case "$FLAT" in
+     # shellcheck source=lib/self-paths.sh
+     if source "$SCRIPT_DIR/lib/self-paths.sh" 2>/dev/null \
+        && maestro_bash_self_write "$FLAT" "$G_ROOT" "${SCRIPT_DIR%/hooks}"; then
++      if _g_shadow; then
++        log_event gate_warn ${SID:+session_id="$SID"} cmd=self_path_write gate_mode=warn
++        exit 0
++      fi
+       maestro_bash_self_message
+       log_event gate_block ${SID:+session_id="$SID"} cmd=self_path_write gate_mode=block
+       exit 2
+@@ -613,7 +627,7 @@ if [[ "$MODE" == "subagent" || "$MODE" == "multi" ]]; then
+   fi
+ fi
+ 
+-if [[ -z "$OPS_CONSENTED" && ( "$MODE" == "subagent" || "$MODE" == "multi" ) ]]; then
++if [[ -z "$OPS_CONSENTED" && ( "$MODE" == "subagent" || "$MODE" == "multi" ) ]] && ! _g_shadow; then
+   # Mensagem ANTES do log: `log_event` fecha o fd 9 com `exec` e, apesar do
+   # grupo protetor na common.sh, a ordem mantida aqui é a mesma do gate —
+   # a mensagem instrutiva é o produto do exit 2 e não pode se perder.
+diff --git a/tests/hooks/test-consent.sh b/tests/hooks/test-consent.sh
+index 45a94d6..bc993b9 100755
+--- a/tests/hooks/test-consent.sh
++++ b/tests/hooks/test-consent.sh
+@@ -30,6 +30,9 @@ H="$tmp/home"
+ printf '{"session_id":"cons-1"}' | MAESTRO_HOME="$H" CLAUDE_PROJECT_DIR="$REPO" \
+   bash "$REPO/hooks/session-start.sh" >/dev/null 2>&1
+ [[ -f "$H/gate-policy.sh" ]] && ok "política compilada (pré-condição)" || bad "política compilada"
++# Fase 1 (sombra, INTENT v62): a tabela real compila em warn, e o guard então só registra. Este teste é do CONSENT
++# sob block (o que vale depois do rollback): fixa o modo na política temporária, sem tocar a tabela.
++sed -i 's/^MAESTRO_GATE_MODE=.*/MAESTRO_GATE_MODE="block"/' "$H/gate-policy.sh"
+ # gate.mode block (2026-08-29): consent levanta a DENYLIST, não o decision record —
+ # as sondas de edição precisam de record válido para isolar a pergunta do escopo.
+ MAESTRO_HOME="$H" "$BIN" decide --session cons-1 --workflow custom --mode direct >/dev/null 2>&1
+diff --git a/tests/hooks/test-doctor.sh b/tests/hooks/test-doctor.sh
+index 936e9c5..725a195 100755
+--- a/tests/hooks/test-doctor.sh
++++ b/tests/hooks/test-doctor.sh
+@@ -97,7 +97,7 @@ Y
+ expect_break "YAML sintaticamente inválido" "$d" 1 'FAIL routing-table.yaml: schema válido'
+ 
+ d="$(fresh yaml-mode)"
+-sed -i 's/^  mode: block/  mode: yolo/' "$d/config/routing-table.yaml"
++sed -i 's/^  mode: \(block\|warn\)/  mode: yolo/' "$d/config/routing-table.yaml"
+ expect_break "gate.mode fora de {warn,block}" "$d" 1 'gate.mode deve ser warn\|block'
+ 
+ d="$(fresh yaml-sem-chaves)"
+diff --git a/tests/hooks/test-fase1-guarda-sombra.sh b/tests/hooks/test-fase1-guarda-sombra.sh
+new file mode 100644
+index 0000000..82c5f20
+--- /dev/null
++++ b/tests/hooks/test-fase1-guarda-sombra.sh
+@@ -0,0 +1,87 @@
++#!/usr/bin/env bash
++# Fase 1 da auditoria (INTENT v62, sombra de 7 dias): com `gate.mode: warn` na política da sessão o
++# pre-bash-guard só REGISTRA o que bloquearia (gate_warn, exit 0). Com a política em block, ausente
++# ou ilegível, o guarda se comporta exatamente como antes (exit 2 + gate_block). O rollback é o
++# `gate.mode: block` e nada mais.
++#   1. política em warn + sessão autônoma + comando destrutivo → exit 0, gate_warn, nenhum gate_block;
++#   2. política em warn + escrita por Bash em self_paths → exit 0, gate_warn cmd=self_path_write;
++#   3. política em block → exit 2 + gate_block nos dois casos (nada mudou);
++#   4. política ausente e política ilegível → exit 2 nos dois casos (falha fechada no guarda);
++#   5. routing-table.yaml traz gate.mode: warn (a sombra) e o comentário do rollback.
++set -u
++
++REPO="$(cd "$(dirname "$0")/../.." && pwd)"
++GUARD="$REPO/hooks/pre-bash-guard.sh"
++SID="sess-sombra01"
++PROJ="/home/user/proj"
++
++source "$REPO/tests/lib/env-clean.sh"
++maestro_env_clean_inherit
++
++fail=0
++ok()  { echo "ok   $1"; }
++bad() { echo "FAIL $1"; fail=1; }
++check() { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1 (esperado '$3', obtido '$2')"; fi; }
++
++TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
++export MAESTRO_HOME="$TMP/home"
++export CLAUDE_PROJECT_DIR="$PROJ"
++mkdir -p "$MAESTRO_HOME/sessions" "$MAESTRO_HOME/logs"
++LOG="$MAESTRO_HOME/logs/routing.jsonl"
++
++now=$(date -Iseconds); exp=$(date -Iseconds -d "@$(( $(date +%s) + 14400 ))")
++printf '{"session_id":"%s","ts":"%s","expires_at":"%s","workflow":"fix","mode":"subagent","agents":["golang-pro"],"reason":"teste"}\n' \
++  "$SID" "$now" "$exp" > "$MAESTRO_HOME/sessions/$SID.json"
++
++printf 'MAESTRO_GATE_MODE="warn"\n'  > "$TMP/policy-warn.sh"
++printf 'MAESTRO_GATE_MODE="block"\n' > "$TMP/policy-block.sh"
++printf 'if [[ ((((\n'                > "$TMP/policy-ilegivel.sh"
++
++payload() { jq -n --arg c "$1" --arg s "$SID" --arg d "$2" \
++  '{session_id:$s,transcript_path:"/dev/null",cwd:$d,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c}}'; }
++
++# run <política> <cwd> <comando> → RC e o conjunto de eventos novos do log
++run() {
++  : > "$LOG"
++  payload "$3" "$2" | MAESTRO_GATE_POLICY="$1" "$GUARD" >/dev/null 2>&1; RC=$?
++  EVS=$(jq -r '.event + ":" + (.cmd // "")' "$LOG" 2>/dev/null | tr '\n' ' ')
++}
++
++DESTRUTIVO="git push --force origin main"
++SELFW="echo x > lib/a.sh"
++
++echo "-- 1: política em warn, sessão autônoma, comando destrutivo → só registra"
++run "$TMP/policy-warn.sh" "$PROJ" "$DESTRUTIVO"
++check "warn: exit 0" "$RC" "0"
++[[ "$EVS" == *"gate_warn:git_force_push"* ]] && ok "warn: gate_warn cmd=git_force_push no log" || bad "warn: sem gate_warn git_force_push ($EVS)"
++[[ "$EVS" != *gate_block* ]] && ok "warn: nenhum gate_block" || bad "warn: gate_block no log ($EVS)"
++
++echo "-- 2: política em warn, escrita por Bash em self_paths → só registra"
++run "$TMP/policy-warn.sh" "$REPO" "$SELFW"
++check "warn self_path: exit 0" "$RC" "0"
++[[ "$EVS" == *"gate_warn:self_path_write"* ]] && ok "warn self_path: gate_warn cmd=self_path_write" || bad "warn self_path: sem gate_warn ($EVS)"
++[[ "$EVS" != *gate_block* ]] && ok "warn self_path: nenhum gate_block" || bad "warn self_path: gate_block no log ($EVS)"
++
++echo "-- 3: política em block → nada mudou"
++run "$TMP/policy-block.sh" "$PROJ" "$DESTRUTIVO"
++check "block: exit 2" "$RC" "2"
++[[ "$EVS" == *"gate_block:git_force_push"* ]] && ok "block: gate_block cmd=git_force_push" || bad "block: sem gate_block ($EVS)"
++run "$TMP/policy-block.sh" "$REPO" "$SELFW"
++check "block self_path: exit 2" "$RC" "2"
++[[ "$EVS" == *"gate_block:self_path_write"* ]] && ok "block self_path: gate_block cmd=self_path_write" || bad "block self_path: sem gate_block ($EVS)"
++
++echo "-- 4: política ausente ou ilegível → o guarda segue como antes (exit 2)"
++run "$TMP/nao-existe.sh" "$PROJ" "$DESTRUTIVO"
++check "política ausente: exit 2" "$RC" "2"
++run "$TMP/policy-ilegivel.sh" "$PROJ" "$DESTRUTIVO"
++check "política ilegível: exit 2" "$RC" "2"
++run "$TMP/nao-existe.sh" "$REPO" "$SELFW"
++check "política ausente, self_path: exit 2" "$RC" "2"
++
++echo "-- 5: routing-table.yaml traz a sombra e o rollback"
++grep -qE '^  mode: warn( |$)' "$REPO/config/routing-table.yaml" \
++  && ok "routing-table.yaml: gate.mode: warn" || bad "routing-table.yaml: gate.mode não é warn"
++grep -q 'ROLLBACK = esta linha de volta a block' "$REPO/config/routing-table.yaml" \
++  && ok "routing-table.yaml: rollback escrito ao lado do modo" || bad "routing-table.yaml: sem o rollback ao lado do modo"
++
++exit $fail
+diff --git a/tests/hooks/test-gate.sh b/tests/hooks/test-gate.sh
+index 8d69e6e..03b08b3 100755
+--- a/tests/hooks/test-gate.sh
++++ b/tests/hooks/test-gate.sh
+@@ -354,11 +354,12 @@ if [[ -s "$IHOME/gate-policy.sh" ]]; then
+   check "política real: README.md → exit 0" "$RC" "0"
+   igate "$PROJ/src/algo.ts" "$PROJ"
+   check "política real: src/algo.ts COM decisão → exit 0" "$RC" "0"
+-  # block promovido: SEM record, código bloqueia — a fresta do one-shot fechou
++  # Fase 1 (sombra de 7 dias, INTENT v62): a tabela real está em warn — SEM record, código só avisa.
++  # O rollback é `gate.mode: block` na tabela; o bloqueio com record ausente segue coberto pelos casos de MAESTRO_GATE_MODE=block acima.
+   RC=0
+   jq -n --arg p "$PROJ/src/app.go" '{session_id:"sess-sem-record",tool_name:"Edit",tool_input:{file_path:$p}}' \
+     | MAESTRO_HOME="$IHOME" CLAUDE_PROJECT_DIR="$PROJ" "$GATE" >/dev/null 2>&1 || RC=$?
+-  check "política real: código SEM decisão → exit 2 (block promovido)" "$RC" "2"
++  check "política real: código SEM decisão → exit 0 (sombra: gate.mode warn)" "$RC" "0"
+   # Dogfood (projeto == repo do plugin): a autoproteção cobre o caminho de
+   # enforcement, NÃO a árvore inteira. Fechar o repo todo — inclusive README e
+   # docs — inviabilizaria desenvolver o Maestro com agente, e o ADR-003 v1.1
+diff --git a/tests/hooks/test-session-start.sh b/tests/hooks/test-session-start.sh
+index 093d122..44bfa5d 100755
+--- a/tests/hooks/test-session-start.sh
++++ b/tests/hooks/test-session-start.sh
+@@ -150,8 +150,8 @@ if [[ -f "$POL" ]]; then
+   ( set -euo pipefail
+     # shellcheck disable=SC1090
+     source "$POL"
+-    # promovido a block em 2026-08-29 (retro 14d + live E2E) — acompanhar a tabela
+-    [[ "$MAESTRO_GATE_MODE" == "block" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
++    # Fase 1 (sombra de 7 dias, INTENT v62): a tabela real está em warn; o rollback é voltar block (e este valor)
++    [[ "$MAESTRO_GATE_MODE" == "warn" ]] || { echo "mode=$MAESTRO_GATE_MODE" >&2; exit 1; }
+     [[ "$MAESTRO_GATE_ALLOW_EXT" == "$EXP_EXT" ]] || { echo "ext=$MAESTRO_GATE_ALLOW_EXT esperado=$EXP_EXT" >&2; exit 1; }
+     [[ "$MAESTRO_GATE_ALLOW_PATHS" == "$EXP_ALLOW" ]] || { echo "allow=$MAESTRO_GATE_ALLOW_PATHS esperado=$EXP_ALLOW" >&2; exit 1; }
+     # duas classes: universais (qualquer projeto) x autoproteção (só sob o plugin root)
