@@ -8,6 +8,7 @@ frozen: vendor/ agents/ config/routing-table.yaml hooks/ bin/ src/ lib/
 intent_version: 3
 intent_hash: 64b18664
 author_session: desconhecido
+deferred_by: spock 2026-10-06 regra da subtracao
 -->
 # Ordem 028 — prova de calibracao do Jev: acerto x confianca por faixa, contra a base rate, antes de dar poder
 
