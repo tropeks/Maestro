@@ -62,9 +62,27 @@ grep -qE '^\| baseline \| 1 \| 1 \| 100 \| 1 \| 1 \| 100 \|' <<<"$OUT" \
   && ok "baseline: 1 sessão, 100% e 100%" || bad "linha do baseline do A/B não bate: $(grep '^| baseline' <<<"$OUT" | tail -1)"
 
 echo "-- 2: critérios respeitam o mínimo de 10 sessões"
-grep -q 'decisões espontâneas ≥ 50%: \*\*INSUFICIENTE\*\*' <<<"$OUT" \
-  && ok "4 sessões < 10: INSUFICIENTE, não PASS" || bad "critério 3 devia ser INSUFICIENTE"
+grep -q 'decisões espontâneas ≥ baseline medido (100%): \*\*INSUFICIENTE\*\*' <<<"$OUT" \
+  && ok "4 sessões < 10: INSUFICIENTE (piso = baseline medido, 100%), não PASS" || bad "critério 3 devia ser INSUFICIENTE com piso 100%"
 grep -q 'incidentes destrutivos = 0: \*\*PASS\*\*' <<<"$OUT" && ok "incidentes = 0: PASS" || bad "critério de incidentes devia ser PASS"
+
+echo "-- 2b: o piso das espontâneas é o baseline medido (decisão do Capitão), com 10+ sessões"
+LEDGER_BKP="$TMP/ledger-4sessoes.jsonl"; cp "$LEDGER" "$LEDGER_BKP"; : > "$LEDGER"
+for i in 1 2 3 4 5 6 7 8 9 10; do   # baseline: 10 sessões, todas espontâneas (100%)
+  ev "2026-10-02T09:0${i%10}:00-03:00" decision "bb$i" ',"mode":"direct"'; ev "2026-10-02T09:30:00-03:00" gate_pass "bb$i" ',"tool":"Edit"'
+done
+for i in 1 2 3 4 5 6 7; do ev "$D1" decision "w$i" ',"mode":"direct"'; ev "$D2" gate_pass "w$i" ',"tool":"Edit"'; done   # 7 espontâneas
+for i in 8 9 10; do ev "$D1" gate_warn "w$i" ',"tool":"Write","gate_mode":"warn"'; ev "$D2" decision "w$i" ',"mode":"direct"'; done   # 3 não espontâneas
+OUT2=$(run)
+grep -q 'decisões espontâneas ≥ baseline medido (100%): \*\*FAIL\*\* (janela 70%)' <<<"$OUT2" \
+  && ok "janela 70% < baseline 100%: FAIL (e não PASS pelo piso antigo de 50%)" || bad "piso ligado ao baseline: $(grep 'espontâneas ≥' <<<"$OUT2")"
+: > "$LEDGER"
+for i in 1 2 3 4 5 6 7 8 9 10; do ev "2026-10-02T09:0${i%10}:00-03:00" decision "bb$i" ',"mode":"direct"'; ev "2026-10-02T09:30:00-03:00" gate_pass "bb$i" ',"tool":"Edit"'; done
+for i in 1 2 3 4 5 6 7 8 9 10; do ev "$D1" decision "w$i" ',"mode":"direct"'; ev "$D2" gate_pass "w$i" ',"tool":"Edit"'; done
+OUT3=$(run)
+grep -q 'decisões espontâneas ≥ baseline medido (100%): \*\*PASS\*\* (janela 100%)' <<<"$OUT3" \
+  && ok "janela 100% = baseline 100%: PASS" || bad "PASS no piso do baseline: $(grep 'espontâneas ≥' <<<"$OUT3")"
+cp "$LEDGER_BKP" "$LEDGER"
 
 echo "-- 3: Ponte — prompts, allow e deny na janela e no baseline"
 grep -qE '^\| janela \| 3 \| 2 \| 1 \|' <<<"$OUT" && ok "janela: 3 prompts (2 allow, 1 deny); a 'question' fica de fora" || bad "linha da Ponte (janela) não bate: $(grep '^| janela' <<<"$OUT" | head -1)"

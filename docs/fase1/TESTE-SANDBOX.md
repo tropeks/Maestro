@@ -4,6 +4,11 @@ Bloco final: `docs/fase1/sandbox-final.json` (acrescenta-se ao `settings.json`; 
 Worktrees `maestro-*` vivos: `docs/fase1/denywrite-worktrees.json` (180 entradas explícitas, ver "Achados"). **Nada foi aplicado** em
 `~/.claude/settings.json`: isso é do Capitão.
 
+> **LEIA A SEÇÃO FINAL ("Os três bloqueios para a fábrica") ANTES DE APLICAR.** O 1º bloco deste arquivo, como foi testado primeiro, **bloqueia toda
+> rede dentro do sandbox, faz o Bash dos runs headless pular o `--permission-prompt-tool` e deixa o checkout do Maestro pela metade num `git pull`**.
+> O `sandbox-final.json` já traz o que os testes mostraram resolver (rede do GitHub, `autoAllowBashIfSandboxed: false`, `ssh` fora do sandbox);
+> o `git pull` pelo Claude no checkout principal **continua quebrando** e é do terminal do Capitão.
+
 ## Como foi testado
 
 Quatro sessões descartáveis do Claude Code `2.1.291` (modelo `claude-haiku-4-5-20251001`) com o mesmo molde do teste do `deny`:
@@ -84,6 +89,74 @@ terminal** (fora do sandbox, como o plano já supunha). Isto **não foi medido**
 
 - **Apagar dentro do `cwd` e fora das pastas protegidas** (`rm -rf` em projeto, `.git`) o sandbox não impede: o nativo só nega onde o `denyWrite`/`deny` diz.
 - `git push origin :x` (apagar branch remoto por refspec) **segue sem regra** que o negue.
-- `autoAllowBashIfSandboxed: true` faz todo Bash **rodar sem prompt** dentro do sandbox. O que o sandbox permite de **rede** (git push, ssh, gh) **não foi
-  testado** aqui.
+- `autoAllowBashIfSandboxed: true` faz o Bash sandboxável **pular o `--permission-prompt-tool`**, e o sandbox **bloqueia toda rede** por padrão: **testados abaixo** ("Os três bloqueios").
 - `Edit(~/.claude/settings*.json)` com `~` **não foi testado** (usei `//caminho` absoluto, que funciona e é o que o `deny` aplicado usa): o bloco final usa `//home/rcosta00/.claude/settings*.json`.
+
+---
+
+# Os três bloqueios para a fábrica (testados em 06/10/2026)
+
+Mesmo molde (sessões descartáveis do Claude Code `2.1.291`, `--setting-sources local --settings <bloco>`, verdade = `tool_result` + disco). Os três
+testes dizem que **o bloco da seção anterior, aplicado como estava, pararia a fábrica**. O `sandbox-final.json` foi corrigido no que os testes resolveram.
+
+## 1. Rede dentro do sandbox: **bloqueada por padrão**; só o que se libera funciona
+
+Controle **fora** do sandbox, na mesma máquina: `git ls-remote`, `gh api` e `ssh pve` **funcionam**.
+
+| Comando (dentro do sandbox) | Padrão (`sandbox.enabled`) | Com `network.allowedDomains` do GitHub | Com `excludedCommands` |
+|---|---|---|---|
+| `curl https://example.com` | **bloqueado** (`CONNECT tunnel failed, response 403`, `deny network-outbound`) | **bloqueado** (não está na lista) | — |
+| `git ls-remote https://github.com/…` | **bloqueado** (403) | **funciona** | — |
+| `git fetch origin main` | **bloqueado** (403) | **funciona** | — |
+| `git push --dry-run origin HEAD:refs/heads/…` | **bloqueado** (403) | **funciona**, inclusive a autenticação (lista `[new branch]`; é dry-run, **nada foi enviado**) | — |
+| `gh api rate_limit` e `gh run list --repo …` | **bloqueados** (`Forbidden`, `deny network-outbound api.github.com:443`) | **funcionam** (`5000`; lista o run) | — |
+| `ssh -o BatchMode=yes pve true` | **pede aprovação** | — | com `excludedCommands: ["ssh"]` + `allow`: rodou **dentro** do sandbox e falhou (`Network is unreachable`); com **`["ssh *", "ssh:*"]` + `allow`: funcionou** (rc 0) |
+
+**Conclusões:**
+- Sem `network.allowedDomains`, **`git push`, `git fetch`, `gh` e qualquer download falham** em todo Bash do Claude: o gerente não empurra branch e o painel da 063
+  (que roda `gh`) quebra quando um run do Claude o executa. **É por isso que o bloco original pararia a fábrica.**
+- `allowedDomains: ["github.com", "api.github.com", "*.githubusercontent.com"]` basta para git e gh (testado). **Outros destinos que a fábrica usa
+  (npm, PyPI, registro de contêiner, a própria Ponte por rede) não foram testados:** cada um precisa de entrada, ou falha como o `curl`.
+- **`ssh` não passa por domínio** (TCP puro): precisa de `excludedCommands` **com padrão e argumento** (`ssh *`; o `ssh` nu **não** casa) **e** de uma regra
+  `allow` (senão cai no fluxo de permissão). Fora do sandbox, o `ssh` volta a escrever onde o usuário escreve: **o `excludedCommands` reabre o buraco para esse comando**.
+
+## 2. `autoAllowBashIfSandboxed: true` **faz o Bash pular o `--permission-prompt-tool`**
+
+Montei um servidor MCP falso que faz o papel do prompt da Ponte e **registra cada chamada**; três sessões com os mesmos 5 comandos e `--permission-prompt-tool mcp__fake__prompt`:
+
+| Comando | A: sem sandbox | **B: sandbox + `autoAllow: true`** | C: sandbox + `autoAllow: false` |
+|---|---|---|---|
+| `echo hi` | sem prompt | sem prompt | sem prompt |
+| `ls /tmp` | prompt | **sem prompt** (rodou) | prompt |
+| `echo x > <pasta protegida>/g` | prompt (e **gravou**) | **sem prompt**, o sandbox negou (`Read-only`) | prompt, o sandbox negou |
+| `git -c user.name=t status` | prompt | prompt | prompt |
+| `gh pr merge 1` (regra `ask`) | prompt | prompt | prompt |
+| **chamadas à ferramenta de permissão** | **4** | **2** | **4** |
+
+**Conclusão: sim.** Com `autoAllowBashIfSandboxed: true`, todo Bash que o sandbox consegue conter **deixa de ir à Ponte**; só o que cai em `ask`/risco (`git -c`, `gh pr merge`)
+continua indo. Em `false`, as chamadas voltam a ser as mesmas do caso sem sandbox **e o sandbox ainda impõe o `denyWrite`** (C negou a escrita depois do prompt). O bloco
+final usa **`autoAllowBashIfSandboxed: false`**: o sandbox só impõe, a Ponte continua decidindo. (Ligar o `true` é decisão do Capitão: tira prompts, mas tira também a revisão humana de
+qualquer Bash contido, por exemplo um `rm -rf` dentro do `cwd`, que o sandbox não impede.)
+
+## 3. `git pull` no checkout do Maestro **quebra e deixa a árvore pela metade**; a ação do daemon **não é afetada**
+
+**`git pull` (e `merge`, `rebase`, `checkout`) por Bash do Claude** num clone descartável com `denyWrite` em `hooks lib bin src agents .claude-plugin`, 25 commits atrás da `main`
+(o `pull` toca `hooks/`, `lib/`, `docs/`, `tests/`):
+
+- `git pull --ff-only origin main` **falhou** (`error: unable to unlink old 'hooks/gate-report.sh': Read-only file system`, e o mesmo para os demais).
+- **`HEAD` não avançou (`4333629`), mas 40 arquivos ficaram modificados** (docs, testes, CHANGELOG já com o conteúdo novo): **árvore pela metade**, com `hooks/` e `lib/` velhos e o resto novo.
+- Conserto: `git reset --hard` / `git pull` **fora** do sandbox (terminal do Capitão). Não há como o Claude desfazer isso por conta própria.
+
+**Efeito:** com o bloco aplicado, **todo gerente ou sessão que rode `git pull`, `merge` ou `rebase` em `~/dev/Maestro` e toque essas pastas deixa o checkout principal quebrado**. A integração do Maestro
+passa a ser **só do terminal do Capitão**. Isto **vale para o checkout principal e para cada worktree `maestro-*` listado no `denywrite-worktrees.json`**; as demais worktrees e os clones em `/tmp` ficam livres.
+
+**Ação `aplicar_patch_maestro` do daemon: não é afetada** (leitura de código, **não** execução ponta a ponta). O executor (`ponte-daemon`, ordem 083, `adapters/operacoes/runner.ts`) roda
+`git -C <worktree> apply --check` e `git apply` com **`spawn` próprio do processo do daemon** (`shell: false`, `cwd` fixo, serviço `systemd`), **fora** de qualquer processo do Claude Code. O sandbox só envolve o Bash
+que o **Claude Code** lança; o daemon não é Claude. O que **muda** é se um run de gerente tentar aplicar o patch pelo Bash dele: aí falha como no `git apply` do caso 4 da seção anterior.
+
+## Recomendação (decisão do Capitão)
+
+1. **Não aplicar o bloco da primeira seção.** Aplicar o `sandbox-final.json`: `autoAllowBashIfSandboxed: false`, `network.allowedDomains` do GitHub, `ssh` em `excludedCommands` (com `allow` explícito para os hosts que a fábrica usa).
+2. **Antes de aplicar,** levantar os destinos de rede dos runs reais (gerentes: `pnpm install`, `pip`, `docker pull`, Telegram/Ponte por rede) e testar cada um; os não listados vão falhar.
+3. **Decidir a integração do Maestro:** `git pull`/`merge`/`rebase` em `~/dev/Maestro` e nos `maestro-*` protegidos passa a ser **do terminal**; se algum fluxo automático depende disso, o sandbox **não pode** cobrir esses diretórios, ou o comando precisa de `excludedCommands` (não testado, e reabre o buraco do D09 para ele).
+4. Rodar **uma semana em sombra com o sandbox só num pane de teste** antes do global, medindo prompts (painel) e falhas de rede/escrita.

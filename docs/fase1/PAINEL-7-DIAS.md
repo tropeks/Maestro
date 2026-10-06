@@ -15,7 +15,7 @@ Sem sombra ligada, o painel mostra `AGUARDANDO INÍCIO` e a janela fica vazia.
 |---|---|---|---|
 | 1 | **Prompts e negações nativos** | Ponte, `decision` com `kind='permission'` e `decision_resolution.choice` (`allow`/`deny`), banco aberto em `mode=ro` | **Medida, sem limiar.** Compara prompts/dia e negações da janela com o baseline; quem decide é o Capitão |
 | 2 | **Incidentes destrutivos** | `docs/fase1/INCIDENTES.md` (preenchido à mão: uma linha `- AAAA-MM-DD …` por incidente); indício extra: entradas `reset:` no reflog de todos os worktrees | **PASS só com 0 relatados.** O reflog e a "exposição" (comandos que o guard teria barrado, `gate_warn` destrutivo) são indício, não critério |
-| 3 | **Decisões espontâneas ≥ 50%** | ledger `~/.maestro/logs/routing.jsonl` | **PASS** se a fração, na janela, for ≥ 50 (inteiro) |
+| 3 | **Decisões espontâneas ≥ baseline medido** | ledger `~/.maestro/logs/routing.jsonl` | **PASS** se a fração da janela for ≥ a fração dos 14 dias antes do início, **medida pelo próprio painel** (decisão do Capitão de 06/10: o piso não é 50 nem 58 fixos; na fotografia de 06/10 o baseline é **78%**) |
 | 4 | **Fração subagent/multi sem queda > 5 p.p.** | o mesmo ledger (`decision.mode`) | **PASS** se a fração da janela for ≥ (baseline − 5) |
 
 **Mínimo de 10 sessões** na janela para o 3 e o 4 valerem; abaixo disso o painel diz `INSUFICIENTE`, não `PASS`.
@@ -27,13 +27,12 @@ Sem sombra ligada, o painel mostra `AGUARDANDO INÍCIO` e a janela fica vazia.
 - **subagent/multi:** entre as sessões com `decision`, as que registraram `mode` `subagent` ou `multi` (a primeira decisão da sessão).
 - Percentuais são **inteiros arredondados para baixo**.
 
-## Aviso sobre o baseline "~58%"
+## O piso das decisões espontâneas é o baseline medido (decisão do Capitão, 06/10)
 
-A auditoria cita decisões espontâneas "~58% hoje". **Com esta definição, e sobre o ledger real, o baseline sai bem mais alto** (88% nos 14 dias anteriores
-a 04/10; 78% nos 14 dias anteriores a 06/10). Não consegui reproduzir os 58% a partir do ledger: a definição da auditoria não está escrita lá. O painel usa a
-definição acima **igual nos dois lados** (baseline e janela), então o critério "≥ 50%" e a comparação de `subagent/multi` são consistentes entre si, mas **o
-50% absoluto é um piso mais folgado do que a auditoria imaginava**. Se o Capitão quiser o piso ligado ao baseline (ex.: "não cair mais que 10 p.p."), é uma
-linha em `tools/fase1-painel.sh`.
+A auditoria citava "~58%" e um piso de 50%. **Sobre o ledger real, com a definição acima, o baseline sai mais alto** (88% nos 14 dias anteriores a 04/10;
+**78% nos 14 dias anteriores a 06/10**); a definição da auditoria não está escrita lá e não consegui reproduzir os 58%. O Capitão decidiu **amarrar o piso ao
+baseline medido pelo painel** (78% na fotografia de 06/10), e é o que o painel faz: o critério 3 compara a janela com **os 14 dias antes do `INICIO`**, medidos com
+a mesma definição. Sem tolerância (a janela precisa ser ≥ ao baseline); se o ruído de 7 dias pedir folga, é uma linha em `tools/fase1-painel.sh`.
 
 ## O que o painel não mede
 

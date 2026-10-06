@@ -118,9 +118,10 @@ else
   echo "| | sessões com código | espontâneas | **% espontâneas** | sessões com decisão | subagent/multi | **% subagent/multi** |"; echo "|---|---|---|---|---|---|---|"
   echo "| baseline | $bc | $be | $bpe | $bd2 | $bs | $bps |"
   echo "| janela | $wc | $we | $wpe | $wd2 | $ws | $wps |"; echo
-  v1=$(veredito "${wpe:--1}" 50 "${wc:-0}"); mn=$(( ${bps:-0} - 5 )); v2=$(veredito "${wps:--1}" "$mn" "${wd2:-0}")
+  piso=${bpe:--1}   # decisão do Capitão (06/10): o piso é o baseline MEDIDO aqui (14 dias antes do início), não 50 nem 58 fixos
+  v1=$(veredito "${wpe:--1}" "$piso" "${wc:-0}"); (( piso >= 0 )) || v1=INSUFICIENTE; mn=$(( ${bps:-0} - 5 )); v2=$(veredito "${wps:--1}" "$mn" "${wd2:-0}")
   echo "**Critérios (mínimo de 10 sessões para valer):**"; echo
-  echo "- decisões espontâneas ≥ 50%: **$v1** (janela ${wpe:--1}%)"
+  echo "- decisões espontâneas ≥ baseline medido (${piso}%): **$v1** (janela ${wpe:--1}%)"
   echo "- fração subagent/multi sem queda > 5 p.p. (≥ ${mn}%): **$v2** (janela ${wps:--1}%)"
   echo "- incidentes destrutivos = 0: **$( (( inc == 0 )) && echo PASS || echo FAIL )** ($inc)"
 fi

@@ -1,7 +1,7 @@
 {
   "sandbox": {
     "enabled": true,
-    "autoAllowBashIfSandboxed": true,
+    "autoAllowBashIfSandboxed": false,
     "filesystem": {
       "denyWrite": [
         "~/dev/Maestro/hooks",
@@ -14,7 +14,11 @@
         "~/dev/Maestro/.claude-plugin",
         "~/.claude/plugins"
       ]
-    }
+    },
+    "network": {
+      "allowedDomains": ["github.com", "api.github.com", "*.githubusercontent.com"]
+    },
+    "excludedCommands": ["ssh *", "ssh:*"]
   },
   "permissions": {
     "deny": [
