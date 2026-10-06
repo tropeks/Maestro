@@ -8,6 +8,7 @@ frozen: vendor/
 intent_version: 6
 intent_hash: 31205cc5
 author_session: desconhecido
+deferred_by: spock 2026-10-06 regra da subtracao
 -->
 # Ordem 071 — recibo indexado por rotulo e arvore canonica: rebase so de carimbo nao vence o recibo
 
