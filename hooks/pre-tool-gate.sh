@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/pre-tool-gate.sh — gate estrutural (E2/S-203)
 # Evento PreToolUse, matcher Edit|Write|MultiEdit.
 #
@@ -26,7 +27,9 @@ set -euo pipefail
 SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 [[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ]] || SCRIPT_DIR="."
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
+  exit 0
+fi
 
 # ── 1. kill-switch ─────────────────────────────────────────────────────────
 maestro_killswitch

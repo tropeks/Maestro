@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/session-end.sh — evento SessionEnd (E18 fase 2 / S-1811)
 #
 # PROPÓSITO: fechar a conta da sessão no log. `decision` registra a aposta e

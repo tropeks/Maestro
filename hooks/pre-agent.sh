@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/pre-agent.sh — evento PreToolUse, matcher Agent|Task (E23a / S-2301)
 #
 # PROPÓSITO: provar que a delegação ACONTECEU. `maestro decide --agents` registra

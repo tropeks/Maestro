@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # hooks/lib/transcript.sh — ler a RODADA CORRENTE de um transcrito, e só ela.
 #
 # Ordem 038. O Stop precisa saber se a rodada que ACABOU pediu decisão ao

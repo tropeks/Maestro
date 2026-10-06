@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/session-start.sh — E2 / S-201
 #
 # Injeta o bloco <maestro-routing> no contexto da sessão (stdout), compila a
@@ -65,7 +66,9 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
+  exit 0
+fi
 maestro_killswitch
 # E19/S-1901 — auto-update. Lib ausente/ilegível → sessão segue sem checagem.
 UPDATE_LIB_OK=0

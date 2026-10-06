@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/subagent-stop.sh — evento SubagentStop (E23a / S-2301)
 #
 # PROPÓSITO: a outra ponta do disparo. `pre-agent.sh` prova que o subagente

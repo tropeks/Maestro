@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/gate-report.sh — evento Stop (E21 / S-2101)
 #
 # PROPÓSITO: quando o turno termina com um GATE HUMANO pendente (plan: brief com
@@ -64,7 +65,6 @@
 # desistência aos 30min — é a rodada que termina de verdade. A plataforma
 # também tem um teto próprio (8 blocks consecutivos, ver changelog do
 # Claude Code) — rede de segurança adicional, não o mecanismo principal.
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

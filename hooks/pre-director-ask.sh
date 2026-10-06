@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # hooks/pre-director-ask.sh — PreToolUse, matcher das tools `director_*` da Ponte.
 #
 # Ordem 029 (decisão do Capitão): o Stop deixa de liberar a rodada por TEXTO e

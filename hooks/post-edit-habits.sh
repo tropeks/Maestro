@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # hooks/post-edit-habits.sh — habit hook pós-edição (E9 / S-901).
 #
 # PostToolUse em Edit|Write|MultiEdit: roda os habit sensors (uma passada de
@@ -24,7 +25,9 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
+  exit 0
+fi
 maestro_killswitch
 
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

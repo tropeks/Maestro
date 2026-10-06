@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
 # maestro hooks/user-prompt-submit.sh — evento UserPromptSubmit (S-205 / ADR-008)
 #
 # PROPÓSITO: produzir a MÉTRICA PRINCIPAL do projeto. Prompt que começa com `/`
