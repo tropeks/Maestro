@@ -8,6 +8,7 @@ frozen: vendor/
 intent_version: 6
 intent_hash: 31205cc5
 author_session: desconhecido
+deferred_by: spock 2026-10-06 regra da subtracao
 -->
 # Ordem 066 — perfis de agente: um lancador declarado por perfil, pesquisa sem Maestro, Ponte nem MCP
 
