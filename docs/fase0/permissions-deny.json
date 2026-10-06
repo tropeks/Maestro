@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --delete:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git push * --force)",
+      "Bash(git push * -f)",
+      "Bash(git push * --delete *)",
+      "Bash(git push * +*)",
+      "Bash(git -C * push --force *)",
+      "Bash(git -C * push -f *)",
+      "Bash(git -C * push --delete *)",
+      "Bash(git -C * reset --hard*)",
+      "Edit(//home/rcosta00/dev/Maestro/hooks/**)",
+      "Edit(//home/rcosta00/dev/Maestro/lib/**)",
+      "Edit(//home/rcosta00/dev/Maestro/bin/**)",
+      "Edit(//home/rcosta00/dev/Maestro/src/**)",
+      "Edit(//home/rcosta00/dev/Maestro/agents/**)",
+      "Edit(//home/rcosta00/dev/Maestro/config/routing-table.yaml)",
+      "Edit(//home/rcosta00/dev/Maestro/config/accept-proof.pub)",
+      "Edit(//home/rcosta00/dev/Maestro/.claude-plugin/**)",
+      "Edit(//home/rcosta00/dev/worktrees/maestro-*/hooks/**)",
+      "Edit(//home/rcosta00/dev/worktrees/maestro-*/lib/**)",
+      "Edit(//home/rcosta00/dev/worktrees/maestro-*/bin/**)",
+      "Edit(//home/rcosta00/dev/worktrees/maestro-*/src/**)",
+      "Edit(//home/rcosta00/.claude/plugins/**)"
+    ]
+  }
+}

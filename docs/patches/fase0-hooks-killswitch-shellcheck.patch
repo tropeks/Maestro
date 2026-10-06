@@ -1,0 +1,236 @@
+diff --git a/hooks/gate-report.sh b/hooks/gate-report.sh
+index 575c2a7..ff93449 100755
+--- a/hooks/gate-report.sh
++++ b/hooks/gate-report.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/gate-report.sh — evento Stop (E21 / S-2101)
+ #
+ # PROPÓSITO: quando o turno termina com um GATE HUMANO pendente (plan: brief com
+@@ -64,7 +65,6 @@
+ # desistência aos 30min — é a rodada que termina de verdade. A plataforma
+ # também tem um teto próprio (8 blocks consecutivos, ver changelog do
+ # Claude Code) — rede de segurança adicional, não o mecanismo principal.
+-
+ set -euo pipefail
+ 
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+diff --git a/hooks/lib/transcript.sh b/hooks/lib/transcript.sh
+index 201416f..b9f2cc9 100644
+--- a/hooks/lib/transcript.sh
++++ b/hooks/lib/transcript.sh
+@@ -1,3 +1,4 @@
++# shellcheck shell=bash
+ # hooks/lib/transcript.sh — ler a RODADA CORRENTE de um transcrito, e só ela.
+ #
+ # Ordem 038. O Stop precisa saber se a rodada que ACABOU pediu decisão ao
+diff --git a/hooks/post-edit-habits.sh b/hooks/post-edit-habits.sh
+index 92c2432..352a6f3 100755
+--- a/hooks/post-edit-habits.sh
++++ b/hooks/post-edit-habits.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # hooks/post-edit-habits.sh — habit hook pós-edição (E9 / S-901).
+ #
+ # PostToolUse em Edit|Write|MultiEdit: roda os habit sensors (uma passada de
+@@ -24,7 +25,9 @@
+ set -u
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ # shellcheck source=lib/common.sh
+-source "$SCRIPT_DIR/lib/common.sh"
++if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
++  exit 0
++fi
+ maestro_killswitch
+ 
+ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+diff --git a/hooks/pre-agent.sh b/hooks/pre-agent.sh
+index 450e5e0..d233107 100755
+--- a/hooks/pre-agent.sh
++++ b/hooks/pre-agent.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/pre-agent.sh — evento PreToolUse, matcher Agent|Task (E23a / S-2301)
+ #
+ # PROPÓSITO: provar que a delegação ACONTECEU. `maestro decide --agents` registra
+diff --git a/hooks/pre-bash-guard.sh b/hooks/pre-bash-guard.sh
+index 0a5feb9..eada29e 100755
+--- a/hooks/pre-bash-guard.sh
++++ b/hooks/pre-bash-guard.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/pre-bash-guard.sh — guarda destrutivo (E5/S-502)
+ # Evento PreToolUse, matcher Bash.
+ #
+@@ -47,7 +48,9 @@ set -euo pipefail
+ SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+ [[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ]] || SCRIPT_DIR="."
+ # shellcheck source=lib/common.sh
+-source "$SCRIPT_DIR/lib/common.sh"
++if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
++  exit 0
++fi
+ 
+ # ── 1. kill-switches ───────────────────────────────────────────────────────
+ maestro_killswitch
+diff --git a/hooks/pre-director-ask.sh b/hooks/pre-director-ask.sh
+index 2f84228..013d930 100755
+--- a/hooks/pre-director-ask.sh
++++ b/hooks/pre-director-ask.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # hooks/pre-director-ask.sh — PreToolUse, matcher das tools `director_*` da Ponte.
+ #
+ # Ordem 029 (decisão do Capitão): o Stop deixa de liberar a rodada por TEXTO e
+diff --git a/hooks/pre-tool-gate.sh b/hooks/pre-tool-gate.sh
+index 3a59ee6..d8db66f 100755
+--- a/hooks/pre-tool-gate.sh
++++ b/hooks/pre-tool-gate.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/pre-tool-gate.sh — gate estrutural (E2/S-203)
+ # Evento PreToolUse, matcher Edit|Write|MultiEdit.
+ #
+@@ -26,7 +27,9 @@ set -euo pipefail
+ SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+ [[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ]] || SCRIPT_DIR="."
+ # shellcheck source=lib/common.sh
+-source "$SCRIPT_DIR/lib/common.sh"
++if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
++  exit 0
++fi
+ 
+ # ── 1. kill-switch ─────────────────────────────────────────────────────────
+ maestro_killswitch
+diff --git a/hooks/session-end.sh b/hooks/session-end.sh
+index be9e30a..4bb67f3 100755
+--- a/hooks/session-end.sh
++++ b/hooks/session-end.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/session-end.sh — evento SessionEnd (E18 fase 2 / S-1811)
+ #
+ # PROPÓSITO: fechar a conta da sessão no log. `decision` registra a aposta e
+diff --git a/hooks/session-start.sh b/hooks/session-start.sh
+index b735111..1a2bcb7 100755
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/session-start.sh — E2 / S-201
+ #
+ # Injeta o bloco <maestro-routing> no contexto da sessão (stdout), compila a
+@@ -65,7 +66,9 @@
+ set -euo pipefail
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ # shellcheck source=lib/common.sh
+-source "$SCRIPT_DIR/lib/common.sh"
++if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
++  exit 0
++fi
+ maestro_killswitch
+ # E19/S-1901 — auto-update. Lib ausente/ilegível → sessão segue sem checagem.
+ UPDATE_LIB_OK=0
+diff --git a/hooks/subagent-stop.sh b/hooks/subagent-stop.sh
+index f69e8e8..4b43677 100755
+--- a/hooks/subagent-stop.sh
++++ b/hooks/subagent-stop.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/subagent-stop.sh — evento SubagentStop (E23a / S-2301)
+ #
+ # PROPÓSITO: a outra ponta do disparo. `pre-agent.sh` prova que o subagente
+diff --git a/hooks/user-prompt-submit.sh b/hooks/user-prompt-submit.sh
+index d6f6396..eb82f2e 100755
+--- a/hooks/user-prompt-submit.sh
++++ b/hooks/user-prompt-submit.sh
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bash
++[[ "${MAESTRO_OFF:-0}" == 1 ]] && exit 0
+ # maestro hooks/user-prompt-submit.sh — evento UserPromptSubmit (S-205 / ADR-008)
+ #
+ # PROPÓSITO: produzir a MÉTRICA PRINCIPAL do projeto. Prompt que começa com `/`
+diff --git a/tests/hooks/test-killswitch-linha2.sh b/tests/hooks/test-killswitch-linha2.sh
+new file mode 100644
+index 0000000..e69fd07
+--- /dev/null
++++ b/tests/hooks/test-killswitch-linha2.sh
+@@ -0,0 +1,69 @@
++#!/usr/bin/env bash
++# Fase 0 da auditoria (05/10): o kill-switch é a LINHA 2 de todo hooks/*.sh — antes de
++# qualquer `source`, `cd` ou leitura de stdin — e o `source` de lib/common.sh nunca derruba
++# o hook (`if ! source …; then exit 0; fi`). Falha de componente degrada para o fluxo manual.
++# Cinco blocos abaixo, na ordem: a linha 2 de cada hook é o kill-switch; nenhum hook faz
++# `source …/lib/common.sh` solto (sem o guarda); com MAESTRO_OFF=1 cada hook sai 0 sem imprimir
++# nada, MESMO sem lib/ ao lado; com lib/ ausente (insourceável) cada hook ainda sai 0; e
++# hooks/lib/transcript.sh abre com a diretiva do shellcheck (a CI não cai por SC2148).
++set -u
++
++REPO="$(cd "$(dirname "$0")/../.." && pwd)"
++
++source "$REPO/tests/lib/env-clean.sh"
++maestro_env_clean_inherit
++
++fail=0
++ok()  { printf 'ok   %s\n' "$1"; }
++bad() { printf 'FAIL %s\n' "$1"; fail=1; }
++
++tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
++
++hooks=("$REPO"/hooks/*.sh)
++[[ ${#hooks[@]} -ge 11 ]] && ok "achou ${#hooks[@]} hooks em hooks/*.sh" || bad "esperava pelo menos 11 hooks, achou ${#hooks[@]}"
++
++echo "-- 1: linha 2 é o kill-switch"
++re_l2='^\[\[ "\$\{MAESTRO_OFF:-0\}" == "?1"? \]\] && exit 0$'
++for h in "${hooks[@]}"; do
++  b=$(basename "$h")
++  l2=$(sed -n 2p "$h")
++  [[ "$l2" =~ $re_l2 ]] && ok "$b: linha 2 é o kill-switch" || bad "$b: linha 2 não é o kill-switch ($l2)"
++done
++
++echo "-- 2: nenhum source solto de lib/common.sh"
++for h in "${hooks[@]}"; do
++  b=$(basename "$h")
++  if grep -qE '^source +"[^"]*lib/common\.sh"' "$h"; then
++    bad "$b: source de lib/common.sh sem o guarda 'if ! source …; then exit 0; fi'"
++  else
++    ok "$b: sem source solto de common.sh"
++  fi
++done
++
++echo "-- 3: MAESTRO_OFF=1 sai 0, mudo, mesmo sem lib/ ao lado"
++for h in "${hooks[@]}"; do
++  b=$(basename "$h")
++  d="$tmp/off-$b"; mkdir -p "$d"; cp "$h" "$d/$b"
++  out=$(MAESTRO_OFF=1 bash "$d/$b" </dev/null 2>&1); rc=$?
++  [[ $rc -eq 0 && -z "$out" ]] && ok "$b: MAESTRO_OFF=1 → rc 0, silêncio" || bad "$b: MAESTRO_OFF=1 → rc=$rc out='$out'"
++done
++
++echo "-- 4: lib/ ausente (insourceável) degrada para exit 0"
++for h in "${hooks[@]}"; do
++  b=$(basename "$h")
++  d="$tmp/nolib-$b"; mkdir -p "$d"; cp "$h" "$d/$b"
++  MAESTRO_HOME="$d/home" CLAUDE_PROJECT_DIR="$d" bash "$d/$b" </dev/null >/dev/null 2>&1; rc=$?
++  [[ $rc -eq 0 ]] && ok "$b: sem lib/ → rc 0" || bad "$b: sem lib/ → rc=$rc (devia degradar para 0)"
++done
++
++echo "-- 5: transcript.sh abre com a diretiva do shellcheck"
++[[ "$(sed -n 1p "$REPO/hooks/lib/transcript.sh")" == "# shellcheck shell=bash" ]] \
++  && ok "transcript.sh:1 = # shellcheck shell=bash" || bad "transcript.sh:1 não é a diretiva do shellcheck"
++if command -v shellcheck >/dev/null 2>&1; then
++  shellcheck "$REPO/hooks/lib/transcript.sh" >/dev/null 2>&1 \
++    && ok "shellcheck hooks/lib/transcript.sh limpo" || bad "shellcheck hooks/lib/transcript.sh reprova"
++else
++  ok "(sem shellcheck: checagem pulada)"
++fi
++
++exit $fail
