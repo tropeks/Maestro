@@ -1,0 +1,11 @@
+{
+  "name": "maestro-managed",
+  "owner": { "name": "Maestro" },
+  "plugins": [
+    {
+      "name": "maestro-guard",
+      "source": "./maestro-guard",
+      "description": "Mod de politica tool.check: guarda de destrutivos e autoprotecao do Maestro"
+    }
+  ]
+}

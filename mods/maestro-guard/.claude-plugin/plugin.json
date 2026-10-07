@@ -1,0 +1,5 @@
+{
+  "name": "maestro-guard",
+  "version": "0.1.0",
+  "description": "Guarda de destrutivos e autoprotecao do Maestro em tool.check; nega ou pergunta, nunca emite allow."
+}
