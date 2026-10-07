@@ -108,10 +108,30 @@ um `bash -c`, `eval` ou variável montando o caminho escapa), CHANGELOG (Added).
 - `git apply --check` do patch protegido (não aplicado).
 - Suíte completa `SUITE OK`, sozinha no worktree; recibo `order-NN` no tip e `maestro order --status NN` VÁLIDA.
 
+## Decisões do Diretor de 07/10
+
+Valem a partir do turno 2 e **mudam o que os itens 1 e 4 de "O que entrega" dizem**. Não reabra.
+
+- **(a) Sessão interativa com humano: destrutivo vira `ask`, não `deny`.** `deny` só em **headless** (`session.start` com `isInteractive:false`; sem
+  humano para perguntar). O `ask` sobe como hoje ao humano da sessão. Vale para os **destrutivos** (item 1); autoproteção e segredo seguem como a
+  ordem escreve (`deny`) até o Diretor dizer o contrário. Queda segura (`throw`/`timeout`/evento malformado) segue **`deny`**, também em sessão
+  interativa. Teste obrigatório: o mesmo comando destrutivo dá `ask` com `isInteractive:true` e `deny` com `isInteractive:false`.
+- **(b) Aceitos os 12 casos que passam de `block` para `ask`** (tabela `block → ask` de `docs/mods/CASOS-ADAPTADOR.md`, do turno 1). Não os
+  "conserte" para `deny` nem os tire do corpus; a tabela caso × adaptador fica como está, com esta decisão citada.
+- **(c) `maestro order --accept` fica fora do mod.** O aceite é do Diretor e já tem a trava do CLI (você não fecha a própria ordem); o mod **não** casa,
+  nega nem pergunta por `maestro order --accept`. Se algum caso do corpus o tocar, retire-o.
+- **(d) O kill-switch `MAESTRO_OFF=1` fica, com log.** Lido uma vez no load por `$.env.get`; ao desligar, o mod **loga que desligou** (só metadados:
+  `rule=kill-switch`, nunca comando nem caminho). Um teste cobre os dois estados.
+
+## Estado e divisão em turnos
+
+- **Turno 1: FEITO** (commit `be58181`): o corpus, a decisão como função pura, a fiação do hook, a tabela caso × adaptador. **Não o repita.**
+- **Turno 2:** o que falta de `mods/`, `tools/` e `docs/` (fatia abaixo). **Turno 3:** o patch protegido e a suíte completa com recibo.
+
 ## Turno
 
-- fatia: o corpus de teste (≥ 150 casos) com o vermelho colado, a decisão como função pura e a fiação do hook de destrutivos e de autoproteção, no `mods/maestro-guard`
-- fim: `claude plugin test` em `mods/maestro-guard` sai 1 antes (colado) e 0 depois; os testes `test-guarda-destrutiva.sh` e `test-order-047-bash-self-paths.sh` seguem verdes; `claude plugin validate` sai 0
+- fatia: **turno 2**: o instalador `tools/install-managed-mods.sh`, `docs/mods/INSTALACAO.md`, `docs/mods/EMENDAS-PROPOSTAS.md`, as emendas (API_SPEC, ENGINEERING_SPEC, CHANGELOG), o segredo em `Read`, `Grep`, `Glob` e `cat`, e a decisão (a) aplicada com teste (ask interativo × deny headless), respeitando (b), (c) e (d). O **turno 3** é o patch protegido (remoção do guard e `mods/` em `self_paths`, `git apply --check` ok, não aplicado) e a suíte completa com recibo
+- fim: `claude plugin test` em `mods/maestro-guard` verde com o teste da decisão (a) (vermelho colado antes, verde depois), o do segredo em `Read`/`Grep`/`Glob`/`cat` e o do kill-switch com log; `claude plugin validate` sai 0; `shellcheck tools/install-managed-mods.sh` limpo; `test-guarda-destrutiva.sh` e `test-order-047-bash-self-paths.sh` seguem verdes
 - teto: 4
 - fora: remover o guard bash, aplicar patch, rodar o instalador, tocar settings.json/managed-settings, emitir `allow`, rede, vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
