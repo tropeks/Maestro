@@ -240,6 +240,15 @@ A segurança de verdade é o sandbox de SO (Fase 1 da auditoria) e, na instalaç
 | `cat $F` com `F=~/.ssh/id_rsa`; `Grep` recursivo em `~` ou `/home/…` varrendo segredos | o caminho do segredo não aparece no comando | passa |
 | leitura de segredo por programa que não é da lista (`openssl`, `python`, `source .env`) | a lista de leitores é fechada | passa |
 | segredo copiado por `git`, `tar`, `scp` de diretório inteiro | idem | passa |
+| `find . -exec rm -rf {} +`, `find -exec sh -c …` (P3-1 da revisão de segurança) | o corpo do `-exec` é operando do `find`, nunca relido como comando | passa |
+| ferramenta de escrita fora da lista `GUARDED` de `register.ts` (`Bash`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Read`, `Grep`, `Glob`): ferramenta de MCP ou nome novo (P3-2) | a lista é fechada; um nome novo escapa de autoproteção e de segredo | passa; manutenção: conferir os nomes contra a versão instalada do Claude Code (o vigia, ordem 075) |
+| sessão cujo `cwd` não resolve a uma raiz do Maestro (`.maestro.yaml` + `config/routing-table.yaml`, até 16 níveis; raiz sob `/tmp/` é descartada) (P3-3) | sem raiz a autoproteção fica **inteira** inativa, não pela metade: `echo y > /home/…/Maestro/hooks/x.sh` passa | passa; sugestão futura: alarme em log quando `roots` vem vazia numa sessão que devia ser do Maestro |
+| formatar disco e sobrescrever dispositivo (`mkfs.ext4 /dev/sdb1`, `cat img > /dev/sda`) em sessão **interativa** (P3-4) | decisão (a) do Diretor de 07/10: destrutivo é `ask` com humano na sessão; **um "sim" libera** a destruição do disco | `ask` interativo; `deny` headless |
+| `~/.claude/settings.json` e `settings.local.json` do usuário (injeção de `env` ou de hooks) | não estão sob nenhuma raiz do repo; só o sandbox `denyWrite` ou o usuário sem sudo os fecham | passa |
+
+Fechados pela revisão de segurança independente de 07/10 (`~/dev/spock/docs/revisao-seguranca-072-2026-10-07.md`), com teste vermelho antes e verde depois:
+**P2-1** o alvo de `cmd < arquivo` é lido como origem (`cat < .env`, `head < ~/.ssh/id_rsa` negam; heredoc, here-string e `<(…)` não nomeiam arquivo e seguem fora);
+**P2-2** `.claude/` e `.github/workflows/` entram em `SELF_DIRS`; **P2-3** o patch 072 só aplica com o mod armado (`docs/mods/GATE-PATCH-072.md`, `tools/verificar-mod-armado.sh`).
 
 Falso positivo e falso negativo do corpus são medidos (só inteiros, em `docs/mods/CASOS-ADAPTADOR.md`); um corpus verde não é prova de
 cobertura fora dele. O mod nunca devolve texto do comando em `reason` nem no log.

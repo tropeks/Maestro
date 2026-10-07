@@ -31,9 +31,21 @@ Só o item 1 sem o 2 deixa os arquivos no lugar, mas nada os carrega. Só o 2 se
 
 3. Registre o marketplace e habilite o plugin nos **settings gerenciados** (patch `903`). O marketplace é o diretório instalado (nome `maestro-managed`, plugin `maestro-guard` por caminho relativo). Confira os nomes das chaves contra a versão do Claude Code instalada antes de escrever o patch.
 
-4. Abra sessão nova. `claude plugin list` mostra `maestro-guard@maestro-managed`; o log `~/.maestro/logs/guard-mod.jsonl` ganha uma linha por veredito.
+4. Abra sessão nova. `claude plugin list` mostra `maestro-guard@maestro-managed`; o log `~/.maestro/logs/guard-mod.jsonl` ganha uma linha por veredito. Confirme em `claude --debug` a linha `hooks module maestro-guard@maestro-managed loaded` com `tier prepend`.
 
-5. Para atualizar o mod: repita o passo 2 depois de cada merge que mexa em `mods/`.
+5. **Só agora o patch 072 pode ser aplicado** (ver a seção abaixo): confirme que o mod está armado e grave o gate.
+
+6. Para atualizar o mod: repita o passo 2 depois de cada merge que mexa em `mods/`.
+
+## O patch 072 só se aplica com o mod armado (revisão de segurança, P2-3)
+
+O patch protegido `docs/patches/072-guard-remocao-e-mods-self-paths.patch` **tira o registro do `pre-bash-guard` do `hooks/hooks.json`**. Se for aplicado antes de o mod estar armado, a máquina fica sem guarda de destrutivos e de autoproteção. A dependência é **imposta pelo próprio patch**, não só por esta nota:
+
+- o patch tem um trecho em `docs/mods/GATE-PATCH-072.md` que exige a linha `estado: 903-CONFIRMADO` como contexto. Com `903-PENDENTE`, `git apply --check` **recusa** (e a ação `aplicar_patch_maestro` do daemon, que é um `git apply`, também);
+- a linha só vira `903-CONFIRMADO` por `tools/verificar-mod-armado.sh --gravar --vi-tier-prepend`, que confere: settings gerenciados de root com `allowManagedModsOnly` **na chave aninhada** `pluginConfigs["cc-plugin-sec-default@builtin"].options`, `maestro-guard@maestro-managed` habilitado e **primeiro** em `prependPlugins` (com `sec-default@builtin` na lista), o marketplace instalado em diretório de root e `claude plugin list` mostrando o plugin habilitado. A flag `--vi-tier-prepend` é a atestação de que você viu `tier prepend` no `claude --debug`;
+- depois de gravar, commite o gate; o patch 072 passa a aplicar e troca a linha para `PATCH-072-APLICADO` (não reaplica).
+
+O patch 903 **da etapa A** (`allowManagedModsOnly` sozinho) **não arma o mod**: sem a etapa B (marketplace de root, `enabledPlugins` e `prependPlugins`), nada carrega. É a etapa B que o verificador exige. Teste: `tests/cli/test-order-072-gate-patch.sh`. Limite honesto: o gate é um arquivo de texto no repo; vale contra erro e pressa, não contra quem decide contorná-lo.
 
 ## Recusas do instalador
 
@@ -49,7 +61,7 @@ Só o item 1 sem o 2 deixa os arquivos no lugar, mas nada os carrega. Só o 2 se
 
 ## Kill-switch
 
-`MAESTRO_OFF=1` no **ambiente do processo do Claude Code** desliga o mod: ele lê a variável uma vez no load, por `$.env.get`, e registra uma linha `rule=kill-switch` (só metadados) no log. O `Bash` do agente não altera o ambiente do processo pai, então o agente não consegue ligar o kill-switch por conta própria. Quem exporta a variável antes de abrir o Claude Code consegue: é uma porta de propósito, a que o `CLAUDE.md` do projeto manda ter em todo hook. Se o Capitão preferir um mod sem essa porta, é remover uma linha em `hooks/register.ts`.
+`MAESTRO_OFF=1` no **ambiente do processo do Claude Code** desliga o mod: ele lê a variável uma vez no load, por `$.env.get`, e registra uma linha `rule=kill-switch` (só metadados) no log. O `Bash` do agente não altera o ambiente do processo pai; **mas o Claude Code também lê `env` dos arquivos de settings**, e então o agente poderia gravar `"env": {"MAESTRO_OFF": "1"}` num settings e armar o kill-switch na sessão seguinte. Por isso (revisão de segurança, P2-2) `.claude/` e `.github/workflows/` entraram na autoproteção do mod: a escrita ali é `deny`, no checkout e em todo worktree. **Resta fora** o `~/.claude/settings.json` e o `settings.local.json` do usuário, que não estão sob nenhuma raiz do repo: um agente com Bash pode gravá-los, e o mod não vê. Esse buraco é declarado, não coberto (fecha com o sandbox `denyWrite` do `~/.claude/` ou com o usuário sem sudo). Quem exporta a variável antes de abrir o Claude Code consegue: é uma porta de propósito, a que o `CLAUDE.md` do projeto manda ter em todo hook. Se o Capitão preferir um mod sem essa porta, é remover uma linha em `hooks/register.ts`.
 
 ## Limite que não se enfeita: sem sudo na fábrica
 

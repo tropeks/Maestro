@@ -20,11 +20,14 @@ export function resolvePath(t: string, cwd: string | null, home: string): string
   return normalize(cwd + '/' + t)
 }
 
-const SELF_DIRS = ['agents', 'bin', 'src', 'hooks', 'lib', 'mods', '.claude-plugin']
+// `.claude/` (settings do projeto: `env`, hooks, permissoes) e `.github/workflows/` (CI)
+// entram aqui por causa da revisao de seguranca da 072 (P2-2): com `.claude/` gravavel o
+// agente armaria o kill-switch (`env.MAESTRO_OFF`) na proxima sessao. Entrada pode ter 2 niveis.
+const SELF_DIRS = ['agents', 'bin', 'src', 'hooks', 'lib', 'mods', '.claude-plugin', '.claude', '.github/workflows']
 const SELF_FILES = ['config/routing-table.yaml', 'config/accept-proof.pub']
 
 const relProtected = (rel: string): boolean =>
-  SELF_DIRS.includes(rel.split('/')[0] ?? '') || SELF_FILES.includes(rel)
+  SELF_DIRS.some(d => rel === d || rel.startsWith(d + '/')) || SELF_FILES.includes(rel)
 
 export function protectedAbs(abs: string, ctx: Ctx): boolean {
   if (ctx.roots.length === 0) return false
@@ -37,7 +40,7 @@ export function protectedAbs(abs: string, ctx: Ctx): boolean {
   return m !== null && relProtected(m[1] ?? '')
 }
 
-const PROTECTED_LOOK = /(^|\/)(agents|bin|src|hooks|lib|mods|\.claude-plugin|config)\//
+const PROTECTED_LOOK = /(^|\/)(agents|bin|src|hooks|lib|mods|\.claude-plugin|\.claude|\.github\/workflows|config)\//
 
 // Escrita (por redirecionamento, tee, cp...) num alvo: nega caminho protegido,
 // nega dispositivo de bloco, pergunta quando o alvo nao resolve perto de um.

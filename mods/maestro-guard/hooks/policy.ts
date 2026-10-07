@@ -9,7 +9,7 @@ import { baseName, lex, SHELLS, stripHeredocs, Unparseable, type Seg } from './s
 import { normalize, protectedAbs, resolvePath, writeTarget } from './paths'
 import { leafCommand } from './commands'
 import { flagsOf, operands } from './args'
-import { checkSecretTool } from './secrets'
+import { checkSecretTool, secretInput } from './secrets'
 import { ask, deny, PASS, rank, type Cmd, type Ctx, type Decision, type State } from './types'
 
 export type { Ctx, Decision, Verdict } from './types'
@@ -82,6 +82,7 @@ function changeDir(c: Cmd, st: State): void {
 
 function scanSeg(seg: Seg, st: State, depth: number): void {
   for (const o of seg.out) writeTarget(o, st, 'redirecionamento')
+  secretInput(seg.inp, st)
   const env = stripEnvelope(seg)
   const headW = seg.w[env.i]
   if (!headW) return

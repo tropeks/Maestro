@@ -8,13 +8,17 @@ from the decision log and tag messages when this file was introduced.
 
 ### Added
 - **`mods/maestro-guard` — mod de política `tool.check` (ordem 072, turnos 1 e 2).** Plugin de mod do Claude Code (>= 2.1.287) no marketplace
-  `maestro-managed`: a decisão é uma função pura (`hooks/policy.ts`) contra um corpus de 295 comandos (falso positivo 0, falso negativo 0);
+  `maestro-managed`: a decisão é uma função pura (`hooks/policy.ts`) contra um corpus de 327 comandos (falso positivo 0, falso negativo 0);
   nega a classe estrutural clara (destrutivos, autoproteção de `self_paths` e `mods/`, segredo em `Read`/`Grep`/`Glob`/`cat`), pergunta no
   ambíguo, nunca emite `allow` e cai para `deny` na falha. Em sessão **interativa** o destrutivo vira `ask`; em headless segue `deny`.
   `MAESTRO_OFF=1` desliga e loga `rule=kill-switch`. Log só de metadados em `~/.maestro/logs/guard-mod.jsonl`.
   `tools/install-managed-mods.sh` (humano, `sudo`; recusa destino/pai gravável por não-root) e `docs/mods/INSTALACAO.md`;
   `docs/mods/EMENDAS-PROPOSTAS.md` (texto das emendas de `CLAUDE.md`/ADR, **não aplicadas**); limites da guarda léxica em
   `ENGINEERING_SPEC`, contrato em `API_SPEC`. `hooks/pre-bash-guard.sh` segue ativo (a remoção é o patch protegido do turno 3).
+- **Revisão de segurança independente da 072 (07/10): três P2 fechados.** (P2-1) o alvo de `cmd < arquivo` é lido como origem de leitura:
+  `cat < .env` e `head < ~/.ssh/id_rsa` passam a negar. (P2-2) `.claude/` e `.github/workflows/` entram na autoproteção (o agente não arma o
+  kill-switch por `env` do settings do projeto). (P2-3) o patch protegido 072 só aplica com o mod armado: trecho em `docs/mods/GATE-PATCH-072.md`
+  que exige `estado: 903-CONFIRMADO`, gravado por `tools/verificar-mod-armado.sh`. Os P3 estão em `ENGINEERING_SPEC` (limites da guarda léxica).
 
 ## [1.23.0] — 2026-10-06
 

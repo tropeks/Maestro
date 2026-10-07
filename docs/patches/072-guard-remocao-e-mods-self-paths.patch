@@ -11,6 +11,19 @@ index 5a5c82c..399496a 100644
  workflows:
    # `steps` são nomes de ETAPA, não nomes de comando: quem diz o que roda é o
    # bloco `bindings` abaixo. Antes da v2 os steps de ship/audit se chamavam
+diff --git a/docs/mods/GATE-PATCH-072.md b/docs/mods/GATE-PATCH-072.md
+index d8f8634..be91b40 100644
+--- a/docs/mods/GATE-PATCH-072.md
++++ b/docs/mods/GATE-PATCH-072.md
+@@ -3,7 +3,7 @@
+ O patch `docs/patches/072-guard-remocao-e-mods-self-paths.patch` **remove o registro do `pre-bash-guard` no `hooks/hooks.json`**. Aplicado antes de
+ o mod estar armado, a máquina fica **sem** guarda de destrutivos e de autoproteção. Por isso o patch **só se aplica** depois que o mod estiver armado.
+ 
+-estado: 903-CONFIRMADO
++estado: PATCH-072-APLICADO
+ 
+ O patch troca a linha acima de `903-CONFIRMADO` para `PATCH-072-APLICADO`. Com qualquer outro valor, `git apply` (e a ação `aplicar_patch_maestro`
+ do daemon, que é um `git apply`) **recusa**: a linha faz parte do contexto exigido pelo patch.
 diff --git a/hooks/hooks.json b/hooks/hooks.json
 index 240610d..04d0417 100644
 --- a/hooks/hooks.json

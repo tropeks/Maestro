@@ -4,7 +4,8 @@
 // fica marcada `dyn`. Texto que nao da para ler com seguranca lanca Unparseable.
 
 export type Word = { t: string; dyn: boolean; glob: boolean }
-export type Seg = { w: Word[]; out: Word[] }
+// w: as palavras do comando; out: alvos de `>`; inp: alvos de `<` (arquivo lido por stdin)
+export type Seg = { w: Word[]; out: Word[]; inp: Word[] }
 export type Heredoc = { word: string; feeds: 'shell' | 'sql' | 'data'; body: string }
 
 export class Unparseable extends Error {}
@@ -62,9 +63,10 @@ export function stripHeredocs(src: string): { text: string; docs: Heredoc[] } {
 
 // O estado de um nivel de aninhamento: o segmento e a palavra em construcao.
 class Frame {
-  cur: Seg = { w: [], out: [] }
+  cur: Seg = { w: [], out: [], inp: [] }
   word: Word | null = null
   redirOut = false
+  redirIn = false
   skipNext = false
   paren = 0
 
@@ -78,19 +80,25 @@ class Frame {
   endWord(): void {
     if (!this.word) return
     if (this.redirOut) this.cur.out.push(this.word)
+    else if (this.redirIn) this.cur.inp.push(this.word)
     else if (!this.skipNext) this.cur.w.push(this.word)
     this.redirOut = false
+    this.redirIn = false
     this.skipNext = false
     this.word = null
   }
 
   endSeg(): void {
     this.endWord()
-    if (this.cur.w.length || this.cur.out.length) {
+    if (this.cur.w.length || this.cur.out.length || this.cur.inp.length) {
       if (this.segs.length >= MAX_SEGS) throw new Unparseable('segs')
       this.segs.push(this.cur)
     }
-    this.cur = { w: [], out: [] }
+    this.cur = { w: [], out: [], inp: [] }
+    // redirecionamento sem alvo (`cat <;`) nao vaza para o proximo segmento
+    this.redirOut = false
+    this.redirIn = false
+    this.skipNext = false
   }
 }
 
@@ -157,13 +165,22 @@ class Lexer {
     } else f.redirOut = true
   }
 
+  // `< arquivo`: o alvo vira origem de LEITURA (seg.inp), para a guarda de segredo
+  // ve-lo (`cat < .env`). Heredoc/here-string (`<<`, `<<<`), `<(...)` e `<&`/`<>`
+  // nao nomeiam um arquivo lido por stdin e seguem descartando a palavra seguinte.
   private redirectIn(f: Frame): void {
-    f.endWord()
+    const w = f.word
+    if (w && /^[0-9]+$/.test(w.t) && !w.dyn) f.word = null
+    else f.endWord()
     this.i++
-    if (this.src[this.i] === '<') this.i++
-    if (this.src[this.i] === '<') this.i++
-    if (this.src[this.i] === '-') this.i++
-    f.skipNext = true
+    const nx = this.src[this.i]
+    if (nx === '<') {
+      this.i++
+      if (this.src[this.i] === '<') this.i++
+      if (this.src[this.i] === '-') this.i++
+      f.skipNext = true
+    } else if (nx === '(' || nx === '&' || nx === '>') f.skipNext = true
+    else f.redirIn = true
   }
 
   private closeParen(f: Frame, closer: ')' | '`' | null): boolean {

@@ -41,6 +41,12 @@ export function secretReader(c: Cmd, st: State): void {
   if (sources.some(w => isSecretPath(w.t))) st.findings.push(secretDeny())
 }
 
+// `cmd < arquivo`: qualquer comando que recebe um segredo por stdin o le (a revisao de
+// seguranca da 072, P2-1). Vale para o comando todo, nao so para a lista de leitores.
+export function secretInput(inputs: readonly Word[], st: State): void {
+  if (inputs.some(w => isSecretPath(w.t))) st.findings.push(secretDeny())
+}
+
 const FIELDS: Record<string, string[]> = {
   Read: ['file_path'],
   Grep: ['path', 'glob'],

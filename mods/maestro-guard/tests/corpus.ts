@@ -2,36 +2,13 @@
 // existe, o veredito do hook bash (tests/hooks/test-guarda-destrutiva.sh, modo
 // autonomo) para a tabela caso x adaptador. So dado, sem logica.
 
-export type Want = 'deny' | 'ask' | 'pass'
+// A base (tipo, contexto, construtores B e F) mora em corpus-base.ts; os casos
+// da revisao de seguranca (07/10) moram em corpus-revisao.ts.
+import { B, CK, F, HOME, WT, type Case } from './corpus-base'
+import { DENY_REV, PASS_REV } from './corpus-revisao'
 
-export type Case = {
-  tool: string
-  input: Record<string, unknown>
-  want: Want
-  // veredito do hook bash para o mesmo comando; ausente = o hook bash nao cobre
-  bash?: 'block' | 'pass'
-  // cwd da sessao; padrao: o worktree da ordem
-  cwd?: string
-}
-
-export const WT = '/home/rcosta00/dev/worktrees/maestro-072'
-export const CK = '/home/rcosta00/dev/Maestro'
-export const HOME = '/home/rcosta00'
-export const CTX = { cwd: WT, roots: [WT, CK], home: HOME }
-
-const B = (command: string, want: Want, bash?: 'block' | 'pass', cwd?: string): Case => ({
-  tool: 'Bash',
-  input: { command },
-  want,
-  ...(bash ? { bash } : {}),
-  ...(cwd ? { cwd } : {}),
-})
-const F = (tool: string, key: string, path: string, want: Want, cwd?: string): Case => ({
-  tool,
-  input: { [key]: path },
-  want,
-  ...(cwd ? { cwd } : {}),
-})
+export { CK, CTX, HOME, WT } from './corpus-base'
+export type { Case, Want } from './corpus-base'
 
 export const DENY: Case[] = [
   // rm -rf de alvo largo (do hook bash)
@@ -191,6 +168,7 @@ export const DENY: Case[] = [
   B('grep KEY .env', 'deny'),
   B('echo ok; cat .env', 'deny'),
   B('xargs cat < /dev/null && cat .env.production', 'deny'),
+  ...DENY_REV,
 ]
 
 export const PASS: Case[] = [
@@ -317,6 +295,7 @@ export const PASS: Case[] = [
   B('head -20 src/env.ts', 'pass'),
   B('tail -n 50 /tmp/claude-1000/run.log', 'pass'),
   B('git log --oneline -5', 'pass'),
+  ...PASS_REV,
 ]
 
 export const ASK: Case[] = [
