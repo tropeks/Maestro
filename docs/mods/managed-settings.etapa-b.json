@@ -1,0 +1,19 @@
+{
+  "extraKnownMarketplaces": {
+    "maestro-managed": {
+      "source": { "source": "directory", "path": "/opt/maestro/claude-plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "maestro-guard@maestro-managed": true
+  },
+  "prependPlugins": [
+    "maestro-guard@maestro-managed",
+    "sec-default@builtin"
+  ],
+  "pluginConfigs": {
+    "cc-plugin-sec-default@builtin": {
+      "options": { "allowManagedModsOnly": true }
+    }
+  }
+}
