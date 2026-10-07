@@ -130,8 +130,9 @@ Valem a partir do turno 2 e **mudam o que os itens 1 e 4 de "O que entrega" dize
 
 ## Turno
 
-- fatia: **turno 2**: o instalador `tools/install-managed-mods.sh`, `docs/mods/INSTALACAO.md`, `docs/mods/EMENDAS-PROPOSTAS.md`, as emendas (API_SPEC, ENGINEERING_SPEC, CHANGELOG), o segredo em `Read`, `Grep`, `Glob` e `cat`, e a decisão (a) aplicada com teste (ask interativo × deny headless), respeitando (b), (c) e (d). O **turno 3** é o patch protegido (remoção do guard e `mods/` em `self_paths`, `git apply --check` ok, não aplicado) e a suíte completa com recibo
-- fim: `claude plugin test` em `mods/maestro-guard` verde com o teste da decisão (a) (vermelho colado antes, verde depois), o do segredo em `Read`/`Grep`/`Glob`/`cat` e o do kill-switch com log; `claude plugin validate` sai 0; `shellcheck tools/install-managed-mods.sh` limpo; `test-guarda-destrutiva.sh` e `test-order-047-bash-self-paths.sh` seguem verdes
+- ESTADO: turnos 1 e 2 concluídos e verdes em `5b20c1b`. **Não repetir.** O próximo run faz **só o turno 3**: o patch protegido com `git apply --check`, a suíte completa e o recibo `order-72`.
+- fatia: **turno 3**: o patch protegido em `docs/patches/` (remoção do registro do `pre-bash-guard` no `hooks/hooks.json` e `mods/` em `self_paths`; clone sandbox fora do repo; `git apply --check` ok; **não aplicado**), a suíte completa `bash tests/run-all.sh` e o recibo `order-72` no tip
+- fim: o patch pronto com `git apply --check` ok (saída colada); `bash tests/run-all.sh` sai 0 (`SUITE OK`), sozinha no worktree; `maestro evidence --record --label order-72 -- bash tests/run-all.sh` gravado e `maestro order --status 72` VÁLIDA; `claude plugin test` e `claude plugin validate` em `mods/maestro-guard` seguem verdes
 - teto: 4
 - fora: remover o guard bash, aplicar patch, rodar o instalador, tocar settings.json/managed-settings, emitir `allow`, rede, vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
