@@ -5,9 +5,11 @@ esperada sumir). Rollback: `docs/fase1/ROLLBACK.md`.
 
 ## Data de início
 
-**Previsto: 2026-10-07T00:00:00-03:00** (arquivo `docs/fase1/INICIO`, a 1ª linha). **Troque pela data real em que o Capitão aplicar o patch
-`901-fase1-gate-warn-guard-sombra.patch` e o bloco `sandbox`.** A janela são **7 dias** a partir dela; o baseline são os **14 dias antes**.
-Sem sombra ligada, o painel mostra `AGUARDANDO INÍCIO` e a janela fica vazia.
+**Início: 2026-10-06T18:07:28-03:00** (arquivo `docs/fase1/INICIO`, a 1ª linha). É o instante em que o **cache do plugin carregou a 1.23.0**
+(informado pelo Capitão): os hooks rodam do cache, então a sombra do patch `901-fase1-gate-warn-guard-sombra.patch` (`gate.mode: warn`, guard só registrando)
+só vale a partir dele, **não** a partir do merge. Panes de longa duração que não foram reiniciadas seguem com o gate antigo, e isso contamina a janela.
+A janela são **7 dias** a partir do início (fim em 2026-10-13T18:07:28-03:00); o baseline são os **14 dias antes**. O bloco `sandbox` **não** foi aplicado
+(ver `TESTE-SANDBOX.md`): a sombra desta janela é só a do gate e do guard.
 
 ## Os critérios do item 4 e de onde vêm
 
