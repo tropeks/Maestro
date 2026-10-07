@@ -11,7 +11,25 @@ Um mod só conta como da organização quando duas coisas valem juntas:
 
 Só o item 1 sem o 2 deixa os arquivos no lugar, mas nada os carrega. Só o 2 sem o 1 aponta para um diretório que o usuário da sessão reescreve.
 
-## Passo a passo
+## Comando único (passos 2 e 3 juntos)
+
+```
+tools/armar-mods.sh --so-diff     # só mostra o diff; sem root, não escreve nada
+sudo tools/armar-mods.sh          # mostra o diff, pergunta "Aplicar? [s/N]", aplica
+sudo tools/armar-mods.sh --desfazer   # volta ao arquivo gerenciado anterior
+```
+
+Rode do checkout da `main` depois do merge (o que o instalador copia é o `mods/` de onde o script está). O comando:
+
+1. confere o Claude Code instalado: versão >= 2.1.287, as seis chaves (`allowManagedModsOnly`, `prependPlugins`, `cc-plugin-sec-default`, `extraKnownMarketplaces`, `enabledPlugins`, `pluginConfigs`) presentes **no executável**, e `claude plugin validate mods/maestro-guard`; qualquer falha recusa antes de escrever;
+2. mostra o **diff** do `/etc/claude-code/managed-settings.json` (o arquivo atual é preservado: só as chaves abaixo são somadas) e o destino dos mods, e **pergunta**;
+3. instala `mods/` em `/opt/maestro/claude-plugins` pelo `tools/install-managed-mods.sh` (root:root, recusa pai gravável por não-root);
+4. faz **backup** do arquivo gerenciado anterior (`managed-settings.json.bak-<data>`) e grava o novo: `pluginConfigs["cc-plugin-sec-default@builtin"].options.allowManagedModsOnly = true` (aninhado), o marketplace `maestro-managed` em `/opt/maestro/claude-plugins`, `enabledPlugins["maestro-guard@maestro-managed"] = true` e `prependPlugins` com o `maestro-guard` **primeiro** e o `sec-default@builtin` na lista (etapas A e B do 903 juntas; o patch 903 fica dispensado);
+5. roda `tools/verificar-mod-armado.sh` e imprime o que falta.
+
+`--desfazer` restaura o backup (ou remove o arquivo, se não existia) e remove `/opt/maestro/claude-plugins` se foi criado pelo arme. Depois de armar ou desfazer, **reinicie as panes**. Armar fecha todos os mods de usuário, inclusive `--plugin-dir` (as provas da ordem 076 deixam de rodar assim). `disableSideloadFlags` **não** é escrito: quebraria `--agents` e `--mcp-config`. Teste, com raiz falsa e `claude` falso: `tests/cli/test-armar-mods.sh`.
+
+## Passo a passo (o que o comando único faz, em partes)
 
 1. Confira o que será recusado, sem criar nada:
 

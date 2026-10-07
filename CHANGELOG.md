@@ -7,6 +7,11 @@ from the decision log and tag messages when this file was introduced.
 ## [Unreleased]
 
 ### Added
+- **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
+  as seis chaves no executável, `plugin validate`), mostra o diff dos settings gerenciados, pergunta, instala `mods/` em
+  `/opt/maestro/claude-plugins` e grava as etapas A e B juntas (`allowManagedModsOnly` aninhado, marketplace de root, `enabledPlugins`,
+  `prependPlugins` com o guard primeiro) com backup do arquivo anterior; `--so-diff` só mostra e `--desfazer` restaura. Teste com raiz
+  falsa: `tests/cli/test-armar-mods.sh`. Dispensa o patch 903.
 - **`mods/maestro-guard` — mod de política `tool.check` (ordem 072, turnos 1 e 2).** Plugin de mod do Claude Code (>= 2.1.287) no marketplace
   `maestro-managed`: a decisão é uma função pura (`hooks/policy.ts`) contra um corpus de 327 comandos (falso positivo 0, falso negativo 0);
   nega a classe estrutural clara (destrutivos, autoproteção de `self_paths` e `mods/`, segredo em `Read`/`Grep`/`Glob`/`cat`), pergunta no
