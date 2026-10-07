@@ -6,6 +6,16 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Added
+- **`mods/maestro-guard` — mod de política `tool.check` (ordem 072, turnos 1 e 2).** Plugin de mod do Claude Code (>= 2.1.287) no marketplace
+  `maestro-managed`: a decisão é uma função pura (`hooks/policy.ts`) contra um corpus de 295 comandos (falso positivo 0, falso negativo 0);
+  nega a classe estrutural clara (destrutivos, autoproteção de `self_paths` e `mods/`, segredo em `Read`/`Grep`/`Glob`/`cat`), pergunta no
+  ambíguo, nunca emite `allow` e cai para `deny` na falha. Em sessão **interativa** o destrutivo vira `ask`; em headless segue `deny`.
+  `MAESTRO_OFF=1` desliga e loga `rule=kill-switch`. Log só de metadados em `~/.maestro/logs/guard-mod.jsonl`.
+  `tools/install-managed-mods.sh` (humano, `sudo`; recusa destino/pai gravável por não-root) e `docs/mods/INSTALACAO.md`;
+  `docs/mods/EMENDAS-PROPOSTAS.md` (texto das emendas de `CLAUDE.md`/ADR, **não aplicadas**); limites da guarda léxica em
+  `ENGINEERING_SPEC`, contrato em `API_SPEC`. `hooks/pre-bash-guard.sh` segue ativo (a remoção é o patch protegido do turno 3).
+
 ## [1.23.0] — 2026-10-06
 
 Fase 0 e Fase 1 da auditoria de 05/10 (INTENT v62): kill-switch na linha 2 de todo hook, CI do shellcheck verde e a **sombra de

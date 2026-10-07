@@ -5,7 +5,8 @@ export type Verdict = 'deny' | 'ask' | 'pass'
 export type Decision = { verdict: Verdict; rule: string; reason: string }
 // roots: raizes do repo Maestro em que a sessao esta (checkout e/ou worktree);
 // vazio = a sessao nao e do Maestro e a autoprotecao fica inativa.
-export type Ctx = { cwd: string; roots: readonly string[]; home: string }
+// interactive: ha humano na sessao para responder um ask; ausente = headless (deny).
+export type Ctx = { cwd: string; roots: readonly string[]; home: string; interactive?: boolean }
 
 export const PASS: Decision = { verdict: 'pass', rule: 'none', reason: '' }
 export const deny = (rule: string, reason: string): Decision => ({ verdict: 'deny', rule, reason })

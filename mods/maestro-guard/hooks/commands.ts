@@ -5,6 +5,7 @@ import { codeTouchesProtected, writeTarget } from './paths'
 import { rmTarget } from './rm-rules'
 import { gitCheck } from './git-rules'
 import { hasShort } from './args'
+import { secretReader } from './secrets'
 import { ask, deny, type Cmd, type State } from './types'
 
 type Handler = (c: Cmd, st: State) => void
@@ -132,6 +133,7 @@ const TABLE: Record<string, Handler> = {
 for (const db of DB_CLIENTS) TABLE[db] = dbClient
 
 export function leafCommand(c: Cmd, st: State): void {
+  secretReader(c, st)
   const h = TABLE[c.head]
   if (h) h(c, st)
   else if (c.head.startsWith('mkfs.')) diskFormat(c, st)

@@ -112,6 +112,33 @@ de `cp`/`dd if=` fora de `self_paths` não bloqueia (ler é permitido). Mensagem
 patch (clone fora do repo → `docs/patches/NNN-*.patch` → `git apply` humano); `maestro consent`
 não destrava. Módulo: `hooks/lib/self-paths.sh`. Teste: `tests/hooks/test-order-047-bash-self-paths.sh`.
 
+### `mods/maestro-guard` — mod de política `tool.check` (ordem 072)
+Plugin de mod do Claude Code (>= 2.1.287; escrito contra 2.1.293), no marketplace `maestro-managed` (`mods/.claude-plugin/marketplace.json`).
+**Não é hook bash**: é TypeScript em `mods/`, sem importar `src/`, sem rede. Instalação como plugin da organização:
+`tools/install-managed-mods.sh` (humano, `sudo`) + settings gerenciados; passo a passo em `docs/mods/INSTALACAO.md`.
+- **Eventos.** `tool.check` (veredito `{decision, reason}`) e `tool.call` (segunda trava, só `{deny}`), para as ferramentas
+  `Bash` (`input.command`), `Edit`/`Write`/`MultiEdit` (`input.file_path`), `NotebookEdit` (`input.notebook_path`) e `Read`/`Grep`/`Glob`
+  (`input.file_path`, `input.path`, `input.glob`, `input.pattern`); `session.start` (`isInteractive`) só para saber se há humano.
+  As demais ferramentas seguem direto para `next(e)`.
+- **Vereditos.** `deny` (classe estrutural clara), `ask` (ambíguo) ou o que `next(e)` devolveu. **O mod nunca emite `allow`.**
+  Decisão pura em `hooks/policy.ts` (`decide(tool, input, ctx)` → `deny | ask | pass` + `rule`).
+- **Destrutivos** (`rm -rf` largo, `git push` force na main, `reset --hard` fora de worktree, `clean -fdx`, `DROP`/`TRUNCATE`/`DELETE` sem
+  `WHERE`, `chmod -R`/`chown -R` largo, formatar disco): `deny` em **headless**; `ask` em **sessão interativa** (`isInteractive:true`).
+  Sem o evento `session.start`, a sessão conta como headless.
+- **Autoproteção** (`agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/ mods/`, no checkout e
+  em todo worktree): `deny` sempre; a exceção é o clone sandbox em `/tmp`. **Segredo** (`.env*` exceto `.example`/`.sample`/`.template`,
+  `~/.ssh`, `~/.ponte`, `~/.claude/.credentials*`, `*.pem`/`*.pfx`/`*.p12`, e-CPF) em `Read`/`Grep`/`Glob` e `cat`/`less`/`head`/`tail`/`cp`
+  (e afins) no Bash: `deny` sempre. `maestro order --accept` **não** é casado (o aceite é do Diretor).
+- **Queda segura.** `throw`/`timeout`/evento malformado/comando gigante/bytes inválidos/aspas aninhadas não fechadas: `deny` (`.catch` em
+  todo hook de bloqueio). Em sessão interativa a queda segue `deny`.
+- **Log.** `~/.maestro/logs/guard-mod.jsonl` (`MAESTRO_HOME` respeitado), uma linha por veredito: `{ts, event:"guard_mod", rule, tool,
+  verdict}`; **nunca** comando, caminho completo nem prompt. Últimas 1000 linhas.
+- **Kill-switch.** `MAESTRO_OFF=1` lido uma vez no load por `$.env.get`; desliga o mod e grava `rule=kill-switch`.
+- **`calls:` declarados** (`claude plugin validate`): `env.get`, `fs.exists`, `fs.read`, `fs.write` (só o log), `session.cwd`; **sem**
+  `http.fetch`, `process.*`, `mcp.call`, `model.complete`.
+- **Testes:** `claude plugin test mods/maestro-guard` (corpus em `tests/corpus.ts`; tabela caso × adaptador em `docs/mods/CASOS-ADAPTADOR.md`).
+  `hooks/pre-bash-guard.sh` segue registrado até o patch de remoção (depois da janela da Fase 1).
+
 ### `hooks/pre-agent.sh` — evento PreToolUse, matcher `Agent|Task` (E23a/S-2301)
 - **Lê:** os primeiros 4096 bytes do stdin. `session_id` por regex
   (`CLAUDE_SESSION_ID` como fallback) e `subagent_type` do payload

@@ -2,7 +2,7 @@ import type { Engine, Register } from 'claude-code'
 import { decide, type Ctx } from './policy'
 
 // Ferramentas que a guarda julga; as demais seguem direto para next(e).
-const GUARDED = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']
+const GUARDED = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Read', 'Grep', 'Glob']
 const LOG_KEEP = 1000
 
 let offOnce: Promise<boolean> | undefined
@@ -34,7 +34,7 @@ function killSwitch($: Engine): Promise<boolean> {
   if (!offOnce) {
     offOnce = (async () => {
       const off = (await $.env.get('MAESTRO_OFF')) === '1'
-      if (off) await logLine($, 'killswitch_on', '-', 'off')
+      if (off) await logLine($, 'kill-switch', '-', 'off')
       return off
     })()
     offOnce.catch(() => {
@@ -71,16 +71,23 @@ async function rootsFor($: Engine, cwd: string): Promise<string[]> {
   return roots
 }
 
-async function context($: Engine): Promise<Ctx> {
+async function context($: Engine, interactive: boolean): Promise<Ctx> {
   const cwd = await $.session.cwd()
   const home = (await $.env.get('HOME')) || ''
-  return { cwd, home, roots: await rootsFor($, cwd) }
+  return { cwd, home, roots: await rootsFor($, cwd), interactive }
 }
 
 export const register: Register = on => {
+  // ha humano para responder um ask? Sem o evento, a sessao conta como headless (deny).
+  let interactive = false
+  on('session.start', (_$, e, next) => {
+    interactive = e.isInteractive === true
+    return next(e)
+  })
+
   on('tool.check', async ($, e, next) => {
     if (!GUARDED.includes(e.tool) || (await killSwitch($))) return next(e)
-    const d = decide(e.tool, e.input, await context($))
+    const d = decide(e.tool, e.input, await context($, interactive))
     if (d.verdict === 'pass') return next(e)
     await logLine($, d.rule, e.tool, d.verdict)
     return { decision: d.verdict, reason: `maestro-guard [${d.rule}]: ${d.reason}` }
@@ -94,7 +101,7 @@ export const register: Register = on => {
     const name: string = e.tool
     if (!GUARDED.includes(name) || (await killSwitch($))) return next(e)
     const { tool: _t, tool_use_id: _u, consent: _c, agentId: _a, ...input } = e as Record<string, unknown>
-    const d = decide(name, input, await context($))
+    const d = decide(name, input, await context($, interactive))
     if (d.verdict !== 'deny') return next(e)
     await logLine($, d.rule, name, 'deny')
     return { deny: `maestro-guard [${d.rule}]: ${d.reason}` }

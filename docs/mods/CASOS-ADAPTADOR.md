@@ -6,7 +6,10 @@ Os dois adaptadores: o hook bash (`hooks/pre-bash-guard.sh`, em modo autônomo) 
 
 ## Contagens (só inteiros)
 
-Corpus: 236 casos = 99 passam · 111 negam · 26 perguntam. Falso positivo 0 · falso negativo 0 (contra o esperado do corpus).
+Corpus (turno 2): 295 casos = 121 passam · 148 negam · 26 perguntam. Falso positivo 0 · falso negativo 0 (contra o esperado do corpus).
+Os 59 casos novos do turno 2 são de segredo (`Read`, `Grep`, `Glob`, `cat`, `cp`); a tabela abaixo é a do turno 1 e **não mudou**: o hook bash
+não cobre segredo. Decisão (b) do Diretor de 07/10: os 12 casos `block → ask` foram aceitos como estão. Decisão (a): os vereditos `deny` desta
+tabela valem em **headless**; em sessão interativa os destrutivos viram `ask` (`tests/interativo.test.ts`).
 
 | hook bash | mod | casos |
 | --- | --- | --- |

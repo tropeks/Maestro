@@ -222,6 +222,28 @@ absoluto, `./`, `../` e de worktree. **Honra declarada — o guard lê o comando
 O caminho legítimo é o molde das ordens 045/046: clone sandbox FORA do repo do plugin, patch em
 `docs/patches/`, `git apply` por mão humana. Nenhuma dessas lacunas é consentível.
 
+## Limites da guarda léxica do mod (ordem 072) — tripwire, não sandbox
+
+`mods/maestro-guard` lê o **texto** do comando, não o programa. O que ele cobre tem teste no corpus; o que escapa, escapa por construção.
+A segurança de verdade é o sandbox de SO (Fase 1 da auditoria) e, na instalação, o usuário sem sudo; a guarda léxica é uma segunda camada.
+
+| não coberto | por quê | resposta do mod |
+|---|---|---|
+| `bash script.sh`, `make`, `npm run x` | o perigo mora dentro do arquivo, que não se lê | passa |
+| `D=/; rm -rf $D`, caminho montado por variável | só o texto `$D` aparece | `ask` quando perto de caminho protegido ou alvo de `rm -r`; senão passa |
+| `bash -c "$CMD"`, `eval "$X"`, `$(…)` montando o comando | o texto final não existe antes de rodar | `ask` (`dynamic_exec`) |
+| `bash -c 'rm -rf /'` com texto literal | lê-se: o literal é analisado recursivamente (até 6 níveis) | `deny`/`ask` como o comando solto |
+| `echo … \| base64 -d \| sh`, `find -delete`, `rsync --delete` | decodificação e flags de remoção fora da lista | passa |
+| symlink para dentro de caminho protegido ou de segredo | não se resolve link | passa |
+| `( cd x; … )` em subshell | o cwd do subshell não se propaga | usa o cwd de fora |
+| `python -c`, `node -e`, `perl -e` | só literal de caminho protegido + verbo de escrita é visto | `deny` com literal; `ask` com código montado |
+| `cat $F` com `F=~/.ssh/id_rsa`; `Grep` recursivo em `~` ou `/home/…` varrendo segredos | o caminho do segredo não aparece no comando | passa |
+| leitura de segredo por programa que não é da lista (`openssl`, `python`, `source .env`) | a lista de leitores é fechada | passa |
+| segredo copiado por `git`, `tar`, `scp` de diretório inteiro | idem | passa |
+
+Falso positivo e falso negativo do corpus são medidos (só inteiros, em `docs/mods/CASOS-ADAPTADOR.md`); um corpus verde não é prova de
+cobertura fora dele. O mod nunca devolve texto do comando em `reason` nem no log.
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md

@@ -9,6 +9,7 @@ import { baseName, lex, SHELLS, stripHeredocs, Unparseable, type Seg } from './s
 import { normalize, protectedAbs, resolvePath, writeTarget } from './paths'
 import { leafCommand } from './commands'
 import { flagsOf, operands } from './args'
+import { checkSecretTool } from './secrets'
 import { ask, deny, PASS, rank, type Cmd, type Ctx, type Decision, type State } from './types'
 
 export type { Ctx, Decision, Verdict } from './types'
@@ -159,11 +160,24 @@ function checkFileWrite(tool: string, input: unknown, ctx: Ctx): Decision {
   return PASS
 }
 
+// Regras de destrutivo: com humano na sessao viram ask (decisao do Diretor, 07/10);
+// sem humano (headless) seguem deny. Autoprotecao, segredo e queda segura nao entram.
+const DESTRUCTIVE = new Set([
+  'rm_recursive_wide', 'sql_destructive', 'chmod_wide', 'disk_format', 'device_write',
+  'force_push_main', 'git_clean', 'reset_hard',
+])
+
+function judge(tool: string, input: unknown, ctx: Ctx): Decision {
+  if (tool === 'Bash') return checkBash(input, ctx)
+  if (tool in PATH_KEY) return checkFileWrite(tool, input, ctx)
+  if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return checkSecretTool(tool, input) ?? PASS
+  return PASS
+}
+
 export function decide(tool: string, input: unknown, ctx: Ctx): Decision {
   try {
-    if (tool === 'Bash') return checkBash(input, ctx)
-    if (tool in PATH_KEY) return checkFileWrite(tool, input, ctx)
-    return PASS
+    const d = judge(tool, input, ctx)
+    return ctx.interactive === true && d.verdict === 'deny' && DESTRUCTIVE.has(d.rule) ? ask(d.rule, d.reason) : d
   } catch {
     return deny('guard_error', 'falha interna da guarda')
   }
