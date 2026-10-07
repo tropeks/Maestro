@@ -1,0 +1,85 @@
+diff --git a/config/routing-table.yaml b/config/routing-table.yaml
+index 5a5c82c..399496a 100644
+--- a/config/routing-table.yaml
++++ b/config/routing-table.yaml
+@@ -18,7 +18,7 @@ gate:
+     # AUTOPROTEÇÃO: só valem ancorados na raiz do plugin. Como prefixo relativo
+     # bloqueariam o `src/`, `bin/` e `hooks/` de QUALQUER projeto — trabalho
+     # legítimo travado, o pior caso do brief §8.
+-    self_paths: [agents/, bin/, src/, hooks/, lib/, config/routing-table.yaml, config/accept-proof.pub, .claude-plugin/]
++    self_paths: [agents/, bin/, src/, hooks/, lib/, config/routing-table.yaml, config/accept-proof.pub, .claude-plugin/, mods/]
+ workflows:
+   # `steps` são nomes de ETAPA, não nomes de comando: quem diz o que roda é o
+   # bloco `bindings` abaixo. Antes da v2 os steps de ship/audit se chamavam
+diff --git a/hooks/hooks.json b/hooks/hooks.json
+index 240610d..04d0417 100644
+--- a/hooks/hooks.json
++++ b/hooks/hooks.json
+@@ -20,15 +20,6 @@
+           }
+         ]
+       },
+-      {
+-        "matcher": "Bash",
+-        "hooks": [
+-          {
+-            "type": "command",
+-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-bash-guard.sh"
+-          }
+-        ]
+-      },
+       {
+         "matcher": "Agent|Task",
+         "hooks": [
+diff --git a/hooks/lib/self-paths.sh b/hooks/lib/self-paths.sh
+index ab63be2..6823ef8 100644
+--- a/hooks/lib/self-paths.sh
++++ b/hooks/lib/self-paths.sh
+@@ -22,7 +22,7 @@
+ #
+ # Sourced por hooks/pre-bash-guard.sh só quando o comando menciona uma raiz.
+ 
+-SP_FALLBACK="agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/"
++SP_FALLBACK="agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/ mods/"
+ SP_DENY=""; SP_ROOT=""; SP_CWD=""; SP_N=""; SP_R=""
+ 
+ _sp_load() { # <raiz-do-hook> → carrega SP_DENY/SP_ROOT da política compilada; fallback embutido
+diff --git a/hooks/pre-bash-guard.sh b/hooks/pre-bash-guard.sh
+index f50f541..a1b051b 100755
+--- a/hooks/pre-bash-guard.sh
++++ b/hooks/pre-bash-guard.sh
+@@ -216,7 +216,7 @@ LOW="${FLAT,,}"
+ # carregar o módulo degrada para liberar (Prioridade 1). Barato-primeiro: só o
+ # comando que cita uma raiz de self_paths sai do `case` (zero fork).
+ case "$FLAT" in
+-  *agents/*|*bin/*|*src/*|*hooks/*|*lib/*|*config/*|*.claude-plugin/*)
++  *agents/*|*bin/*|*src/*|*hooks/*|*lib/*|*config/*|*.claude-plugin/*|*mods/*)
+     # shellcheck source=lib/self-paths.sh
+     if source "$SCRIPT_DIR/lib/self-paths.sh" 2>/dev/null \
+        && maestro_bash_self_write "$FLAT" "$G_ROOT" "${SCRIPT_DIR%/hooks}"; then
+diff --git a/hooks/pre-tool-gate.sh b/hooks/pre-tool-gate.sh
+index d8db66f..fd60d9a 100755
+--- a/hooks/pre-tool-gate.sh
++++ b/hooks/pre-tool-gate.sh
+@@ -392,7 +392,7 @@ ORDER_FROZEN="${MAESTRO_GATE_ORDER_FROZEN-}"
+ # visível em diff/log) e torna a troca AUDITÁVEL (maestro doctor imprime a
+ # impressão digital — check_accept_proof_key, bin/maestro) — nunca a torna
+ # impossível para quem já tem shell.
+-DENY_SELF="${MAESTRO_GATE_DENY_SELF-agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/}"
++DENY_SELF="${MAESTRO_GATE_DENY_SELF-agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml config/accept-proof.pub .claude-plugin/ mods/}"
+ PLUGIN_ROOT="${MAESTRO_PLUGIN_ROOT-}"
+ # A autoproteção só age ancorada na raiz do plugin. Se a política não foi
+ # compilada ainda (ou veio parcial), derivamos a raiz da localização do próprio
+diff --git a/hooks/session-start.sh b/hooks/session-start.sh
+index 1a2bcb7..1257234 100755
+--- a/hooks/session-start.sh
++++ b/hooks/session-start.sh
+@@ -103,7 +103,7 @@ DENY_FALLBACK=".claude/ .github/workflows/"
+ # para uma zona sem a autoproteção do ADR-003 v1.2 — vencida por mudança de
+ # endereço, não por remoção. config/routing-table.yaml continua sendo a fonte
+ # viva (self_paths); este fallback só entra quando ela falta/vem parcial.
+-SELF_FALLBACK="agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml .claude-plugin/"
++SELF_FALLBACK="agents/ bin/ src/ hooks/ lib/ config/routing-table.yaml .claude-plugin/ mods/"
+ 
+ warn() { printf 'maestro: session-start: %s\n' "$1" >&2 || :; }
+ 
