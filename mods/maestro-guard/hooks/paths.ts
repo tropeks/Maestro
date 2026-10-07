@@ -40,7 +40,29 @@ export function protectedAbs(abs: string, ctx: Ctx): boolean {
   return m !== null && relProtected(m[1] ?? '')
 }
 
-const PROTECTED_LOOK = /(^|\/)(agents|bin|src|hooks|lib|mods|\.claude-plugin|\.claude|\.github\/workflows|config)\//
+// ~/.claude/settings*.json do usuario (item d, Spock 07/10): o Claude Code le `env`, hooks e
+// permissoes desses arquivos, entao quem os grava arma o kill-switch (`env.MAESTRO_OFF`) e
+// solta os controles na sessao seguinte. So o Capitao os edita, a mao: a ESCRITA e deny,
+// tambem em sessao interativa e fora de qualquer raiz do Maestro; a leitura fica livre.
+const HOME_SETTINGS = /^settings[^/]*\.json$/
+
+export function homeSettings(abs: string, home: string): boolean {
+  if (!home) return false
+  const dir = normalize(home) + '/.claude/'
+  return abs.startsWith(dir) && HOME_SETTINGS.test(abs.slice(dir.length))
+}
+
+export const HOME_SETTINGS_DENY = deny('settings_self_write', 'escrita em ~/.claude/settings*.json: so o Capitao edita esses arquivos, a mao')
+
+// `$HOME/...` e `${HOME}/...` sao palavras dinamicas para o lexer, mas o home e conhecido
+function homeExpand(w: Word, home: string): Word {
+  const m = /^(?:\$HOME|\$\{HOME\})(\/.*)?$/.exec(w.t)
+  if (!m || !home) return w
+  const rest = m[1] ?? ''
+  return /[$`]/.test(rest) ? w : { ...w, t: home + rest, dyn: false }
+}
+
+const PROTECTED_LOOK =/(^|\/)(agents|bin|src|hooks|lib|mods|\.claude-plugin|\.claude|\.github\/workflows|config)\//
 
 // Escrita (por redirecionamento, tee, cp...) num alvo: nega caminho protegido,
 // nega dispositivo de bloco, pergunta quando o alvo nao resolve perto de um.
@@ -49,6 +71,12 @@ export function writeTarget(w: Word, st: State, via: string): void {
   if (/^\/dev\/(null|zero|stdout|stderr|tty|fd\/\d+)$/.test(w.t)) return
   if (/^\/dev\/(sd|hd|nvme|vd|mmcblk|disk)/.test(w.t)) {
     st.findings.push(deny('device_write', 'escrita direta em dispositivo de bloco'))
+    return
+  }
+  const hw = homeExpand(w, ctx.home)
+  const habs = hw.dyn ? null : resolvePath(hw.t, st.cwd, ctx.home)
+  if (habs !== null && homeSettings(habs, ctx.home)) {
+    st.findings.push(HOME_SETTINGS_DENY)
     return
   }
   if (ctx.roots.length === 0) return

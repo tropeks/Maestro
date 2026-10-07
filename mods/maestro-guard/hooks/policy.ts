@@ -6,7 +6,7 @@
 // modulo nunca emite "allow" e nunca devolve texto do comando em `reason`.
 // A analise e lexica: ver "LIMITES" no fim do arquivo.
 import { baseName, lex, SHELLS, stripHeredocs, Unparseable, type Seg } from './shell-lex'
-import { normalize, protectedAbs, resolvePath, writeTarget } from './paths'
+import { HOME_SETTINGS_DENY, homeSettings, normalize, protectedAbs, resolvePath, writeTarget } from './paths'
 import { leafCommand } from './commands'
 import { flagsOf, operands } from './args'
 import { checkSecretTool, secretInput } from './secrets'
@@ -156,6 +156,7 @@ function checkFileWrite(tool: string, input: unknown, ctx: Ctx): Decision {
   if (typeof p !== 'string' || p === '') return deny('malformed', 'caminho do arquivo ausente ou nao-texto')
   if (/[\u0000�]/.test(p)) return deny('bad_bytes', 'caminho com bytes invalidos')
   const abs = resolvePath(p, ctx.cwd || null, ctx.home)
+  if (abs !== null && homeSettings(normalize(abs), ctx.home)) return HOME_SETTINGS_DENY
   if (abs === null) return ctx.roots.length ? ask('unresolved_self_write', 'caminho nao resolvivel') : PASS
   if (protectedAbs(normalize(abs), ctx)) return deny('self_protect', 'caminho protegido do Maestro: use o patch protegido')
   return PASS

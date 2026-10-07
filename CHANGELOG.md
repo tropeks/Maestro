@@ -19,6 +19,9 @@ from the decision log and tag messages when this file was introduced.
   `cat < .env` e `head < ~/.ssh/id_rsa` passam a negar. (P2-2) `.claude/` e `.github/workflows/` entram na autoproteção (o agente não arma o
   kill-switch por `env` do settings do projeto). (P2-3) o patch protegido 072 só aplica com o mod armado: trecho em `docs/mods/GATE-PATCH-072.md`
   que exige `estado: 903-CONFIRMADO`, gravado por `tools/verificar-mod-armado.sh`. Os P3 estão em `ENGINEERING_SPEC` (limites da guarda léxica).
+- **Settings do usuário protegidos (item d, Spock de 07/10).** O mod nega a **escrita** (Edit, Write, MultiEdit, NotebookEdit e shell) em
+  `~/.claude/settings.json`, `settings.local.json` e qualquer `~/.claude/settings*.json`, também em sessão **interativa** e fora de raiz do Maestro
+  (`rule=settings_self_write`); a leitura segue livre. Fecha a injeção de `env.MAESTRO_OFF` pelo settings do usuário.
 
 ## [1.23.0] — 2026-10-06
 
