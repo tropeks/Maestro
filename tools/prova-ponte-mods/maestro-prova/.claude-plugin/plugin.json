@@ -1,0 +1,5 @@
+{
+  "name": "maestro-prova",
+  "version": "0.1.0",
+  "description": "Prova da ordem 076: gerente pede e Diretor responde por session.send; identidade vem do verificador de peer, nunca da mensagem."
+}

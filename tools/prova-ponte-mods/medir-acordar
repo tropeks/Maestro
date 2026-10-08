@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Ordem 076 / turno 3: respostas (c) e (d) EM SESSAO VIVA.
+#   (c) `session.receive` acorda uma sessao ociosa? Diretor de teste = `claude -p` com
+#       entrada continua (stream-json), ocioso; gerente de teste = outro `claude -p` cujo
+#       Read cai em `ask` e vira pedido por $.session.send.
+#   (d) a mensagem entra sem desligar configuracao nenhuma? (o script nao muda settings)
+# So sessoes lancadas aqui participam; nada de producao, nada em mods/, sem herdr.
+# Uso: medir-acordar [MODO]   MODO = claude-p (padrao)
+set -u
+AQUI="$(cd "$(dirname "$0")" && pwd)"
+MOD="$AQUI/maestro-prova"
+UIDN=$(id -u)
+BASE="/tmp/claude-$UIDN/-home-rcosta00-dev-worktrees-maestro-076"
+mkdir -p "$BASE"
+RUN=$(mktemp -d "$BASE/acordar.XXXXXX")
+mkdir -p "$RUN/map" "$RUN/log" "$RUN/work" "$RUN/bin"
+chmod 700 "$RUN" "$RUN/map"
+PIDS=()
+# shellcheck disable=SC2329  # chamada pelo trap EXIT
+limpa() {
+  local p
+  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done
+  exec 3>&- 2>/dev/null
+}
+trap limpa EXIT
+
+# herdr falso: grava cada chamada e sai com erro (criterio: 0 chamadas).
+# shellcheck disable=SC2016  # o $(...) deve rodar no herdr falso, nao aqui
+printf '%s\n' '#!/usr/bin/env bash' 'echo "$(date +%s) chamada" >>"$HERDR_LOG"' 'exit 1' >"$RUN/bin/herdr"
+chmod +x "$RUN/bin/herdr"
+: >"$RUN/herdr.log"
+
+SOCK="$RUN/v.sock"
+python3 -I "$AQUI/peer-verifier" --sock "$SOCK" --map-dir "$RUN/map" --log "$RUN/verificador.log" &
+PIDS+=("$!")
+for _ in $(seq 1 300); do
+  [[ -S $SOCK ]] && break
+  sleep 0.01
+done
+
+uuid() { cat /proc/sys/kernel/random/uuid; }
+DID=$(uuid)
+GID=$(uuid)
+mkfifo "$RUN/in"
+exec 3<>"$RUN/in" # mantem a entrada do Diretor aberta: sessao ociosa, nao encerrada
+
+# Em shell nao interativo, `cmd &` sem redirecao propria le de /dev/null: a entrada vai explicita.
+lanca() { # papel par entrada saida erro [args...]  -> PID do claude em $LANCADO (exec: pid == claude)
+  local papel=$1 par=$2 ent=$3 sai=$4 err=$5
+  shift 5
+  (cd "$RUN/work" && exec env PATH="$RUN/bin:$PATH" HERDR_LOG="$RUN/herdr.log" \
+    PROVA_PAPEL="$papel" PROVA_SOCK="$SOCK" PROVA_CLIENT="$AQUI/peer-client" \
+    PROVA_PAR="$par" PROVA_LOG="$RUN/log" \
+    claude --plugin-dir "$MOD" --model haiku --debug-file "$sai.debug" "$@" <"$ent" >"$sai" 2>"$err") &
+  LANCADO=$!
+  printf '%s' "$papel" >"$RUN/map/$LANCADO" # o APARELHO grava o mapa, nunca a sessao
+}
+
+# id da sessao observado na saida stream-json (confere se --session-id valeu)
+sessao_de() { # arquivo
+  local s
+  for _ in $(seq 1 120); do
+    s=$(grep -o -m 1 -E '"session_id":"[0-9a-f-]{36}"' "$1" 2>/dev/null)
+    if [[ -n $s ]]; then
+      s=${s#*:\"}
+      echo "${s%\"}"
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
+# --- Diretor: ocioso, entrada continua. Os dois ids nascem antes (--session-id), de modo
+# que cada lado conhece o endereco do outro sem passar por mensagem.
+lanca diretor "$GID" "$RUN/in" "$RUN/diretor.out" "$RUN/diretor.err" --session-id "$DID" -p --input-format stream-json --output-format stream-json --verbose
+DPID=$LANCADO
+PIDS+=("$DPID")
+DSESS=$(sessao_de "$RUN/diretor.out") || DSESS=sem-sessao
+echo "diretor_session_id_confere=$([[ $DSESS == "$DID" ]] && echo 1 || echo 0)"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"Responda apenas: PRONTO"}}' >&3
+for _ in $(seq 1 120); do
+  grep -q '"type":"result"' "$RUN/diretor.out" 2>/dev/null && break
+  sleep 0.5
+done
+BASE_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
+BASE_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
+echo "diretor_vivo=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) turnos_base=$BASE_ASSIST resultados_base=$BASE_RESULT"
+
+# --- Gerente: um Read fora da pasta cai em ask e vira pedido ao Diretor
+lanca gerente "$DID" /dev/null "$RUN/gerente.out" "$RUN/gerente.err" --session-id "$GID" -p --output-format stream-json --verbose \
+  "Use a ferramenta Read no arquivo /etc/hostname e depois responda apenas FIM."
+GPID=$LANCADO
+GSESS=$(sessao_de "$RUN/gerente.out") || GSESS=sem-sessao
+echo "gerente_session_id_confere=$([[ $GSESS == "$GID" ]] && echo 1 || echo 0)"
+timeout 90 tail --pid="$GPID" -f /dev/null
+sleep 2
+
+POS_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
+POS_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
+echo "diretor_vivo_depois=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) turnos_depois=$POS_ASSIST resultados_depois=$POS_RESULT"
+echo "turnos_do_diretor_nas_trocas=$((POS_ASSIST - BASE_ASSIST))"
+echo "herdr_chamadas=$(grep -c . "$RUN/herdr.log")"
+echo "logs_do_mod=$(find "$RUN/log" -type f | grep -c .)"
+echo "verificador_aceitas=$(grep -c 'ok=1' "$RUN/verificador.log")"
+echo "verificador_recusadas=$(grep -c 'ok=0' "$RUN/verificador.log")"
+# A politica allowManagedModsOnly recusa o mod? Resultado = FALHA NOMEADA, sem contornar.
+for papel in diretor gerente; do
+  recusa=$(grep -h -o -m 1 -E 'refused by [a-z-]+: mods are limited[^"]*' "$RUN/$papel.out.debug" 2>/dev/null)
+  echo "mod_recusado_$papel=$([[ -n $recusa ]] && echo 1 || echo 0)"
+  [[ -n $recusa ]] && echo "FALHA NOMEADA ($papel): $recusa"
+done
+echo "-- log do verificador (metadados):"
+cat "$RUN/verificador.log"
+echo "-- logs do mod (metadados):"
+cat "$RUN/log"/* 2>/dev/null
+echo "-- erros do gerente (primeiras linhas):"
+head -c 600 "$RUN/gerente.err"
+echo "-- erros do diretor (primeiras linhas):"
+head -c 600 "$RUN/diretor.err"
+echo "-- run em $RUN"
