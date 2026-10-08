@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Mutante de controle do Diretor (ordem 076, turno 3).
+
+Deriva do mod REAL um Diretor que decide por `e.origin.plugin` (o nome que o
+remetente escreve) em vez de perguntar ao verificador de peer. Falha alto se
+alguma substituicao nao casar: um mutante que nao mudou nada nao provaria nada.
+
+Uso: mutar-diretor MOD_REAL DESTINO
+Cria DESTINO como um plugin `maestro-prova` com o register mutado e os MESMOS
+testes do mod real (copia; o kit nao segue link simbolico). Nada em mods/.
+"""
+import os
+import shutil
+import sys
+
+SUBSTITUICOES = [
+    (
+        "return c.papel === 'diretor' ? atender($, c, m, id) : aplicar($, c, m, id)",
+        "return c.papel === 'diretor' ? atender($, c, m, id, 'plugin' in e.origin ? e.origin.plugin : undefined) : aplicar($, c, m, id)",
+    ),
+    (
+        "m: Record<string, unknown>, id: string): Promise<{ consumed: string }> {\n  const hash = m.hash",
+        "m: Record<string, unknown>, id: string, origem?: string): Promise<{ consumed: string }> {\n  const hash = m.hash",
+    ),
+    (
+        "  const ver = await verificar($, c, { op: 'verificar-pedido', rid: id, hash })\n"
+        "  if (!ver.ok) return { consumed: `pedido_recusado:${ver.motivo}` }\n",
+        "  if (origem !== 'maestro-prova') return { consumed: 'pedido_recusado:origem' }\n",
+    ),
+    (
+        "  if (!reg.ok) return { consumed: `decisao_recusada:${reg.motivo}` }\n"
+        "  const env = await $.session.send({ to: { sessionId: c.par }, text: JSON.stringify({ t: 'decisao'",
+        "  void reg\n"
+        "  const env = await $.session.send({ to: { sessionId: c.par }, text: JSON.stringify({ t: 'decisao'",
+    ),
+]
+
+
+def main():
+    if len(sys.argv) != 3:
+        sys.stderr.write("uso: mutar-diretor MOD_REAL DESTINO\n")
+        return 2
+    real, destino = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
+    with open(os.path.join(real, "hooks", "register.ts"), "r", encoding="utf-8") as f:
+        fonte = f.read()
+    for velho, novo in SUBSTITUICOES:
+        if fonte.count(velho) != 1:
+            sys.stderr.write("mutacao nao casou exatamente uma vez: %r\n" % velho[:60])
+            return 1
+        fonte = fonte.replace(velho, novo)
+    os.makedirs(os.path.join(destino, "hooks"), exist_ok=True)
+    shutil.copytree(os.path.join(real, ".claude-plugin"), os.path.join(destino, ".claude-plugin"))
+    shutil.copy(os.path.join(real, "hooks", "hooks.json"), os.path.join(destino, "hooks", "hooks.json"))
+    with open(os.path.join(destino, "hooks", "register.ts"), "w", encoding="utf-8") as f:
+        f.write(fonte)
+    shutil.copytree(os.path.join(real, "tests"), os.path.join(destino, "tests"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
