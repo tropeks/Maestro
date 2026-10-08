@@ -44,6 +44,14 @@ GID=$(uuid)
 mkfifo "$RUN/in"
 exec 3<>"$RUN/in" # mantem a entrada do Diretor aberta: sessao ociosa, nao encerrada
 
+espera_log() { # arquivo padrao tentativas(meio segundo cada)
+  for _ in $(seq 1 "$3"); do
+    grep -q -E "$2" "$1" 2>/dev/null && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
 # Em shell nao interativo, `cmd &` sem redirecao propria le de /dev/null: a entrada vai explicita.
 lanca() { # papel par entrada saida erro [args...]  -> PID do claude em $LANCADO (exec: pid == claude)
   local papel=$1 par=$2 ent=$3 sai=$4 err=$5
@@ -73,19 +81,51 @@ sessao_de() { # arquivo
 
 # --- Diretor: ocioso, entrada continua. Os dois ids nascem antes (--session-id), de modo
 # que cada lado conhece o endereco do outro sem passar por mensagem.
-lanca diretor "$GID" "$RUN/in" "$RUN/diretor.out" "$RUN/diretor.err" --session-id "$DID" -p --input-format stream-json --output-format stream-json --verbose
-DPID=$LANCADO
-PIDS+=("$DPID")
-DSESS=$(sessao_de "$RUN/diretor.out") || DSESS=sem-sessao
-echo "diretor_session_id_confere=$([[ $DSESS == "$DID" ]] && echo 1 || echo 0)"
-printf '%s\n' '{"type":"user","message":{"role":"user","content":"Responda apenas: PRONTO"}}' >&3
-for _ in $(seq 1 120); do
-  grep -q '"type":"result"' "$RUN/diretor.out" 2>/dev/null && break
-  sleep 0.5
-done
-BASE_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
-BASE_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
-echo "diretor_vivo=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) turnos_base=$BASE_ASSIST resultados_base=$BASE_RESULT"
+if [[ ${1:-claude-p} == interativo ]]; then
+  # Diretor INTERATIVO numa pty, ocioso (nenhum prompt enviado). Turno de modelo = chamada de API
+  # no debug do Diretor; a base e lida depois que a sessao assentou.
+  # cwd = o worktree (pasta ja confiavel): nenhum dialogo de confianca, nenhum estado do usuario gravado
+  (cd "$AQUI/../.." && exec env PATH="$RUN/bin:$PATH" HERDR_LOG="$RUN/herdr.log" \
+    PROVA_PAPEL=diretor PROVA_SOCK="$SOCK" PROVA_CLIENT="$AQUI/peer-client" \
+    PROVA_PAR="$GID" PROVA_LOG="$RUN/log" \
+    python3 -I "$AQUI/pty-diretor" "$RUN/diretor.pid" "$RUN/diretor.out" -- \
+    claude --plugin-dir "$MOD" --model haiku --debug-file "$RUN/diretor.out.debug" --session-id "$DID" \
+    "Responda apenas: PRONTO" 3>&-) & # primeiro turno de aquecimento: so depois a sessao consta como viva
+  PIDS+=("$!")
+  for _ in $(seq 1 60); do
+    [[ -s $RUN/diretor.pid ]] && break
+    sleep 0.25
+  done
+  DPID=$(cat "$RUN/diretor.pid" 2>/dev/null || echo 0)
+  printf '%s' diretor >"$RUN/map/$DPID" # o APARELHO grava o mapa
+  PIDS+=("$DPID")
+  espera_log "$RUN/diretor.out.debug" 'hooks module maestro-prova@inline loaded' 120 || echo "diretor interativo: mod nao carregou"
+  sleep 25 # o turno de aquecimento termina e a sessao fica ociosa; a base de chamadas de API e lida DEPOIS
+  DSESS=$DID
+  echo "modo=interativo"
+  BASE_ASSIST=$(grep -c '\[API REQUEST\]' "$RUN/diretor.out.debug")
+  BASE_RESULT=0
+  echo "diretor_vivo=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) chamadas_api_base=$BASE_ASSIST"
+else
+  lanca diretor "$GID" "$RUN/in" "$RUN/diretor.out" "$RUN/diretor.err" --session-id "$DID" -p --input-format stream-json --output-format stream-json --verbose
+  DPID=$LANCADO
+  PIDS+=("$DPID")
+  DSESS=$(sessao_de "$RUN/diretor.out") || DSESS=sem-sessao
+  echo "modo=claude-p diretor_session_id_confere=$([[ $DSESS == "$DID" ]] && echo 1 || echo 0)"
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":"Responda apenas: PRONTO"}}' >&3
+  for _ in $(seq 1 120); do
+    grep -q '"type":"result"' "$RUN/diretor.out" 2>/dev/null && break
+    sleep 0.5
+  done
+  BASE_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
+  BASE_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
+  echo "diretor_vivo=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) turnos_base=$BASE_ASSIST resultados_base=$BASE_RESULT"
+fi
+
+# Registro de sessoes vivas do Claude Code: SO o arquivo do PID da sessao de teste (nunca as dos outros)
+REG="$HOME/.claude/sessions/$DPID.json"
+echo "dpid=$DPID filhos_do_dpid=$(pgrep -P "$DPID" | tr '\n' ' ') registros_novos=$(find "$HOME/.claude/sessions" -name '*.json' -newer "$RUN/map" -printf '%f ')"
+echo "registro_da_sessao_de_teste_existe=$([[ -f $REG ]] && echo 1 || echo 0) id_confere=$(grep -c -- "$DID" "$REG" 2>/dev/null)"
 
 # --- Gerente: um Read fora da pasta cai em ask e vira pedido ao Diretor
 lanca gerente "$DID" /dev/null "$RUN/gerente.out" "$RUN/gerente.err" --session-id "$GID" -p --output-format stream-json --verbose \
@@ -96,8 +136,14 @@ echo "gerente_session_id_confere=$([[ $GSESS == "$GID" ]] && echo 1 || echo 0)"
 timeout 90 tail --pid="$GPID" -f /dev/null
 sleep 2
 
-POS_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
-POS_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
+if [[ ${1:-claude-p} == interativo ]]; then
+  POS_ASSIST=$(grep -c '\[API REQUEST\]' "$RUN/diretor.out.debug")
+  POS_RESULT=0
+else
+  POS_ASSIST=$(grep -c '"type":"assistant"' "$RUN/diretor.out")
+  POS_RESULT=$(grep -c '"type":"result"' "$RUN/diretor.out")
+fi
+echo "session_receive_no_diretor=$(grep -c 'session.receive (peer): consumed by a hook' "$RUN/diretor.out.debug")"
 echo "diretor_vivo_depois=$(kill -0 "$DPID" 2>/dev/null && echo 1 || echo 0) turnos_depois=$POS_ASSIST resultados_depois=$POS_RESULT"
 echo "turnos_do_diretor_nas_trocas=$((POS_ASSIST - BASE_ASSIST))"
 echo "herdr_chamadas=$(grep -c . "$RUN/herdr.log")"

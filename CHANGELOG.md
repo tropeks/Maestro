@@ -27,6 +27,11 @@ from the decision log and tag messages when this file was introduced.
 - **Settings do usuário protegidos (item d, Spock de 07/10).** O mod nega a **escrita** (Edit, Write, MultiEdit, NotebookEdit e shell) em
   `~/.claude/settings.json`, `settings.local.json` e qualquer `~/.claude/settings*.json`, também em sessão **interativa** e fora de raiz do Maestro
   (`rule=settings_self_write`); a leitura segue livre. Fecha a injeção de `env.MAESTRO_OFF` pelo settings do usuário.
+- **Prova da Ponte sobre mods** (ordem 076, só prova; nada de produção tocado): o gerente pede e o Diretor responde por
+  `$.session.send` / `session.receive`, sem `herdr pane run`. `tools/prova-ponte-mods/` (mod `maestro-prova` com os papéis
+  `diretor`/`gerente` e o comando `/prova-ponte N`; verificador de peer por `SO_PEERCRED`; impostor vivo; `rodar.sh`;
+  `medir-acordar`; mutantes de controle) e `docs/mods/PROVA-PONTE.md` (desenho, resultado e limite). O mod **não** está em
+  `mods/` nem no marketplace. Proposta de emenda da Ponte de produção em `docs/mods/EMENDAS-PROPOSTAS.md` (decisão do Diretor).
 
 ## [1.23.0] — 2026-10-06
 

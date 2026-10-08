@@ -805,6 +805,28 @@ maestro conduct --session <session_id>
   usar `describe --tags --abbrev=0 --match 'v*'`: `stable` é ponteiro de canal, não
   release, e sem o filtro sequestraria o retrato de arquitetura.
 
+### Prova da Ponte sobre mods — contrato gerente↔Diretor (ordem 076, **só prova, fora da produção**)
+
+Mod `tools/prova-ponte-mods/maestro-prova/` (nunca em `mods/`), dois papéis por `PROVA_PAPEL` (`diretor` | `gerente`, lido por
+`$.env.get`). Não altera nenhum hook, o `ponte-daemon` nem o `~/.ponte/mcp.sock`; roda só em sessões lançadas pelo aparelho
+`tools/prova-ponte-mods/rodar.sh`. Detalhe e resultado em `docs/mods/PROVA-PONTE.md`.
+
+- **Mensagens** (JSON em `text` de `$.session.send`; o receptor da 2.1.293 as vê embrulhadas em
+  `<cross-session-message from=… from-name=… from-mode=…>\n<corpo>\n</cross-session-message>`, atributos escritos pelo remetente):
+  - pedido (gerente → Diretor): `{"t":"pedido","rid":<32 hex, 128 bits>,"classe":<[a-z-]{1,24}>,"hash":<sha256 hex da entrada, nunca o comando>}`;
+  - decisão (Diretor → gerente): `{"t":"decisao","rid":<32 hex>,"v":"allow"|"deny"}`.
+  O endereço da resposta vem do ambiente do aparelho (`PROVA_PAR`), nunca da mensagem.
+- **Identidade fora da mensagem:** `tools/prova-ponte-mods/peer-verifier` (socket unix próprio, `SO_PEERCRED` → PID do peer →
+  ancestral `claude` em `/proc` → papel gravado pelo aparelho). Ops: `registrar-pedido {rid,hash,classe?}` (só `gerente`),
+  `verificar-pedido {rid,hash,classe?}` e `registrar-decisao {rid,veredito}` (só `diretor`), `verificar-decisao {rid,veredito}`
+  (só `gerente`). `rid` de uso único, vence em 10 s; a `classe` registrada tem de ser repetida igual pelo Diretor (`classe_trocada`).
+  O verificador só **atesta quem registrou**; nunca decide.
+- **Fail-closed:** timeout (8 s, dentro do limite de 10 s do hook), resposta inválida, erro ou `throw` no gerente → `deny`; nunca `allow`.
+- **Decisão do Diretor:** função pura sobre a `classe` (`leitura-liberada` → `allow`; escrita protegida, segredo, rede, outro → `deny`),
+  sem modelo. Mensagem que não vira pedido válido → `{ consumed }`.
+- **Comando `/prova-ponte N`** (N ≤ 12 por comando: o hook de `command.run` vale 10 s): N trocas sem turno de modelo; grava
+  `lote-NNN.txt` (`trocas= corretas= timeouts= primeira_falha= ms=<inteiros>`) na pasta de log. Só inteiros, sem float.
+
 ## 3. Envelope de erro (CLI)
 
 stderr, uma linha, prefixo fixo: `maestro: <categoria>: <mensagem> (fix: <ação>)`

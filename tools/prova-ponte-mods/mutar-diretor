@@ -23,7 +23,7 @@ SUBSTITUICOES = [
         "m: Record<string, unknown>, id: string, origem?: string): Promise<{ consumed: string }> {\n  const hash = m.hash",
     ),
     (
-        "  const ver = await verificar($, c, { op: 'verificar-pedido', rid: id, hash })\n"
+        "  const ver = await verificar($, c, { op: 'verificar-pedido', rid: id, hash, classe: m.classe })\n"
         "  if (!ver.ok) return { consumed: `pedido_recusado:${ver.motivo}` }\n",
         "  if (origem !== 'maestro-prova') return { consumed: 'pedido_recusado:origem' }\n",
     ),

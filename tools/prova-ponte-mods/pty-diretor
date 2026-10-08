@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Sobe um comando numa pty (sessao INTERATIVA do Claude Code, ociosa) para a prova da ordem 076.
+
+O filho e o proprio `claude` (exec direto, sem shell): o PID gravado em PIDFILE e o do claude,
+que e o que o aparelho mapeia a um papel. A saida da tela vai para SAIDA (so para diagnostico
+do aparelho; o log de prova e o do mod). Nao responde a NENHUM dialogo (confianca na pasta
+inclusive: o padrao dela e "No, exit" e aceitar gravaria estado do usuario); o aparelho roda
+a sessao numa pasta ja confiavel. Fica vivo ate receber SIGTERM.
+
+Uso: pty-diretor PIDFILE SAIDA -- comando [args...]
+"""
+import os
+import pty
+import select
+import signal
+import sys
+
+
+def main():
+    if "--" not in sys.argv:
+        sys.exit("uso: pty-diretor PIDFILE SAIDA -- comando [args...]")
+    sep = sys.argv.index("--")
+    pidfile, saida = sys.argv[1], sys.argv[2]
+    cmd = sys.argv[sep + 1:]
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvp(cmd[0], cmd)
+    with open(pidfile, "w") as f:
+        f.write(str(pid))
+    signal.signal(signal.SIGTERM, lambda *_: (os.kill(pid, signal.SIGTERM), sys.exit(0)))
+    with open(saida, "wb") as out:
+        while True:
+            r, _, _ = select.select([fd], [], [], 0.5)
+            if r:
+                try:
+                    dado = os.read(fd, 65536)
+                except OSError:
+                    break
+                if not dado:
+                    break
+                out.write(dado)
+                out.flush()
+            if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                break
+
+
+if __name__ == "__main__":
+    main()
