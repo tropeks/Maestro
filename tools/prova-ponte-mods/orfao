@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Lanca um comando desvinculado do pai (setsid) e retorna na hora; o comando roda 0,5 s
+# depois, quando o pai ja saiu e ele foi reparentado: a cadeia ate o `claude` se quebra.
+# Uso: orfao <arquivo-de-saida> <comando...>
+set -u
+saida=$1
+shift
+# shellcheck disable=SC2016  # o script do bash -c expande no filho, de proposito
+setsid bash -c 'sleep 0.5; "$@" >"$0" 2>&1' "$saida" "$@" &

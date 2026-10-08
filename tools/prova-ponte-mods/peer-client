@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Cliente curto do verificador de peer (ordem 076). Sem shell, sem rede.
+
+Uso: peer-client SOCK JSON   (JSON "-" le a requisicao da entrada padrao)
+Escreve a linha de resposta do verificador. O kernel, nao este programa,
+informa quem e o chamador: o cliente nao declara identidade nenhuma.
+"""
+import socket
+import sys
+
+SEM_VERIFICADOR = '{"ok": false, "motivo": "sem_verificador"}\n'
+
+
+def enviar(s, dados):
+    """False se o verificador fechou antes (pedido gigante); a resposta ainda e lida."""
+    try:
+        s.sendall(dados + b"\n")
+    except OSError:
+        return False
+    return True
+
+
+def ler_resposta(s):
+    resp = b""
+    while b"\n" not in resp:
+        pedaco = s.recv(4096)
+        if not pedaco:
+            break
+        resp += pedaco
+    return resp.decode("utf-8", "replace").strip() + "\n"
+
+
+def main():
+    if len(sys.argv) != 3:
+        sys.stdout.write('{"ok": false, "motivo": "uso"}\n')
+        return 2
+    dados = sys.stdin.buffer.read() if sys.argv[2] == "-" else sys.argv[2].encode("utf-8")
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(3.0)
+    try:
+        s.connect(sys.argv[1])
+        enviar(s, dados)
+        sys.stdout.write(ler_resposta(s))
+    except OSError:
+        sys.stdout.write(SEM_VERIFICADOR)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Processo "claude" falso do aparelho de prova (ordem 076). Executado por um symlink
+# chamado `claude`, para que o comm do kernel seja `claude` e a cadeia do peer
+# (cliente -> claude-falso) seja a mesma que o verificador sobe na sessao real.
+#
+# Uso: claude <mapdir> <comando...>
+# Espera o aparelho liberar (arquivo <mapdir>/.go.<pid>, gravado DEPOIS do mapa de
+# papeis) e so entao roda o comando como FILHO. Nao declara papel nenhum: quem grava
+# <mapdir>/<pid> e o lancador, nunca este processo.
+set -u
+mapdir=$1
+shift
+# O kernel nomeia o processo pelo interpretador (bash), nao pelo script: fixa o comm
+# que o verificador procura, como o `claude` real tem.
+printf 'claude' >/proc/$$/comm
+for _ in $(seq 1 300); do
+  [[ -e "$mapdir/.go.$$" ]] && break
+  sleep 0.01
+done
+"$@"
