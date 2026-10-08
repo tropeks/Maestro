@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Verificador de peer da prova da ordem 076 (substituto de teste do daemon).
+
+Socket unix proprio. A identidade do chamador NUNCA vem da mensagem: o PID do
+peer vem do kernel (SO_PEERCRED), sobe-se /proc/<pid>/stat ate o processo
+`claude` e o PID desse `claude` e mapeado a um papel por um arquivo gravado
+pelo aparelho que lanca as sessoes (<map-dir>/<pid-do-claude> com o papel).
+
+O verificador nao decide nada: so atesta quem registrou. Tripwire, nao
+fronteira: mesmo usuario, sem sandbox (ver docs/mods/PROVA-PONTE.md).
+
+Uso: peer-verifier --sock S --map-dir M [--ttl-ms 10000] [--comm claude] [--log L]
+Protocolo: uma linha JSON por conexao, uma linha JSON de resposta. So inteiros.
+"""
+import argparse
+import json
+import os
+import re
+import socket
+import struct
+import sys
+import time
+
+MAX_LINHA = 4096
+RID_RE = re.compile(r"^[0-9a-f]{32}$")  # 128 bits
+HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 da entrada, nunca o comando
+VEREDITOS = ("allow", "deny")
+OPS = ("registrar-pedido", "verificar-pedido", "registrar-decisao", "verificar-decisao")
+PAPEIS = ("diretor", "gerente", "desconhecido")
+
+
+def agora_ms():
+    return time.monotonic_ns() // 1_000_000
+
+
+def ler_stat(pid):
+    with open("/proc/%d/stat" % pid, "r") as f:
+        s = f.read()
+    comm = s[s.index("(") + 1:s.rindex(")")]
+    resto = s[s.rindex(")") + 2:].split()
+    return comm, int(resto[1])  # resto[0]=estado, resto[1]=ppid
+
+
+def achar_claude(pid, comm_alvo):
+    """PID do ancestral `claude`, ou None se a cadeia quebra (reparentado ao init)."""
+    atual = pid
+    for _ in range(64):
+        try:
+            comm, ppid = ler_stat(atual)
+        except (OSError, ValueError, IndexError):
+            return None
+        if comm == comm_alvo:
+            return atual
+        if ppid <= 1:
+            return None
+        atual = ppid
+    return None
+
+
+class Verificador:
+    def __init__(self, map_dir, ttl_ms, comm, log):
+        self.map_dir = map_dir
+        self.ttl_ms = ttl_ms
+        self.comm = comm
+        self.log = log
+        self.pedidos = {}
+        self.aceitas = 0
+        self.recusadas = 0
+        self.achou_claude = False
+
+    def papel_do_peer(self, pid, uid):
+        if uid != os.getuid():
+            return "desconhecido"
+        claude = achar_claude(pid, self.comm)
+        self.achou_claude = claude is not None
+        if claude is None:
+            return "desconhecido"
+        try:
+            with open(os.path.join(self.map_dir, str(claude)), "r") as f:
+                papel = f.read().strip()
+        except OSError:
+            return "desconhecido"
+        return papel if papel in PAPEIS else "desconhecido"
+
+    def registrar_log(self, papel, op, rid, resultado):
+        """Log so de metadados: rid truncado, papel, op, veredito. Nunca conteudo."""
+        if not self.log:
+            return
+        ok, motivo = resultado
+        linha = "rid=%s papel=%s op=%s ok=%d motivo=%s claude=%d\n" % (
+            (rid or "-")[:8], papel, op, 1 if ok else 0, motivo,
+            1 if self.achou_claude else 0)
+        with open(self.log, "a") as f:
+            f.write(linha)
+
+    def tratar(self, bruto, pid, uid):
+        papel = self.papel_do_peer(pid, uid)
+        if len(bruto) > MAX_LINHA:
+            return self.fim(papel, "?", None, (False, "gigante"))
+        try:
+            req = json.loads(bruto.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return self.fim(papel, "?", None, (False, "malformado"))
+        if not isinstance(req, dict):
+            return self.fim(papel, "?", None, (False, "malformado"))
+        op = req.get("op")
+        rid = req.get("rid")
+        if op == "stats":
+            return {"ok": True, "aceitas": self.aceitas, "recusadas": self.recusadas}
+        if op not in OPS:
+            return self.fim(papel, str(op)[:24], None, (False, "op_invalida"))
+        if not isinstance(rid, str) or not RID_RE.match(rid):
+            return self.fim(papel, op, None, (False, "rid_invalido"))
+        resultado = getattr(self, "op_" + op.replace("-", "_"))(papel, rid, req)
+        return self.fim(papel, op, rid, resultado)
+
+    def fim(self, papel, op, rid, resultado):
+        ok, motivo = resultado
+        if ok:
+            self.aceitas += 1
+        else:
+            self.recusadas += 1
+        self.registrar_log(papel, op, rid, resultado)
+        return {"ok": ok, "motivo": motivo}
+
+    def vencido(self, p):
+        return agora_ms() - p["t"] > self.ttl_ms
+
+    def op_registrar_pedido(self, papel, rid, req):
+        if papel != "gerente":
+            return False, "papel_errado"
+        h = req.get("hash")
+        if not isinstance(h, str) or not HASH_RE.match(h):
+            return False, "hash_invalido"
+        if rid in self.pedidos:
+            return False, "rid_repetido"
+        novo = {"hash": h, "t": agora_ms(), "pedido_usado": False}
+        novo.update({"decisao": None, "decisao_usada": False})
+        self.pedidos[rid] = novo
+        return True, "ok"
+
+    def op_verificar_pedido(self, papel, rid, req):
+        if papel != "diretor":
+            return False, "papel_errado"
+        p = self.pedidos.get(rid)
+        if p is None:
+            return False, "rid_desconhecido"
+        if p["pedido_usado"]:
+            return False, "replay"
+        if self.vencido(p):
+            return False, "vencido"
+        if req.get("hash") != p["hash"]:
+            return False, "hash_trocado"
+        p["pedido_usado"] = True
+        return True, "ok"
+
+    def op_registrar_decisao(self, papel, rid, req):
+        if papel != "diretor":
+            return False, "papel_errado"
+        p = self.pedidos.get(rid)
+        if p is None:
+            return False, "rid_desconhecido"
+        if not p["pedido_usado"]:
+            return False, "pedido_nao_verificado"
+        if p["decisao"] is not None:
+            return False, "replay"
+        if self.vencido(p):
+            return False, "vencido"
+        v = req.get("veredito")
+        if v not in VEREDITOS:
+            return False, "veredito_invalido"
+        p["decisao"] = v
+        return True, "ok"
+
+    def op_verificar_decisao(self, papel, rid, req):
+        if papel != "gerente":
+            return False, "papel_errado"
+        p = self.pedidos.get(rid)
+        if p is None:
+            return False, "rid_desconhecido"
+        if p["decisao"] is None:
+            return False, "sem_decisao"
+        if p["decisao_usada"]:
+            return False, "replay"
+        if self.vencido(p):
+            return False, "vencido"
+        if req.get("veredito") != p["decisao"]:
+            return False, "veredito_trocado"
+        p["decisao_usada"] = True
+        return True, "ok"
+
+
+def receber(conn):
+    """Um pedaco do peer (timeout ou erro de leitura = vazio = pedido malformado)."""
+    try:
+        return conn.recv(MAX_LINHA + 1)
+    except OSError:
+        return b""
+
+
+def ler_linha(conn):
+    buf = b""
+    while len(buf) <= MAX_LINHA and b"\n" not in buf:
+        pedaco = receber(conn)
+        if not pedaco:
+            break
+        buf += pedaco
+    return buf.split(b"\n", 1)[0]
+
+
+def enviar(conn, resp):
+    """False se o peer ja saiu; a recusa ja foi contada e logada antes do envio."""
+    try:
+        conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+    except OSError:
+        return False
+    return True
+
+
+def atender(conn, v):
+    conn.settimeout(2.0)
+    cred = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+    pid, uid, _gid = struct.unpack("3i", cred)  # do kernel, nunca do cliente
+    enviar(conn, v.tratar(ler_linha(conn), pid, uid))
+
+
+def servir(args):
+    v = Verificador(args.map_dir, args.ttl_ms, args.comm, args.log)
+    if os.path.exists(args.sock):
+        os.unlink(args.sock)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(args.sock)
+    os.chmod(args.sock, 0o600)
+    srv.listen(16)
+    while True:
+        conn, _ = srv.accept()
+        with conn:
+            atender(conn, v)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--sock", required=True)
+    ap.add_argument("--map-dir", required=True)
+    ap.add_argument("--ttl-ms", type=int, default=10000)
+    ap.add_argument("--comm", default="claude")
+    ap.add_argument("--log", default="")
+    servir(ap.parse_args())
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)
