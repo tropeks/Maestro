@@ -10,7 +10,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DIR="${1:-$ROOT/tools/prova-ponte-mods}"
-VERIF="$DIR/peer-verifier"
+VERIF="${PROVA_VERIF:-$DIR/peer-verifier}" # PROVA_VERIF: mutante de controle (test-prova-ponte-mutacao.sh)
 CLIENT="$DIR/peer-client"
 
 RUN=$(mktemp -d)

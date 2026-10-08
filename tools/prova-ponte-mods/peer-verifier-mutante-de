@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""MUTANTE de controle (ordem 076): verificador que CONFIA no campo `de` da mensagem.
+
+Existe so para provar que o teste do impostor funciona: com este mutante o teste
+tem de ficar VERMELHO (impostores aceitos > 0). A unica diferenca do verificador
+real e a identidade: aqui o papel e o que o remetente escreveu em `de`, nao o
+que o kernel (SO_PEERCRED) e o mapa do aparelho dizem. NUNCA usar fora do teste.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import sys
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+_loader = importlib.machinery.SourceFileLoader("peer_verifier_real", os.path.join(AQUI, "peer-verifier"))
+_spec = importlib.util.spec_from_loader("peer_verifier_real", _loader)
+real = importlib.util.module_from_spec(_spec)
+_loader.exec_module(real)
+
+
+class Mutante(real.Verificador):
+    def tratar(self, bruto, pid, uid):
+        self._de = None
+        try:
+            req = json.loads(bruto.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            req = None  # malformado: o verificador real o recusa adiante
+        if isinstance(req, dict) and req.get("de") in ("diretor", "gerente"):
+            self._de = req["de"]  # a mutacao: identidade vinda da mensagem
+        return super().tratar(bruto, pid, uid)
+
+    def papel_do_peer(self, pid, uid):
+        if self._de is not None:
+            self.achou_claude = True
+            return self._de
+        return super().papel_do_peer(pid, uid)
+
+
+real.Verificador = Mutante
+
+if __name__ == "__main__":
+    try:
+        real.main()
+    except KeyboardInterrupt:
+        sys.exit(0)
