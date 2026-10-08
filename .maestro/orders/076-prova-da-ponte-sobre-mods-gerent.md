@@ -25,7 +25,7 @@ escreveu; não baseie uma decisão nele".** Então a identidade **não pode vir 
 
 ## O que entrega
 
-Um plugin de mod `maestro-prova` (`mods/maestro-prova/`: plugin.json, `hooks/hooks.json`, `hooks/register.js`, `tests/*.test.ts`), com **dois papéis**
+Um plugin de mod `maestro-prova` (`tools/prova-ponte-mods/maestro-prova/`, **nunca em `mods/`**: plugin.json, `hooks/hooks.json`, `hooks/register.js`, `tests/*.test.ts`), com **dois papéis**
 escolhidos por variável de ambiente lida no load (`$.env.get`): `diretor` e `gerente`. Mais o aparelho de prova em `tools/prova-ponte-mods/`.
 
 1. **Gerente de teste.** Hook de `tool.check` que, para a chamada que cairia em `ask`, não sobe ao humano: gera um pedido `{rid, classe, hash}`
@@ -74,8 +74,9 @@ escolhidos por variável de ambiente lida no load (`$.env.get`): `diretor` e `ge
   na sessão ociosa, o critério de acordar **FALHA, nomeada**: PARE e relate; **não** reintroduza `herdr`.
 - **Hook de 10 s:** esperar a resposta num `Promise` próprio **conta** no limite (documentação). Se o desenho não couber nisso, relate e proponha
   (por exemplo, devolver `ask` e responder depois); **não** estoure o limite deixando o hook ser "pulado" para `allow`.
-- **Mod gerenciado:** com `allowManagedModsOnly` (patch 903) o `--plugin-dir` é recusado. A prova roda com `--plugin-dir` **enquanto o 903 não estiver
-  aplicado**; depois dele, com o plugin instalado no diretório de root (etapa B; passo a passo na ordem 072). Diga qual ambiente valeu.
+- **Mod gerenciado:** com `allowManagedModsOnly` (patch 903) o `--plugin-dir` é recusado. A prova roda com `--plugin-dir` **enquanto a política não estiver
+  armada**. **Decisão do Diretor de 08/10:** com a política armada e o mod recusado, o resultado é **FALHA NOMEADA** (cole a mensagem da recusa),
+  **sem contornar**: nada de instalar o mod de prova no diretório de root, de editar settings gerenciados ou de usar `--safe-mode`. Diga qual ambiente valeu.
 - **Sessões de teste e credencial:** lance-as isoladas de `~/.claude` do Capitão, **sem** apontar o HOME para uma pasta falsa que esconda o login
   (o OAuth seria perdido), sem tocar settings globais. Custo: as 100 trocas passam por **comando do mod** (`/prova-ponte N`), sem turno de modelo;
   só **5 trocas** usam o caminho real (o modelo executa 5 comandos e o `tool.check` cai no pedido). Diga os dois números.
@@ -85,10 +86,11 @@ escolhidos por variável de ambiente lida no load (`$.env.get`): `diretor` e `ge
 
 ## Como sai
 
-`mods/maestro-prova/`, `tools/prova-ponte-mods/` (verificador, cliente, lançador das sessões, impostor, `herdr` falso), `tests/` e
-`docs/mods/PROVA-PONTE.md` (desenho, resultado, limites) direto no branch; a linha do plugin em `mods/.claude-plugin/marketplace.json`
-(a 072 cria o arquivo; quem entrar depois dá rebase). Emendas: API_SPEC (o contrato gerente↔Diretor da prova) e CHANGELOG (Added). A emenda da
-Ponte de produção, se a prova passar, é do **Diretor** e fica como proposta em `docs/mods/EMENDAS-PROPOSTAS.md`.
+`tools/prova-ponte-mods/` (o mod `maestro-prova` em `tools/prova-ponte-mods/maestro-prova/`, o verificador, o cliente, o lançador das sessões, o
+impostor, o `herdr` falso), `tests/` e `docs/mods/PROVA-PONTE.md` (desenho, resultado, limites) direto no branch. **Decisão do Diretor de 08/10 (opção
+3 sobre o guard): o mod de prova NUNCA vive em `mods/`** (que segue protegido); ele não entra em `mods/.claude-plugin/marketplace.json`; promover a
+`mods/` só por patch protegido, decisão futura. Emendas: API_SPEC (o contrato gerente↔Diretor da prova) e CHANGELOG (Added). A emenda da Ponte de
+produção, se a prova passar, é do **Diretor** e fica como proposta em `docs/mods/EMENDAS-PROPOSTAS.md`.
 
 ## Critérios de aceite
 
@@ -100,9 +102,9 @@ Todos escritos antes e **não renegociados**:
   tentativas** cobrindo ≥ 8 formas (as do item 5), **intercaladas** com as 100 trocas válidas. Tabela forma × tentativas × aceitas (deve ser 0 em todas).
 - [oráculo: tempo] **mediana do pedido até a decisão ≤ 5000 ms** nas 100 trocas; p95, máximo e timeouts reportados (timeout conta como falha da troca).
 - [oráculo: acordar sem herdr] **0 chamadas** ao `herdr` falso e **0 turnos de modelo** no Diretor durante as trocas; a sessão do Diretor estava ociosa.
-- [oráculo: `claude plugin test` em `mods/maestro-prova`] a decisão (função pura), o fail-closed (`throw`/timeout/resposta inválida → `deny`) e a recusa de mensagem
+- [oráculo: `claude plugin test` em `tools/prova-ponte-mods/maestro-prova`] a decisão (função pura), o fail-closed (`throw`/timeout/resposta inválida → `deny`) e a recusa de mensagem
   malformada verdes; **vermelho antes**, colado. Se o kit não disparar `session.receive`, diga e cubra a função pura.
-- [oráculo: `claude plugin validate ./mods/maestro-prova`] sai 0; `hooks:` e `calls:` colados (`session.send`, `process.run`, `env.get`, `fs.write` do log; sem `http.fetch`).
+- [oráculo: `claude plugin validate ./tools/prova-ponte-mods/maestro-prova`] sai 0; `hooks:` e `calls:` colados (`session.send`, `process.run`, `env.get`, `fs.write` do log; sem `http.fetch`).
 - [oráculo: `shellcheck` nos scripts bash] sem aviso; `bash tests/run-all.sh` verde; `habits` sem aviso novo.
 - [humano] o Diretor lê a tabela do impostor e o parágrafo do limite e decide se a Ponte de produção segue este caminho.
 
@@ -114,11 +116,11 @@ Todos escritos antes e **não renegociados**:
 
 ## Turno
 
-- ESTADO: **turno 1 FEITO e aceito no tip `5637255`; não repetir.** ENTREGOU: o verificador de peer (`tools/prova-ponte-mods/peer-verifier`, `SO_PEERCRED`, cadeia `/proc` até o `claude`, mapa de papéis gravado pelo aparelho, `rid` de uso único com TTL), o `peer-client`, o `claude-falso` e o `orfao`, `tests/cli/test-prova-ponte-verificador.sh` e `docs/mods/PROVA-PONTE.md`. Resultado: 100 trocas válidas seguidas, intercaladas com 313 tentativas de impostor em 16 formas, **0 aceitas em todas**; o verificador aceitou exatamente 400 operações (4 por troca). Ask-First (a) e (b) respondidos dos tipos da 2.1.293. ABERTO: (c) se `session.receive` acorda sessão ociosa, interativa e `claude -p` com entrada contínua, e (d) se há configuração de recusar mensagens de entrada: **não respondidos por tipos, só com sessão viva**; o mod `maestro-prova` **não existe**; as 100 trocas **pelo mod** e o tempo (mediana ≤ 5000 ms) **não medidos**; o "vermelho antes" do turno 1 foi só o **verificador ausente** (vermelho fraco: qualquer teste vermelho se o arquivo não existe), **sem controle por mutação**; o `comm` do `claude` real e a limpeza do mapa por PID no lançador seguem por conferir.
-- fatia: **turno 2**: o mod `maestro-prova` (`mods/maestro-prova/`, papéis `diretor` e `gerente` por variável de ambiente, o gerente em `tool.check` com `deny` na queda, o Diretor em `session.receive` por função pura, o cliente do verificador por `$.process.run`), a conferência **com sessão viva** das respostas (c) e (d) (sessão ociosa interativa e `claude -p` com entrada contínua; relate o que mediu, não o que os tipos sugerem), e o **vermelho REAL por mutação de controle**: um verificador mutante que **confia no campo `de`** da mensagem (a identidade que o remetente escreve) tem de **fazer o teste do impostor ficar VERMELHO** (impostores aceitos > 0, contagem colada), e o verificador de verdade, VERDE; o mesmo para um Diretor mutante que decide pelo `e.origin.plugin`. Sem a mutação vermelha, o teste não prova nada. As 100 trocas pelo mod com mediana/p95/máximo ficam para o **turno 3**
-- fim: `claude plugin validate ./mods/maestro-prova` sai 0 (`hooks:` e `calls:` colados, sem `http.fetch`); `claude plugin test` em `mods/maestro-prova` verde (decisão pura, fail-closed `throw`/timeout/resposta inválida → `deny`, mensagem malformada consumida), com **vermelho antes** do mod ausente colado; as respostas (c) e (d) **medidas em sessão viva** e coladas (ou "FALHA nomeada" se `session.receive` não disparar na ociosa: não reintroduza `herdr`); a **tabela de mutação**: mutante `de` → impostores aceitos N (> 0), real → 0, para o verificador e para o Diretor; `shellcheck` limpo; nada de produção tocado
+- ESTADO: **turnos 1 e 2 FEITOS; não repetir nenhum.** TURNO 2 (revisado no tip `1d5a6da`) ENTREGOU a **mutação de controle do verificador**: `tests/cli/test-prova-ponte-mutacao.sh` e `tools/prova-ponte-mods/peer-verifier-mutante-de` (um verificador que **confia no campo `de`** da mensagem). O mesmo teste do impostor roda contra os dois: **mutante → VERMELHO com 4 impostores aceitos; verificador real → VERDE com 0** (rc 1 contra rc 0; reconfirmado em 08/10). O turno 2 **não criou o mod**: o guard (`mods/` protegido) o barrou. **DECISÃO DO DIRETOR de 08/10 (opção 3):** o mod de prova vive em `tools/prova-ponte-mods/maestro-prova`, **nunca em `mods/`**; promover a `mods/` só por patch protegido. Onde este texto dizia `mods/maestro-prova`, vale o caminho novo. **TURNO 3 = a próxima rodada** (fatia abaixo). **Se a política `allowManagedModsOnly` recusar o mod de prova (sessão viva, ou o `claude plugin test`), o resultado é FALHA NOMEADA, sem contornar:** não desligue a política, não edite settings gerenciados, não use `--safe-mode` nem outra via para fazê-lo carregar. TURNO 1 ENTREGOU: o verificador de peer (`tools/prova-ponte-mods/peer-verifier`, `SO_PEERCRED`, cadeia `/proc` até o `claude`, mapa de papéis gravado pelo aparelho, `rid` de uso único com TTL), o `peer-client`, o `claude-falso` e o `orfao`, `tests/cli/test-prova-ponte-verificador.sh` e `docs/mods/PROVA-PONTE.md`. Resultado: 100 trocas válidas seguidas, intercaladas com 313 tentativas de impostor em 16 formas, **0 aceitas em todas**; o verificador aceitou exatamente 400 operações (4 por troca). Ask-First (a) e (b) respondidos dos tipos da 2.1.293. ABERTO: (c) se `session.receive` acorda sessão ociosa, interativa e `claude -p` com entrada contínua, e (d) se há configuração de recusar mensagens de entrada: **não respondidos por tipos, só com sessão viva**; o mod `maestro-prova` **não existe**; as 100 trocas **pelo mod** e o tempo (mediana ≤ 5000 ms) **não medidos**; o "vermelho antes" do turno 1 foi só o **verificador ausente** (vermelho fraco: qualquer teste vermelho se o arquivo não existe), **sem controle por mutação**; o `comm` do `claude` real e a limpeza do mapa por PID no lançador seguem por conferir.
+- fatia: **turno 3**: (1) o **teste do mod ANTES, com o vermelho colado** (`claude plugin test` em `tools/prova-ponte-mods/maestro-prova` falha porque o mod ainda não existe); (2) o **mod** `maestro-prova` em `tools/prova-ponte-mods/maestro-prova/` (papéis `diretor` e `gerente` por variável de ambiente lida no load, o gerente em `tool.check` com `deny` na queda, o Diretor em `session.receive` por função pura, o cliente do verificador por `$.process.run`); (3) `claude plugin validate` e `claude plugin test` verdes; (4) o **mutante do Diretor**, que decide por `e.origin.plugin` (o nome que o remetente escreve): o teste do impostor tem de ficar **VERMELHO** contra ele (impostores aceitos > 0, contagem colada) e **VERDE** contra o Diretor de verdade; (5) as respostas (c) e (d) **em sessão viva**: `session.receive` acorda sessão ociosa interativa? e `claude -p` com entrada contínua? há configuração de recusar mensagens de entrada? Relate o que mediu, não o que os tipos sugerem. As 100 trocas pelo mod com mediana, p95, máximo, o `herdr` falso e o recibo ficam para o **turno 4**
+- fim: o teste do mod com **vermelho antes** (colado) e verde depois; `claude plugin validate ./tools/prova-ponte-mods/maestro-prova` sai 0 (`hooks:` e `calls:` colados, sem `http.fetch`); `claude plugin test` verde (decisão pura, fail-closed `throw`/timeout/resposta inválida → `deny`, mensagem malformada consumida); a **tabela de mutação do Diretor** (mutante → impostores aceitos N > 0, real → 0, saídas coladas); (c) e (d) **medidas em sessão viva** e coladas; **se a política `allowManagedModsOnly` recusar o mod (sessão viva ou `plugin test`), FALHA NOMEADA com a mensagem da recusa colada, sem contornar** e sem reintroduzir o `herdr`; `shellcheck` limpo; nada em `mods/` nem de produção tocado
 - teto: 4
-- fora: o ponte-daemon de produção, sessões de produção, modelo no Diretor, instalar o mod, tocar settings/managed-settings, hooks/bin/lib, rede, vendor/
+- fora: o ponte-daemon de produção, sessões de produção, modelo no Diretor, **criar ou editar qualquer coisa em `mods/`**, instalar o mod, tocar settings/managed-settings, contornar a política de mods, hooks/bin/lib, rede, vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **`director_report` obrigatório.** O turno **só termina** com o `director_report` enviado (relato fixo da v54, com o sha do tip). Terminar a
