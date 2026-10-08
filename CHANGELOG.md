@@ -6,6 +6,13 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Added
+- **Prova da Ponte sobre mods** (ordem 076, só prova; nada de produção tocado): o gerente pede e o Diretor responde por
+  `$.session.send` / `session.receive`, sem `herdr pane run`. `tools/prova-ponte-mods/` (mod `maestro-prova` com os papéis
+  `diretor`/`gerente` e o comando `/prova-ponte N`; verificador de peer por `SO_PEERCRED`; impostor vivo; `rodar.sh`;
+  `medir-acordar`; mutantes de controle) e `docs/mods/PROVA-PONTE.md` (desenho, resultado e limite). O mod **não** está em
+  `mods/` nem no marketplace. Proposta de emenda da Ponte de produção em `docs/mods/EMENDAS-PROPOSTAS.md` (decisão do Diretor).
+
 ## [1.23.0] — 2026-10-06
 
 Fase 0 e Fase 1 da auditoria de 05/10 (INTENT v62): kill-switch na linha 2 de todo hook, CI do shellcheck verde e a **sombra de

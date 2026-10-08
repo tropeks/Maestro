@@ -9,7 +9,7 @@ pelo aparelho que lanca as sessoes (<map-dir>/<pid-do-claude> com o papel).
 O verificador nao decide nada: so atesta quem registrou. Tripwire, nao
 fronteira: mesmo usuario, sem sandbox (ver docs/mods/PROVA-PONTE.md).
 
-Uso: peer-verifier --sock S --map-dir M [--ttl-ms 10000] [--comm claude] [--log L]
+Uso: peer-verifier --sock S --map-dir M [--ttl-ms 10000] [--comm claude] [--log L] [--olheiro O]
 Protocolo: uma linha JSON por conexao, uma linha JSON de resposta. So inteiros.
 """
 import argparse
@@ -24,6 +24,7 @@ import time
 MAX_LINHA = 4096
 RID_RE = re.compile(r"^[0-9a-f]{32}$")  # 128 bits
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 da entrada, nunca o comando
+CLASSE_RE = re.compile(r"^[a-z-]{1,24}$")
 VEREDITOS = ("allow", "deny")
 OPS = ("registrar-pedido", "verificar-pedido", "registrar-decisao", "verificar-decisao")
 PAPEIS = ("diretor", "gerente", "desconhecido")
@@ -59,6 +60,7 @@ def achar_claude(pid, comm_alvo):
 
 class Verificador:
     def __init__(self, map_dir, ttl_ms, comm, log):
+        self.olheiro = ""  # so teste (ver --olheiro)
         self.map_dir = map_dir
         self.ttl_ms = ttl_ms
         self.comm = comm
@@ -134,9 +136,15 @@ class Verificador:
             return False, "hash_invalido"
         if rid in self.pedidos:
             return False, "rid_repetido"
-        novo = {"hash": h, "t": agora_ms(), "pedido_usado": False}
+        classe = req.get("classe")  # opcional; se vier, o Diretor tem de repeti-la igual
+        if classe is not None and (not isinstance(classe, str) or not CLASSE_RE.match(classe)):
+            return False, "classe_invalida"
+        novo = {"hash": h, "classe": classe, "t": agora_ms(), "pedido_usado": False}
         novo.update({"decisao": None, "decisao_usada": False})
         self.pedidos[rid] = novo
+        if self.olheiro:  # SO PARA TESTE: modela o atacante que farejou o pedido (rid, hash, classe)
+            with open(self.olheiro, "a") as f:
+                f.write("%s %s %s\n" % (rid, h, classe or "-"))
         return True, "ok"
 
     def op_verificar_pedido(self, papel, rid, req):
@@ -151,6 +159,8 @@ class Verificador:
             return False, "vencido"
         if req.get("hash") != p["hash"]:
             return False, "hash_trocado"
+        if req.get("classe") != p["classe"]:
+            return False, "classe_trocada"
         p["pedido_usado"] = True
         return True, "ok"
 
@@ -226,6 +236,7 @@ def atender(conn, v):
 
 def servir(args):
     v = Verificador(args.map_dir, args.ttl_ms, args.comm, args.log)
+    v.olheiro = args.olheiro
     if os.path.exists(args.sock):
         os.unlink(args.sock)
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -245,6 +256,7 @@ def main():
     ap.add_argument("--ttl-ms", type=int, default=10000)
     ap.add_argument("--comm", default="claude")
     ap.add_argument("--log", default="")
+    ap.add_argument("--olheiro", default="", help="so teste: arquivo onde o impostor farejador le os pedidos")
     servir(ap.parse_args())
 
 

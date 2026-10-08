@@ -190,6 +190,15 @@ for i in 1 2; do
   tentar vencido gerente "$(J verificar-decisao "$RID" "$H" allow gerente)"
 done
 
+# classe amarrada ao pedido: quem copia rid+hash mas troca a classe e recusado; a mesma classe passa.
+JC() { printf '{"op":"%s","rid":"%s","hash":"%s","classe":"%s"}' "$1" "$2" "$3" "$4"; }
+RID=$(novo_rid) H=$(sha "classe")
+legit gerente "$(JC registrar-pedido "$RID" "$H" escrita-protegida)" || FAIL "registro com classe recusado"
+tentar classe_trocada diretor "$(JC verificar-pedido "$RID" "$H" leitura-liberada)"
+tentar classe_trocada diretor "$(J verificar-pedido "$RID" "$H" allow diretor)"
+legit diretor "$(JC verificar-pedido "$RID" "$H" escrita-protegida)" || FAIL "verificacao com a classe certa recusada"
+tentar classe_invalida gerente "$(JC registrar-pedido "$(novo_rid)" "$H" 'Escrita Protegida')"
+
 # Log so de metadados: nem hash nem json nem comando.
 if grep -q -E '[0-9a-f]{64}|"op"|entrada-' "$RUN/principal.log"; then
   FAIL "log do verificador vazou conteudo alem de metadados"
