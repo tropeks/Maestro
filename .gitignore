@@ -5,6 +5,7 @@
 
 # Runtime / ferramentas
 node_modules/
+__pycache__/
 .DS_Store
 *.swp
 docs/research/
