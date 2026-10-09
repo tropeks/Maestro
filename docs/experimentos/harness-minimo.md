@@ -205,6 +205,19 @@ subcomando `echo` não está na lista fechada, `dontAsk` negou e o agente desist
 do gerente real do maestro; o gerente real ganha do envelope "um comando por chamada", a config 2 não.
 Runs 2 e 3 **não foram feitos** à espera da decisão (turno 2, relato).
 
+**Turno 3 — allowlist +6** (`echo printf sort uniq cut tr`, igual nas duas configs; `env tee mkdir` fora; teste
+`tests/cli/test-harness-minimo-allowlist.sh`: vermelho antes, verde depois; commit `bf2c94f`).
+
+**Config 2, run C2-R2, 09/10 15:42, load 4,01 / 4,73 / 5,41 — PARADO NA PARTIDA (aparelho, não método):**
+aceite = não (recibo rc 1) · parede 13 353 ms · tokens entrada 4, saída 831, cache de leitura 32 874, cache de
+criação 6 223 · custo 4 centavos USD = 20 centavos BRL · 1 chamada de ferramenta, 2 turnos · 0 arquivos, 0
+commits · regressões 0 por construção (árvore intacta; lista não gerada) · intervenções 0 por construção.
+Causa: o agente emitiu de novo um Bash composto, `git log --oneline | head -3 && ls && (bash tests/run-all.sh 2>&1
+| tail -40; echo rc=${PIPESTATUS[0]})`. Todos os comandos (`git`, `head`, `ls`, `bash tests/*`, `tail`, `echo`)
+estão na lista; o `dontAsk` negou assim mesmo — provável causa: o subshell `( … )` e/ou a expansão
+`${PIPESTATUS[0]}`, que o casador de regras de Bash não decompõe. Hipótese, não provada. O agente desistiu
+pedindo liberação. Run interrompido por regra do ESTADO; **C2-R3 e C2-R4 não foram feitos**.
+
 ## 8. Limites (sem enfeite)
 
 - **Uma ordem** (054), **N = 3**, **um modelo** (`sonnet`): é a primeira medida, não a última.
