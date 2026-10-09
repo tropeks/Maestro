@@ -78,11 +78,15 @@ aponta para o número que o sustenta; o que não foi medido fica como "não medi
 - **Não** repetir o experimento em outras ordens nem trocar de modelo: uma pergunta de cada vez.
 
 ## Ask-First
-- **Dinheiro:** cada run custa tokens. **Proposta** (o Diretor confirma antes do turno 2): N = 3 por configuração (6 runs), `--max-budget-usd` por run e
-  um teto total em dólares a fixar pelo Diretor. Estourou o teto total, PARE e relate o parcial.
-- **A Ponte da config 1 não pode tocar a ordem real:** o run usa `project` e `order_ref` de **fixture** (por exemplo `exp-harness-054`). Se a Ponte exigir
-  cadastro de projeto, PARE e peça (cadastrar projeto é do Diretor).
-- **Quem responde à Ponte na config 1:** o Spock/Capitão, como hoje. Combine antes o horário; a espera por humano entra na métrica à parte.
+- **Dinheiro — DECIDIDO pelo Diretor (09/10), não reabra:** **R$ 20 por run e R$ 120 no total, 6 runs** (N = 3 por configuração). Run que estourar os R$ 20 **para** e
+  **conta como achado** (aceite = não, custo = o teto, o motivo da parada anotado): **não se repete** o run, e o total de R$ 120 não sobe. O `claude` mede em dólar
+  (`--max-budget-usd`): o executor converte pela cotação do dia, **registra a cotação e os valores em dólar usados**, e reporta o custo em centavos inteiros nas duas
+  moedas. Estourou o total, PARE e relate o parcial.
+- **A Ponte da config 1 não pode tocar a ordem real — DECIDIDO pelo Diretor (09/10):** o run usa `project` e `order_ref` de **fixture** do experimento (por exemplo
+  `exp-harness-054`), **nunca a 054 real**. O executor **pode cadastrar** na Ponte esse project e esse order_ref de fixture; registra no relatório o que cadastrou e
+  como remover, e **não remove nada sozinho**. Qualquer outro cadastro na Ponte continua sendo do Diretor.
+- **Quem responde à Ponte na config 1 — DECIDIDO pelo Diretor (09/10):** o **Spock**. A **espera por humano entra numa métrica separada** (soma dos intervalos
+  aberta→resolvida das decisões do run), fora do tempo de parede do agente; o relatório traz os dois números. Combine o horário com o Spock antes do turno 3.
 - **Texto cortado × literal:** se o Diretor quiser o texto literal nas duas configurações, a config 2 verá instruções de `maestro` que não consegue seguir.
   O padrão desta ordem é o corte descrito; mude só por decisão.
 - **Reprodutibilidade da base:** se os 8 FAIL da 054 não aparecerem 3 de 3 na base, a ordem não serve; troque e diga.
@@ -114,9 +118,9 @@ Emenda: CHANGELOG (Added). Nenhuma emenda de contrato.
 
 ## Turno
 
-- ESTADO: nenhum turno feito. O primeiro run faz **só o TURNO 1**. Divisão: **turno 1** o aparelho e a escolha da ordem, sem gastar modelo; **turno 2** os 3 runs da config 2 (pura); **turno 3** os 3 runs da config 1 (Maestro completo); **turno 4** a tabela, a recomendação, as emendas e o recibo. Cada run seguinte lê o ESTADO e **não repete** o que já está feito.
+- ESTADO: nenhum turno feito. O primeiro run faz **só o TURNO 1**. Divisão: **turno 1** o aparelho e a escolha da ordem, sem gastar modelo; **turno 2** os 3 runs da config 2 (pura); **turno 3** os 3 runs da config 1 (Maestro completo); **turno 4** a tabela, a recomendação, as emendas e o recibo. Cada run seguinte lê o ESTADO e **não repete** o que já está feito. **DECISÕES DO DIRETOR de 09/10 (a B está aprovada; despacho só depois da 098):** (1) **teto de R$ 20 por run e R$ 120 no total, 6 runs**; run que estourar **para e conta como achado**, sem repetir; o executor converte para dólar pela cotação do dia e registra a cotação; (2) **pode cadastrar na Ponte um project e um order_ref de fixture** do experimento, **nunca a 054 real**; (3) na config 1 **quem responde à Ponte é o Spock**, e a **espera por humano entra numa métrica separada**.
 - fatia: **turno 1**: a escolha da ordem com os critérios verificados na base (os 8 FAIL da 054 três vezes seguidas, ou a troca justificada), a base sem futuro, `texto-da-ordem` com o diff `prompt-1`/`prompt-2`, o coletor de métricas, e os três testes do aparelho com `claude` falso e o vermelho colado; o `--debug` das duas configurações em modo de carga (um `claude -p` de uma linha, sem tarefa real)
-- fim: os três testes saem 1 antes (colado) e 0 depois; a base montada sem futuro; o diff dos dois prompts colado; o `--debug` mostrando o que carrega em cada configuração; `shellcheck` limpo; o orçamento proposto (N, teto por run, teto total) escrito para o Diretor confirmar antes do turno 2
+- fim: os três testes saem 1 antes (colado) e 0 depois; a base montada sem futuro; o diff dos dois prompts colado; o `--debug` mostrando o que carrega em cada configuração; `shellcheck` limpo; o orçamento decidido (N = 3, R$ 20 por run, R$ 120 no total, a cotação do dia e os valores em dólar para `--max-budget-usd`) escrito no relatório
 - teto: 4
 - fora: o ponte-daemon, rodar a ordem de verdade (turnos 2 e 3), cortar qualquer coisa do método, `hooks/ bin/ lib/ src/ mods/`, settings, vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
