@@ -1,0 +1,8 @@
+tests/hooks/test-order-029-gatilho.sh::evidência vazou entre sessões
+tests/hooks/test-order-029-gatilho.sh::liberou sem evidência de director.ask
+tests/hooks/test-order-029-gatilho.sh::mensagem não cita a tool
+tests/hooks/test-order-029-gatilho.sh::mensagem não ensina a correção
+tests/hooks/test-order-029-gatilho.sh::paráfrase passou — devia reprovar
+tests/hooks/test-order-029-gatilho.sh::sem socket: passou em SILÊNCIO — o log tem de saber
+tests/hooks/test-order-038-rodada-corrente.sh::038/2: canônica corrente NÃO segurou ()
+tests/hooks/test-order-038-rodada-corrente.sh::038/3: paráfrase deixou de reprovar ()
