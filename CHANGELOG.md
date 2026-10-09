@@ -7,6 +7,14 @@ from the decision log and tag messages when this file was introduced.
 ## [Unreleased]
 
 ### Added
+- **`tools/harness-minimo/` — o aparelho do experimento do harness mínimo (ordem 077, turno 1).** Mede se a mesma ordem pequena e real rende
+  mais, igual ou menos no Maestro completo do que num `claude -p` puro: `montar-base.sh` (base sem futuro: `git archive` do `head:` da
+  ordem, um único commit, mesma árvore byte a byte), `texto-da-ordem` (uma fonte gera `prompt-1.md` inteiro e `prompt-2.md` sem os blocos
+  do método, com o critério de pronto como instrução), `lancar.sh` (config 1 = argv do runner do ponte-daemon com plugin, hooks e Ponte de
+  fixture; config 2 = `--safe-mode`, sem MCP, sem `maestro` no PATH, `dontAsk` com lista fechada; `MAESTRO_HOME` vazio nos dois) e
+  `coletar-metricas.sh` (só inteiros, ausente = "ausente", regressões, Ponte em `mode=ro`). Testes com `claude` falso e fixtures:
+  `tests/cli/test-harness-minimo-{base,texto,metricas,lancador}.sh`. Relatório e dados: `docs/experimentos/harness-minimo.md`. Nenhum
+  hook, `bin/`, `lib/` ou `src/` tocado.
 - **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
   as seis chaves no executável, `plugin validate`), mostra o diff dos settings gerenciados, pergunta, instala `mods/` em
   `/opt/maestro/claude-plugins` e grava as etapas A e B juntas (`allowManagedModsOnly` aninhado, marketplace de root, `enabledPlugins`,

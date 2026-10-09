@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# tools/harness-minimo/texto-da-ordem — UMA fonte para os dois prompts do experimento (ordem 077).
+#
+#   prompt-1.md  a ordem INTEIRA, byte a byte (config 1, Maestro completo).
+#   prompt-2.md  a MESMA ordem sem os blocos que só existem por causa do método (config 2,
+#                claude -p puro), mais UMA seção final com o critério de pronto escrito como
+#                instrução. Tudo o que sobra é byte a byte igual ao prompt-1.
+#
+# O corte é a HIPÓTESE em teste, não o oráculo. O que sai do prompt-2 (e só isto):
+#   1. a seção `## Turno` inteira (protocolo do Turno: fatia, fim, teto, director_report);
+#   2. a seção `## Contrato de execução` inteira (branch, recibo por `maestro evidence`, aceite);
+#   3. todo bloco de citação que abre por `> **` (regras de execução headless do método);
+#   4. todo item de lista (`- `, `* `, `N. `, com as linhas de continuação) que cita
+#      `maestro evidence|order|papercut`, `director_report`, `director.report` ou `habits`.
+# O que entra no prompt-2: a seção `## Critério de pronto`, com o comando do recibo da ordem
+# ORIGINAL escrito como instrução ("rode X e termine quando sair 0"). Sem ela o corte tiraria
+# o oráculo, e o prompt-2 não teria como saber quando parar.
+#
+# Uso: texto-da-ordem <ordem.md> <saida-dir> <comando-do-recibo> [<prefixo-comum>]
+#   <prefixo-comum> (opcional): um parágrafo que vai ANTES da ordem, IDÊNTICO nos dois prompts
+#   (para quando o texto do Turno pedir menos do que o experimento mede).
+# Saída: prompt-1.md, prompt-2.md e prompt.diff em <saida-dir>; o diff também vai a stdout.
+set -u
+
+[[ $# -ge 3 && $# -le 4 ]] || { echo "uso: texto-da-ordem <ordem.md> <saida-dir> <comando-do-recibo> [<prefixo-comum>]" >&2; exit 2; }
+ordem="$1"; saida="$2"; recibo="$3"; prefixo="${4:-}"
+[[ -f "$ordem" ]] || { echo "texto-da-ordem: '$ordem' não existe" >&2; exit 2; }
+[[ -n "$recibo" ]] || { echo "texto-da-ordem: comando do recibo vazio" >&2; exit 2; }
+mkdir -p "$saida" || exit 2
+
+cabeca="$saida/.cabeca"
+: > "$cabeca"
+[[ -n "$prefixo" ]] && printf '%s\n\n' "$prefixo" > "$cabeca"
+
+cat "$cabeca" "$ordem" > "$saida/prompt-1.md" || exit 1
+
+awk '
+function flush() { if (nb > 0) { if (!corta) printf "%s", buf; buf = ""; nb = 0; corta = 0 } }
+BEGIN { RE = "maestro (evidence|order|papercut)|director_report|director[.]report|habits" }
+{
+  line = $0
+  if (line ~ /^## /) {
+    flush()
+    skipsec = (line ~ /^## Turno[ \t]*$/ || line ~ /^## Contrato de execu/)
+    if (!skipsec) print line
+    next
+  }
+  if (skipsec) next
+  if (inq) { if (line == "") inq = 0; next }
+  if (line ~ /^> \*\*/) { flush(); inq = 1; next }
+  if (line ~ /^([-*]|[0-9]+[.]) /) { flush(); buf = line "\n"; nb = 1; corta = (line ~ RE); next }
+  if (nb > 0 && line ~ /^[ \t]+[^ \t]/) { buf = buf line "\n"; if (line ~ RE) corta = 1; next }
+  flush()
+  print line
+}
+END { flush() }
+' "$ordem" > "$saida/.corpo" || exit 1
+
+{
+  cat "$cabeca" "$saida/.corpo"
+  printf '\n## Critério de pronto\n\nRode `%s` na raiz do repositório e termine quando sair 0.\n' "$recibo"
+} > "$saida/prompt-2.md" || exit 1
+rm -f "$cabeca" "$saida/.corpo"
+
+diff "$saida/prompt-1.md" "$saida/prompt-2.md" > "$saida/prompt.diff"
+rc=$?
+[[ $rc -le 1 ]] || { echo "texto-da-ordem: diff falhou (rc=$rc)" >&2; exit 1; }
+cat "$saida/prompt.diff"
+exit 0
