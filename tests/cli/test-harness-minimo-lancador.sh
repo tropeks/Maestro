@@ -51,6 +51,9 @@ for flag in -p --safe-mode --strict-mcp-config --verbose; do
 done
 has2 dontAsk && ok "config 2: --permission-mode dontAsk" || bad "config 2: sem dontAsk"
 grep -q '^--allowedTools=' <<<"$A2" && ok "config 2: lista fechada em --allowedTools= (forma com '=', a flag é variadica)" || bad "config 2: sem --allowedTools="
+D2=$(grep '^--disallowedTools=' <<<"$A2")
+{ grep -qF 'Read(~/.ponte/**)' <<<"$D2" && grep -qF 'Edit(~/.ponte/**)' <<<"$D2" && grep -qF 'Bash(ponte-daemon:*)' <<<"$D2" && grep -qF 'mcp__plugin_*' <<<"$D2"; } \
+  && ok "config 2: o mesmo deny de .ponte da config 1 (--disallowedTools=)" || bad "config 2: sem o deny de .ponte"
 grep -q 'maestro\|mcp__ponte' "$tmp/s2/arquivos/allowlist.json" && bad "config 2: a lista tem item do método" || ok "config 2: a lista fechada não tem maestro nem Ponte"
 grep -q '"Bash(git \*)"' "$tmp/s2/arquivos/allowlist.json" && ok "config 2: a lista mantém o núcleo (git, leitura, edição)" || bad "config 2: perdeu o núcleo"
 for flag in --append-system-prompt-file --permission-prompt-tool --session-id --settings --dangerously-skip-permissions --bare; do

@@ -164,7 +164,9 @@ else
   posicional="$texto"
   [[ -z "$prompt" ]] || posicional="$(cat "$prompt")"
   argv+=(--safe-mode --strict-mcp-config --mcp-config "$arq/mcp-vazio.json" --permission-mode dontAsk
-         "--allowedTools=$(jq -r 'join(",")' <<<"$allow2")")   # forma com "=": a flag é variadica e engoliria o prompt
+         "--allowedTools=$(jq -r 'join(",")' <<<"$allow2")"    # forma com "=": a flag é variadica e engoliria o prompt
+         # o mesmo deny de ~/.ponte da config 1 (Bash liberado sob dontAsk alcança o disco; a Ponte do Capitão fica fora)
+         "--disallowedTools=Read(~/.ponte/**),Edit(~/.ponte/**),Bash(ponte-daemon:*),mcp__plugin_*")
   # PATH sem `maestro` nem `ponte-daemon`: um diretório de atalhos só com o necessário.
   shim="$saida/bin"; mkdir -p "$shim"
   ln -sf "$claude_bin" "$shim/claude"
