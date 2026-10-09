@@ -193,7 +193,17 @@ Conta contra o mesmo R$ 120 por prudência.
 
 ## 7. Tabela por run e recomendação
 
-*(vazias até os turnos 2 a 4 — nenhum run de tarefa foi feito.)*
+**Turno 2 — linha de base das regressões** (`listas-da-suite.sh` na base `92c7c9e`, `env -i`): **3081 passam,
+8 falham** (suíte rc 1); listas em `docs/experimentos/lista-base-92c7c9e/{passam,falham}.txt`.
+
+**Config 2, run 1 (C2-R1), 09/10 15:19, load 4,21 / 5,47 / 6,22 — PARADO NA PARTIDA (aparelho, não método):**
+aceite = não (recibo rc 1) · parede 11 375 ms · tokens entrada 4, saída 777, cache de leitura 32 874, cache de
+criação 6 222 · custo 4 centavos USD = 20 centavos BRL (cotação 4,998) · 1 chamada de ferramenta, 2 turnos ·
+0 arquivos tocados, 0 commits · regressões 0 por construção (árvore intacta) · intervenções 0 por construção.
+Causa: o agente emitiu um Bash composto (`git log … && ls && bash tests/run-all.sh … | tail; echo rc=…`); o
+subcomando `echo` não está na lista fechada, `dontAsk` negou e o agente desistiu pedindo liberação. A lista é a
+do gerente real do maestro; o gerente real ganha do envelope "um comando por chamada", a config 2 não.
+Runs 2 e 3 **não foram feitos** à espera da decisão (turno 2, relato).
 
 ## 8. Limites (sem enfeite)
 
