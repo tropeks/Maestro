@@ -262,6 +262,11 @@ commit-base; área: o `commands.<rótulo>`). Contrato: API_SPEC, emenda da ordem
 (`bash /tmp/x.sh`, cadeias com `;` `&&` `|`, argumento com espaço, caminho absoluto no lugar do relativo, ordem
 inexistente, `fim:` em prosa), nem trocando o `fim:` na árvore (não commitado) ou em commit depois do baseline.
 
+**O composto (ordem 079):** `order-N` aceita `bash -c "<texto>"` quando o texto, com espaços normalizados, é igual byte a byte a
+um declarado entre crases no commit-base. Garante que o composto executa **o texto que o Diretor escreveu**, nada além (nem
+`sh`, nem outra flag, nem prefixo de ambiente, nem `$0`, nem variável expandida pelo gerente). O que o texto roda (os scripts
+que ele chama, o `cd` para uma pasta do repo) é o que o repo contém: o mesmo limite do simples, na tabela abaixo.
+
 **Não garante (declarado):**
 
 | não coberto | por quê |

@@ -1,0 +1,32 @@
+diff --git a/lib/core-evidence-declared.sh b/lib/core-evidence-declared.sh
+index 9cebc9d..d64b444 100644
+--- a/lib/core-evidence-declared.sh
++++ b/lib/core-evidence-declared.sh
+@@ -30,6 +30,15 @@ _evd_words_equal() { # <declarado> <arg>... → rc 0 se os argumentos são, pala
+   return 0
+ }
+ 
++_evd_bashc_equal() { # <declarado> <arg>... → rc 0 só se for `bash` `-c` <um argumento = o declarado, espaços normalizados>
++  local decl="$1" w=()
++  shift
++  (( $# == 3 )) && [[ "$1" == bash && "$2" == -c ]] || return 1
++  [[ "$3" == *$'\n'* ]] && return 1
++  read -ra w <<<"$3"
++  (( ${#w[@]} > 0 )) && [[ "${w[*]}" == "$decl" ]]
++}
++
+ _evd_fim_cmds() { # <valor do fim:> → um comando declarado por linha (só o que está entre crases)
+   local s="$1" re='`([^`]+)`' c
+   while [[ "$s" =~ $re ]]; do
+@@ -92,8 +101,10 @@ _evd_gate_order() { # <proj> <rótulo> <n> <comando...>
+     "o fim: da ordem $n não declara comando entre crases (\`…\`) — o texto fora das crases é prosa" "$hint"
+   while IFS= read -r why; do
+     _evd_words_equal "$why" "$@" && return 0
++    _evd_bashc_equal "$why" "$@" && return 0
+   done <<<"$decl"
+-  _evd_refuse "$label" "$*" "$decl" "comando diferente dos declarados no fim: da ordem $n" "$hint"
++  _evd_refuse "$label" "$*" "$decl" "comando diferente dos declarados no fim: da ordem $n" \
++    "$hint; o declarado composto (&&, ;, |) vale como bash -c '<texto>' com o texto exato"
+ }
+ 
+ _evd_area_decl() { # <proj> <rótulo> → commands.<rótulo> do .maestro.yaml COMMITADO (fim_commit da ordem N em `área-N`, senão HEAD)

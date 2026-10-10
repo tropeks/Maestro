@@ -16,6 +16,12 @@ from the decision log and tag messages when this file was introduced.
   `maestro order --accept N` também recusa se o `.maestro.yaml` mudou entre o `fim_commit` da ordem e o tip (rótulo de área sem sufixo
   lê o yaml do HEAD; sem isso o run commitaria um yaml próprio). Ordem sem `fim_commit` não é comparada.
 
+### Changed
+- **`evidence --record --label order-N` aceita o fim composto como `bash -c '<texto>'` (ordem 079).** Além da comparação por palavras da 078,
+  vale `bash` `-c` + **um** argumento igual (espaços normalizados, byte a byte) a um comando entre crases do `fim:` do commit-base; assim
+  `` `cd web && npm test` `` deixa de ser recusado sempre. `sh`, outras flags, prefixo de ambiente, segundo argumento, `\n`, prefixo/parte
+  do declarado e rótulo de área seguem recusados. Testes: `tests/cli/test-evidence-fim-composto{,-adversarial}.sh`.
+
 ### Added
 - **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
   as seis chaves no executável, `plugin validate`), mostra o diff dos settings gerenciados, pergunta, instala `mods/` em

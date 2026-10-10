@@ -739,6 +739,17 @@ maestro conduct --session <session_id>
   - Fora desta emenda (ENGINEERING_SPEC, "Limites da recusa do recibo"): o comando declarado roda o que o repo
     contém; o ledger em `~/.maestro/` é forjável pelo run; `order-N-<dono8>` (ordem cujo trabalho vive em outro repo)
     é recusado porque a ordem não vive no repo do trabalho.
+- **Emenda ordem 079 — `order-N` aceita o fim composto como `bash -c '<texto>'`.** O `fim:` das ordens do NetForge declara
+  comandos compostos (`` `cd web && npm test` ``), que a comparação por palavras da 078 nunca iguala ao recebido. Em
+  `_evd_gate_order`, **além** da comparação por palavras (inalterada), o recebido é aceito quando são **exatamente três
+  palavras**: `bash` (literal, sem caminho), `-c` (literal, sem outra flag) e **um único argumento** que, com a sequência de
+  espaços/tabs normalizada (a mesma da 078, nas pontas também), é **igual byte a byte** a um dos comandos entre crases do
+  `fim:` do commit-base. Recusados, sem executar e sem gravar: `sh -c`, `/bin/bash -c`, `env bash -c`, `FOO=1 bash -c`,
+  `bash -lc`/`-ec`/`-xc`, segundo argumento (o `$0`), `bash -c` sem texto, texto com `\n`, prefixo ou parte do declarado,
+  `;` `&&` `|` extra, variável (`$X`, `$CMD` são texto literal, nunca expandidos). **Só o `order-N`:** rótulo de área
+  continua só com o `commands.<rótulo>` por palavras. `fim_commit`, leitura do commit-base, recusa de `fim:` mudado/editado,
+  sem baseline e sem crases, `maestro_proof_verdict` e o formato do recibo **não mudam**. A mensagem de recusa passa a
+  lembrar que o composto vale como `bash -c '<texto>'`.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último
