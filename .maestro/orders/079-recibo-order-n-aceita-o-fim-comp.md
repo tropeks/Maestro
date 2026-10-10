@@ -78,9 +78,15 @@ Todos os testes **vermelhos antes** (saída colada no sandbox, contra o `lib/` d
    relate qual: fora desta ordem.
 2. **Não mude** `_evd_words_equal`, o leitor do veredito (`maestro_proof_verdict`), o formato do recibo nem o `_evd_gate_area`.
    Se o conserto mínimo exigir isso, PARE.
-3. **Toca `lib/` (autoprotegido):** a entrega é **UM patch** em `docs/patches/079-*.patch`, feito em clone sandbox FORA do repo a
-   partir do branch da 078, testado antes e depois; `git apply --check` no worktree. `tests/` e `docs/` direto no branch.
-4. Logs: **só metadados**; nunca o texto do comando recusado inteiro no log.
+3. **Toca `lib/` (autoprotegido):** a entrega é **UM patch** em `docs/patches/079-*.patch`, feito em clone de trabalho a partir do
+   branch da 078 **na pasta temporária do run**, testado antes e depois; o patch final é o que **fica na worktree**, em
+   `docs/patches/`, e `git apply --check` roda na worktree. `tests/` e `docs/` direto no branch.
+4. **Sandbox (a partir de agora o projeto Maestro roda dentro do bwrap):** `HOME` vazio, `/tmp` efêmero, **sem `~/.maestro`** e
+   sem escrita fora da worktree e da pasta temporária do run. Consequências: o clone de trabalho vive na pasta temporária do run
+   (some quando o run acaba; só o que está na worktree sobrevive); `maestro evidence`, `maestro order --status` e qualquer
+   coisa que leia o ledger **não funcionam lá dentro**. Se algo de que o turno precisa **não existir dentro do sandbox**, o
+   executor **relata e PARA**, sem contornar (nada de remontar, de apontar `HOME` para outro lugar nem de pedir ao Spock um atalho).
+5. Logs: **só metadados**; nunca o texto do comando recusado inteiro no log.
 
 ## Como sai
 
@@ -92,14 +98,14 @@ garante e o que não) e CHANGELOG (Changed).
 
 - Os dois testes novos vermelhos antes e verdes depois, saídas coladas; os três da 078 verdes.
 - `git apply --check` do patch no worktree; `shellcheck` limpo.
-- A suíte completa `bash tests/run-all.sh` no sandbox com o patch aplicado, **lançada destacada**
-  (`setsid nohup bash tests/run-all.sh`, com log e linha `rc=` no fim, em caminho da pasta temporária do run); o relato diz o
-  caminho do log e o pid e o Spock lê o rc.
+- **A suíte completa NÃO roda no run.** O run apenas **declara** o comando da suíte no `fim:` (`bash tests/run-all.sh`, entre
+  crases). O Spock roda a suíte e grava o recibo `order-79` **fora do run** (um processo destacado do run morre com ele: o
+  daemon encerra o grupo). Não lance `setsid`/`nohup`, não deixe processo para depois do relato.
 
 ## Turno
 
-- fatia: os dois testes vermelhos (composto aceito, adversarial a–i) colados contra o `lib/` da 078, o ajuste mínimo de `_evd_gate_order` em clone sandbox a partir do branch da 078, os testes verdes, as emendas (API_SPEC, ENGINEERING_SPEC, CHANGELOG), o patch em `docs/patches/` com `git apply --check` ok e `shellcheck` limpo; a suíte completa lançada destacada
-- fim: `bash tests/cli/test-evidence-fim-composto.sh` e `bash tests/cli/test-evidence-fim-composto-adversarial.sh` saem 1 antes (colado) e 0 depois no sandbox, com `bash tests/cli/test-evidence-comando-declarado.sh`, `bash tests/cli/test-evidence-comando-declarado-adversarial.sh` e `bash tests/cli/test-evidence.sh` verdes; patch protegido pronto e `git apply --check` ok; `bash tests/run-all.sh` lançada destacada e relatado o caminho do log e o pid (o rc é lido pelo Spock)
+- fatia: os dois testes vermelhos (composto aceito, adversarial a–i) colados contra o `lib/` da 078, o ajuste mínimo de `_evd_gate_order` em clone de trabalho na pasta temporária do run, a partir do branch da 078, os testes verdes, as emendas (API_SPEC, ENGINEERING_SPEC, CHANGELOG), o patch final em `docs/patches/` da worktree com `git apply --check` ok e `shellcheck` limpo; a suíte completa NÃO roda no run (o Spock a roda e grava o recibo fora dele); dentro do sandbox bwrap, o que faltar é relatado e o turno para
+- fim: `bash tests/cli/test-evidence-fim-composto.sh` e `bash tests/cli/test-evidence-fim-composto-adversarial.sh` saem 1 antes (colado) e 0 depois no sandbox, com `bash tests/cli/test-evidence-comando-declarado.sh`, `bash tests/cli/test-evidence-comando-declarado-adversarial.sh` e `bash tests/cli/test-evidence.sh` verdes; patch protegido na worktree e `git apply --check` ok; o comando da suíte declarado aqui é `bash tests/run-all.sh`, que o run NÃO executa (o Spock roda e grava o recibo fora do run)
 - teto: 2
 - fora: aceitar `sh`, outras flags do `bash`, prefixo de ambiente ou segundo argumento, o `bash -c` em rótulo de área, mexer em `_evd_words_equal`, no veredito ou no formato do recibo, gravar o baseline de qualquer ordem (é do Spock, no despacho), editar o `fim:` de qualquer ordem, mexer no ponte-daemon, aplicar o patch no repo, mergear (o merge é do Capitão, depois da 078) e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
@@ -119,7 +125,8 @@ garante e o que não) e CHANGELOG (Changed).
 > `/tmp/claude-<uid>/<cwd codificado>`, nunca `/tmp` solto; escrita só com Edit ou Write.
 
 > **Headless:** nunca encerre a resposta esperando uma notificação nem um subagente: espere em laço até o fim antes de relatar.
-> A única espera que fica para depois do relato é a suíte completa destacada, e o relato diz o caminho do log e o pid.
+> Não lance processo destacado (`setsid`, `nohup`): ele morre com o run. Nenhuma espera fica para depois do relato; a suíte completa
+> é rodada pelo Spock fora do run.
 
 > **Revisão de subagente:** termina em ARQUIVO em `~/.maestro/briefs/` — o relato cita o caminho, não cola o achado. Arquivo se escreve **só com Write e Edit**.
 
