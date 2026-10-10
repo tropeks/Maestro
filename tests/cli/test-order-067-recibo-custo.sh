@@ -41,7 +41,7 @@ expect() { # <rótulo> <tokens> <centavos> <fonte>
   if [[ "$(field "$f" tokens)" == "$2" && "$(field "$f" custo_centavos)" == "$3" && "$(field "$f" custo_fonte)" == "$4" ]]; then ok "$1"
   else bad "$1: tokens='$(field "$f" tokens)' custo_centavos='$(field "$f" custo_centavos)' custo_fonte='$(field "$f" custo_fonte)' (esperado $2/$3/$4)"; fi
 }
-L=order-67
+L=custo-67   # ordem 078: rótulo livre (order-N só executa o fim: do baseline; aqui o rótulo é irrelevante ao custo)
 
 # 1. usage e costUSD completos; a mesma mensagem em duas linhas (stream) conta UMA vez; 0,0025+0,0025 = meio centavo → 1
 fresh; { msg m1 10 20 30 40 0.0025; msg m1 10 20 30 40 0.0025; msg m2 1 2 3 4 0.0025; } > "$TD/$SID.jsonl"

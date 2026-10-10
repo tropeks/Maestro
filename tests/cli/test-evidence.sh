@@ -20,10 +20,11 @@ chk() { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1 (esperado '$3', obtido
 P="$tmp/proj"; mkdir -p "$P"; git -C "$P" init -q
 echo base > "$P/f"; printf 'echo x >> f\n' > "$P/dirty.sh"
 git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm x
-# ordem 078: o rótulo `suite` só executa o commands.suite do .maestro.yaml. O arquivo vive no .gitignore local
-# (info/exclude) para trocar o comando declarado entre as gravações sem mexer no conteúdo provado.
-printf '.maestro.yaml\n' >> "$P/.git/info/exclude"
-decl() { printf 'commands:\n  suite: %s\n' "$1" > "$P/.maestro.yaml"; }
+# ordem 078: o rótulo `suite` só executa o commands.suite do .maestro.yaml COMMITADO (não o da árvore de trabalho).
+decl() {
+  printf 'commands:\n  suite: %s\n' "$1" > "$P/.maestro.yaml"
+  git -C "$P" add .maestro.yaml; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "decl $1"
+}
 
 echo "-- gravação e veredito feliz"
 decl true

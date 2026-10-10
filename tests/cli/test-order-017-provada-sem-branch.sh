@@ -40,6 +40,7 @@ COS="$REPO/lib/core-order-state.sh"
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"   # ordem 078: order-N só grava o fim: do commit-base (BIN já definido acima)
 
 command -v jq >/dev/null 2>&1 || { echo "PENDENTE  jq ausente — pulando as asserções de --json"; }
 
@@ -84,7 +85,7 @@ git -C "$P" -c user.email=t@t -c user.name=t commit -qm base
 Reproduz .maestro/orders/002 do vulcan: recibo com branch mergeado e apagado.
 BODY
 OF1="$P/.maestro/orders/001-vulcan-like.md"
-BR1=$(grep '^branch:' "$OF1" | awk '{print $2}')
+BR1=$(grep '^branch:' "$OF1" | awk '{print $2}'); declare_order "$P" 1 true
 git -C "$P" checkout -qb "$BR1"
 echo b >> "$P/f.txt"; git -C "$P" add f.txt
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm entrega
@@ -141,7 +142,7 @@ fi
 Execução falhou; branch some depois — não pode virar prova.
 BODY
 OF3="$P/.maestro/orders/003-recibo-com-falha.md"
-BR3=$(grep '^branch:' "$OF3" | awk '{print $2}')
+BR3=$(grep '^branch:' "$OF3" | awk '{print $2}'); declare_order "$P" 3 false
 git -C "$P" checkout -qb "$BR3"
 echo c >> "$P/f.txt"; git -C "$P" add f.txt
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm entrega3
@@ -164,7 +165,7 @@ fi
 Prova, aceita, depois o branch some — tem de continuar 'aceita'.
 BODY
 OF4="$P/.maestro/orders/004-vai-aceitar.md"
-BR4=$(grep '^branch:' "$OF4" | awk '{print $2}')
+BR4=$(grep '^branch:' "$OF4" | awk '{print $2}'); declare_order "$P" 4 true
 git -C "$P" checkout -qb "$BR4"
 echo d >> "$P/f.txt"; git -C "$P" add f.txt
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm entrega4

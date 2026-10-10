@@ -70,7 +70,9 @@ grep -q 'conteúdo mudou desde a prova' <<<"$("$BIN" verify --project "$P")" \
   && ok "e o motivo é nomeado (recibo é amarrado a conteúdo)" || bad "motivo do vencimento"
 
 echo "-- recibo com o comando ERRADO não fecha a exigência (E23b)"
-"$BIN" evidence --record --label suite --project "$P" -- echo nao-e-o-declarado >/dev/null
+"$BIN" evidence --record --label suite --project "$P" -- echo nao-e-o-declarado >/dev/null 2>&1   # ordem 078: o CLI recusa; o leitor ainda trata cmd_match=no
+"$BIN" evidence --record --label suite --project "$P" -- true >/dev/null
+EFS=$(ls "$MAESTRO_HOME"/evidence/*-suite | head -1); awk '/^cmd_match=/{print "cmd_match=no"; next} {print}' "$EFS" > "$EFS.fab" && mv -f "$EFS.fab" "$EFS"
 out=$("$BIN" verify --project "$P")
 grep -q 'evidência (suite): VENCIDA — comando diferente do declarado' <<<"$out" \
   && ok "comando fora do declarado → VENCIDA, mesmo com exit 0" || bad "cmd_match no verify ($out)"

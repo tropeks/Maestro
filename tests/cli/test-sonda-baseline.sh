@@ -42,6 +42,8 @@ git -C "$P" -c user.email=t@t -c user.name=t add -A
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm x
 
 echo "-- probe_ms é gravado por --record"
+printf 'commands:\n  suite: true\n' > "$P/.maestro.yaml"   # ordem 078: suite só executa o commands.suite COMMITADO
+git -C "$P" -c user.email=t@t -c user.name=t add .maestro.yaml; git -C "$P" -c user.email=t@t -c user.name=t commit -qm decl
 "$BIN" evidence --record --project "$P" -- true >/dev/null
 EF=$(ls "$MAESTRO_HOME/evidence/" | head -1)
 [[ -n "$EF" ]] || { bad "recibo não foi gravado"; exit 1; }
