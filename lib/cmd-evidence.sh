@@ -89,6 +89,14 @@ if ! declare -f maestro_proof_verdict >/dev/null 2>&1; then
   source "$REPO_DIR/lib/core-proof-verdict.sh"
 fi
 
+# ordem 078: a recusa ANTES de executar (order-N só o fim: do baseline; área só o commands.<área>).
+if ! declare -f _evd_gate >/dev/null 2>&1; then
+  [[ -f "$REPO_DIR/lib/core-evidence-declared.sh" ]] || die env "lib/core-evidence-declared.sh não encontrado em $REPO_DIR" \
+    "reinstale o plugin (maestro doctor)" 2
+  # shellcheck source=lib/core-evidence-declared.sh
+  source "$REPO_DIR/lib/core-evidence-declared.sh"
+fi
+
 _ev_cmd_match() { # <proj> <label> <cmd_str> → "decl<US>cmd_match" (US=\x1f: decl pode vir vazio, TAB perderia o campo)
   local proj="$1" label="$2" cmd_str="$3" decl cmd_match="free"
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
@@ -217,6 +225,7 @@ _ev_cmd_record() { # <proj> <label> <arquivo do recibo> <load_limiar> -- <comand
   [[ "${1:-}" == "--" ]] && shift
   [[ $# -gt 0 ]] || die validation "comando ausente" \
     "maestro evidence --record -- bash tests/run-all.sh" 1
+  _evd_gate "$proj" "$label" "$@"   # ordem 078: recusa (rc 1) antes de medir ou executar qualquer coisa
   local w_before="none" w_after="none" cmd_str cmd_hash
   [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
     w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"

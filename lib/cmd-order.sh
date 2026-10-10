@@ -336,7 +336,7 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
 
 # ------------------------------------------------------------------ despacho
 cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
-  case "${1:-}" in --turno-check|--turno-livre) _order_turno_cmd "$@"; return $? ;; esac   # ordem 046
+  case "${1:-}" in --turno-check|--turno-livre) _order_turno_cmd "$@"; return $? ;; --baseline) _order_baseline_cmd "$@"; return $? ;; esac   # ordem 046; 078: --baseline N grava o fim_commit
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
   local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp=""
   while (( $# )); do

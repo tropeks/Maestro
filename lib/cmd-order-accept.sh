@@ -202,6 +202,7 @@ _order_accept_session_resolve() { # <proj> <oid> <ptree> <sid> → stdout "sess�
 _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
   local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" st ptree _mv ts
   st=$(_order_status "$proj" "$wproj" "$of")
+  _evd_yaml_gate "$proj" "$oid"   # ordem 078: yaml de comandos mudou depois do baseline → recusa
   if [[ "$st" == "aceita" ]]; then
     _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")   # S-1806: reaceite é no-op se nada andou
     if [[ -z "$_mv" ]]; then

@@ -154,6 +154,9 @@ _order_workproject_lib_load
 # ordem 060: UM veredito da prova (maestro_proof_verdict) para evidence --check, --status e --accept.
 if [[ -f "$REPO_DIR/lib/core-proof-verdict.sh" ]]; then source "$REPO_DIR/lib/core-proof-verdict.sh"
 else die env "lib/core-proof-verdict.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2; fi
+# ordem 078: `maestro order --baseline N` (grava o fim_commit que a recusa do evidence --record lê).
+if [[ -f "$REPO_DIR/lib/core-evidence-declared.sh" ]]; then source "$REPO_DIR/lib/core-evidence-declared.sh"
+else die env "lib/core-evidence-declared.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2; fi
 # ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
 # árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
 if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
