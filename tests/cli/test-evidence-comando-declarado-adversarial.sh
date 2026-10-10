@@ -110,4 +110,18 @@ recusado "suite-1: yaml editado sem commit declarando o script → recusa" suite
 G checkout -q -- .maestro.yaml
 aceito "suite: yaml commitado volta a valer" suite -- bash tests/run-all.sh
 
+echo "-- fallback para o HEAD: o run commita um .maestro.yaml próprio e prova o aceite com ele"
+mk_proj yamlrun '`bash tests/run-all.sh`'
+printf 'commands:\n  suite: bash %s\n' "$SCRIPT" > "$P/.maestro.yaml"; G add -A; G commit -qm "run declara o próprio suite"
+aceito "o fallback lê o yaml do HEAD: suite aceita o script do run (brecha que o aceite fecha)" suite -- bash "$SCRIPT"
+aceito "recibo order-1 com o comando declarado no tip" order-1 -- bash tests/run-all.sh
+ACC=$("$BIN" order --accept 1 --project "$P" --session dir-1 2>&1); chk=$?
+(( chk != 0 )) && ok "accept RECUSA: o .maestro.yaml mudou entre o fim_commit e o tip" || bad "accept aceitou com o yaml mudado: $ACC"
+grep -q '\.maestro\.yaml' <<<"$ACC" && grep -q 'fim_commit' <<<"$ACC" \
+  && ok "a mensagem cita o .maestro.yaml e o fim_commit" || bad "mensagem sem o yaml/fim_commit: $ACC"
+mk_proj yamlok '`bash tests/run-all.sh`'
+aceito "recibo order-1 no projeto cujo yaml não mudou" order-1 -- bash tests/run-all.sh
+ACC=$("$BIN" order --accept 1 --project "$P" --session dir-1 2>&1); chk=$?
+(( chk == 0 )) && ok "accept segue passando quando o .maestro.yaml é o do fim_commit" || bad "accept recusou sem motivo (rc=$chk): $ACC"
+
 exit "$fail"

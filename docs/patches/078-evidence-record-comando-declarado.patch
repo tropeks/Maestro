@@ -25,6 +25,18 @@ index ff52ba9..c252d10 100644
    local w_before="none" w_after="none" cmd_str cmd_hash
    [[ -x "$REPO_DIR/bin/maestro-wtree" ]] && \
      w_before=$("$REPO_DIR/bin/maestro-wtree" "$proj" 2>/dev/null) || w_before="none"
+diff --git a/lib/cmd-order-accept.sh b/lib/cmd-order-accept.sh
+index 5e35f16..b5f7456 100644
+--- a/lib/cmd-order-accept.sh
++++ b/lib/cmd-order-accept.sh
+@@ -202,6 +202,7 @@ _order_accept_session_resolve() { # <proj> <oid> <ptree> <sid> → stdout "sess
+ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
+   local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" st ptree _mv ts
+   st=$(_order_status "$proj" "$wproj" "$of")
++  _evd_yaml_gate "$proj" "$oid"   # ordem 078: yaml de comandos mudou depois do baseline → recusa
+   if [[ "$st" == "aceita" ]]; then
+     _mv=$(_order_moved_since_accept "$proj" "$wproj" "$of")   # S-1806: reaceite é no-op se nada andou
+     if [[ -z "$_mv" ]]; then
 diff --git a/lib/cmd-order.sh b/lib/cmd-order.sh
 index 48d7e4c..c7a6f46 100644
 --- a/lib/cmd-order.sh
@@ -40,10 +52,10 @@ index 48d7e4c..c7a6f46 100644
    while (( $# )); do
 diff --git a/lib/core-evidence-declared.sh b/lib/core-evidence-declared.sh
 new file mode 100644
-index 0000000..b47dab0
+index 0000000..9cebc9d
 --- /dev/null
 +++ b/lib/core-evidence-declared.sh
-@@ -0,0 +1,189 @@
+@@ -0,0 +1,204 @@
 +#!/usr/bin/env bash
 +# maestro lib/core-evidence-declared.sh — ordem 078 (fase S0 de segurança).
 +#
@@ -162,6 +174,21 @@ index 0000000..b47dab0
 +  fi
 +  rm -rf "$td" 2>/dev/null
 +  return 0
++}
++
++_evd_yaml_gate() { # <proj> <oid> — --accept: recusa se o .maestro.yaml mudou entre o fim_commit da ordem e o tip
++  # Rótulo de área sem sufixo (`suite`) lê o yaml do HEAD: o run poderia commitar um yaml próprio e provar com ele.
++  # Ordem sem fim_commit (criada antes do baseline): nada a comparar, passa — o recibo order-N dela já é recusado.
++  local proj="$1" oid="$2" n bf sha
++  n=$((10#$oid)); bf=$(_evd_baseline_file "$proj" "$n")
++  sha=$(awk -F= '$1 == "fim_commit" { print $2; exit }' "$bf" 2>/dev/null) || sha=""
++  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 0
++  git -C "$proj" cat-file -e "$sha^{commit}" 2>/dev/null \
++    || die validation "ordem $oid: o fim_commit (${sha:0:12}) não existe neste repositório — não dá para comparar o .maestro.yaml" \
++         "o Diretor re-despacha a ordem (regrava o baseline)" 1
++  git -C "$proj" diff --quiet "$sha" HEAD -- .maestro.yaml 2>/dev/null && return 0
++  die validation "ordem $oid: o .maestro.yaml mudou entre o fim_commit (${sha:0:12}) e o tip — o comando de área da prova pode ser do run" \
++    "o Diretor confere o diff (git diff ${sha:0:12} HEAD -- .maestro.yaml) e re-despacha para regravar o baseline" 1
 +}
 +
 +_evd_gate_area() { # <proj> <rótulo> <comando...>

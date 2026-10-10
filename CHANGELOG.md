@@ -13,6 +13,8 @@ from the decision log and tag messages when this file was introduced.
   argumento com espaço recusado, exit 1, nada executa e nenhum recibo é gravado. Fecha o recibo de comando arbitrário via `Bash(maestro *)`.
   Não fecha o ledger em `~/.maestro` forjável pelo run (sandbox da ordem 107 do ponte-daemon) — ENGINEERING_SPEC, "Limites da recusa do recibo".
   Testes: `tests/cli/test-evidence-comando-declarado{,-adversarial}.sh`.
+  `maestro order --accept N` também recusa se o `.maestro.yaml` mudou entre o `fim_commit` da ordem e o tip (rótulo de área sem sufixo
+  lê o yaml do HEAD; sem isso o run commitaria um yaml próprio). Ordem sem `fim_commit` não é comparada.
 
 ### Added
 - **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
