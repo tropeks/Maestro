@@ -139,3 +139,7 @@ garante e o que não) e CHANGELOG (Changed).
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 079` (você não fecha a própria ordem).
+accepted_at: 2026-10-10T20:19:22-03:00
+accepted_session: desconhecido
+accepted_tree: a925286b7d1def9fa518ef3c96c4e613d701f6c5
+accepted_intent: 6
