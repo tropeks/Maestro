@@ -192,3 +192,7 @@ ESTADO (Spock, 10/10): turno 1 FEITO (tip 3a2550f: testes vermelhos, medição, 
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 078` (você não fecha a própria ordem).
+accepted_at: 2026-10-10T15:51:13-03:00
+accepted_session: desconhecido
+accepted_tree: 83a14264b4cb8e88951678ffa98b9f371fabd9a1
+accepted_intent: 6
