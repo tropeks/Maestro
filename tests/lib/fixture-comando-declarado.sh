@@ -27,6 +27,8 @@ Comando declarado.
 - fora: nada
 - relatório: v54" | "$BIN" order --create --title "Declarada" --project "$P" --session dir-1 >/dev/null
   G add -A; G commit -qm "ordem 1"
+  # o baseline do fim: (fim_commit) é gravado pelo CLI no commit da ordem; NOBASE=1 pula (teste do "sem baseline")
+  [[ "${NOBASE:-0}" == 1 ]] || "$BIN" order --baseline 1 --project "$P" >/dev/null
   rm -f "$MARK"
   SCRIPT="$tmp/script-$1.sh"; printf '#!/usr/bin/env bash\ntouch %s\n' "$MARK" > "$SCRIPT"
 }

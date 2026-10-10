@@ -66,6 +66,27 @@ sed -i "s|^- fim: .*|- fim: \`bash $SCRIPT\`|" "$OF"
 recusado "fim editado na árvore, sem commit → recusa" order-1 -- bash "$SCRIPT"
 grep -qi 'commit' <<<"$REC_OUT" && ok "a mensagem diz que o fim: editado não está commitado" || bad "sem menção ao commit: $REC_OUT"
 
+echo "-- o fim: que vale é o do commit-base (fim_commit)"
+NOBASE=1 mk_proj sembase '`bash tests/run-all.sh`'
+recusado "sem fim_commit → recusa mesmo com o comando certo" order-1 -- bash tests/run-all.sh
+grep -q 'fim_commit' <<<"$REC_OUT" && grep -q 'order --baseline' <<<"$REC_OUT" \
+  && ok "a mensagem diz que falta o fim_commit e como gravar" || bad "sem menção ao fim_commit/baseline: $REC_OUT"
+mk_proj commitado '`bash tests/run-all.sh`'
+OF=$(ls "$P"/.maestro/orders/001-*.md)
+sed -i "s|^- fim: .*|- fim: \`bash $SCRIPT\`|" "$OF"; G add -A; G commit -qm "run muda o fim: e commita"
+recusado "fim mudou em commit depois do baseline (script novo) → recusa" order-1 -- bash "$SCRIPT"
+recusado "fim mudou em commit depois do baseline (comando antigo) → recusa" order-1 -- bash tests/run-all.sh
+grep -q 'depois do baseline' <<<"$REC_OUT" && ok "a mensagem diz que o fim: mudou depois do baseline" || bad "sem motivo do baseline: $REC_OUT"
+"$BIN" order --baseline 1 --project "$P" >/dev/null
+aceito "re-baseline pelo Diretor regrava o fim_commit: o novo comando passa" order-1 -- bash "$SCRIPT"
+"$BIN" order --baseline 1 --project "$P" >/dev/null 2>&1; chk=$?
+(( chk == 0 )) && ok "baseline repetido com o arquivo limpo grava de novo" || bad "baseline repetido falhou rc=$chk"
+sed -i "s|^- fim: .*|- fim: \`bash x\`|" "$OF"
+"$BIN" order --baseline 1 --project "$P" >/dev/null 2>&1; chk=$?
+(( chk != 0 )) && ok "baseline recusa o arquivo da ordem com edição não commitada" || bad "baseline aceitou arquivo sujo"
+"$BIN" order --baseline 77 --project "$P" >/dev/null 2>&1; chk=$?
+(( chk != 0 )) && ok "baseline de ordem inexistente é recusado" || bad "baseline de ordem inexistente passou"
+
 echo "-- área: rótulos de commands.<rótulo> e suite-N"
 mk_proj areas '`bash tests/run-all.sh`'
 for l in suite tenant-isolation billing frontend suite-1; do
