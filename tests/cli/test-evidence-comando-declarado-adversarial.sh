@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# ordem 078 — adversarial: tudo o que NÃO é o comando declarado é recusado sem executar e sem gravar.
+# (a) cadeias de shell, (b) argumento com espaço, (c) número da ordem, (d) fim sem crases / sem Turno,
+# (e) kill-switch e MAESTRO_HOME trocado, (f) fim editado sem commit; mais as áreas (suite-N incluso).
+# MAESTRO_REPO_UNDER_TEST aponta outro checkout (o sandbox do patch); padrão: este repo.
+set -u
+
+HERE="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="${MAESTRO_REPO_UNDER_TEST:-$HERE}"
+BIN="$REPO/bin/maestro"
+
+source "$HERE/tests/lib/env-clean.sh"
+maestro_env_clean_inherit
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+export MAESTRO_HOME="$tmp/home"
+
+fail=0
+ok()  { printf 'ok   %s\n' "$1"; }
+bad() { printf 'FAIL %s\n' "$1"; fail=1; }
+source "$HERE/tests/lib/fixture-comando-declarado.sh"
+
+mk_proj adv '`bash tests/run-all.sh`'
+
+echo "-- (a) cadeias não são o comando declarado"
+recusado "run-all; script" order-1 -- bash -c "bash tests/run-all.sh; bash $SCRIPT"
+recusado "run-all && script" order-1 -- bash -c "bash tests/run-all.sh && bash $SCRIPT"
+recusado "run-all | script" order-1 -- bash -c "bash tests/run-all.sh | bash $SCRIPT"
+recusado "palavras extras no fim" order-1 -- bash tests/run-all.sh "&&" bash "$SCRIPT"
+recusado "caminho absoluto no lugar do relativo (sem expandir)" order-1 -- bash "$P/tests/run-all.sh"
+recusado "sem aspas removidas: palavra com aspas literais" order-1 -- bash '"tests/run-all.sh"'
+
+echo "-- (b) argumento com espaço dentro"
+recusado "bash \"tests/run-all.sh x\"" order-1 -- bash "tests/run-all.sh x"
+
+echo "-- (c) número da ordem"
+aceito "order-0001 e order-1 valem a mesma ordem" order-0001 -- bash tests/run-all.sh
+recusado "order-999 (inexistente) → recusa" order-999 -- bash tests/run-all.sh
+grep -qi 'não existe\|inexistente' <<<"$REC_OUT" && ok "order-999: a mensagem diz que a ordem não existe" || bad "order-999 sem motivo: $REC_OUT"
+
+echo "-- (d) fim sem crases e ordem sem ## Turno"
+mk_proj prosa 'bash tests/run-all.sh sai 0, em prosa'
+recusado "fim sem crases → recusa (fecha para negado)" order-1 -- bash tests/run-all.sh
+grep -q 'crases' <<<"$REC_OUT" && ok "a mensagem diz que faltam as crases" || bad "sem menção às crases: $REC_OUT"
+mk_proj semturno 'x'
+OF=$(ls "$P"/.maestro/orders/001-*.md)
+awk '/^## Turno/ { skip = 1 } !skip { print }' "$OF" > "$tmp/sem-turno.md" && cp "$tmp/sem-turno.md" "$OF"
+G add -A; G commit -qm "ordem sem turno"
+recusado "ordem sem bloco ## Turno → recusa" order-1 -- bash tests/run-all.sh
+
+echo "-- (e) sem atalho para o agente"
+mk_proj atalho '`bash tests/run-all.sh`'
+export MAESTRO_OFF=1
+recusado "MAESTRO_OFF=1 não libera" order-1 -- bash "$SCRIPT"
+unset MAESTRO_OFF
+H0="$MAESTRO_HOME"; export MAESTRO_HOME="$tmp/home-outro"
+recusado "MAESTRO_HOME trocado não libera" order-1 -- bash "$SCRIPT"
+export MAESTRO_HOME="$H0"
+recusado "flag --force não existe como atalho" order-1 --force -- bash "$SCRIPT"
+
+echo "-- (f) o run edita o fim: sem commitar"
+mk_proj edita '`bash tests/run-all.sh`'
+OF=$(ls "$P"/.maestro/orders/001-*.md)
+sed -i "s|^- fim: .*|- fim: \`bash $SCRIPT\`|" "$OF"
+recusado "fim editado na árvore, sem commit → recusa" order-1 -- bash "$SCRIPT"
+grep -qi 'commit' <<<"$REC_OUT" && ok "a mensagem diz que o fim: editado não está commitado" || bad "sem menção ao commit: $REC_OUT"
+
+echo "-- área: rótulos de commands.<rótulo> e suite-N"
+mk_proj areas '`bash tests/run-all.sh`'
+for l in suite tenant-isolation billing frontend suite-1; do
+  recusado "$l -- script arbitrário → recusa" "$l" -- bash "$SCRIPT"
+  aceito "$l -- comando declarado → executa e grava" "$l" -- bash tests/run-all.sh
+done
+rec suite -- bash "$SCRIPT"
+grep -q 'commands.suite' <<<"$REC_OUT" \
+  && ok "área: a mensagem cita o comando declarado do .maestro.yaml" || bad "área: mensagem sem a declaração: $REC_OUT"
+printf 'commands:\n  suite: bash tests/run-all.sh\n' > "$P/.maestro.yaml"; G add -A; G commit -qm "só suite"
+recusado "área sem declaração (billing) → recusa" billing -- bash tests/run-all.sh
+aceito "rótulo livre segue como hoje" qualquer -- bash "$SCRIPT"
+
+exit "$fail"
