@@ -16,6 +16,8 @@ GATE="$REPO/hooks/pre-tool-gate.sh"
 # mesmo helper.
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+# ordem 078: o recibo order-N só grava o comando declarado entre crases no fim: da ordem (commit-base)
+source "$REPO/tests/lib/declare-order.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -43,6 +45,7 @@ Trocar o backend de sessão.
 BODY
 OF=$(ls "$P/.maestro/orders/"001-*.md)
 [[ -f "$OF" ]] && ok "ordem em .maestro/orders/ (viaja com o repo)" || bad "arquivo da ordem"
+declare_order "$P" 1 true
 grep -q '^<!-- maestro-order v1$' "$OF" && ok "carimbo v1" || bad "carimbo v1"
 grep -q '^branch: order/001-' "$OF" && ok "branch derivado do título" || bad "branch derivado"
 grep -q '^frozen: core/auth/$' "$OF" && ok "frozen zone no contrato" || bad "frozen zone"
@@ -162,7 +165,7 @@ rm -rf "$P3"
 
 echo "-- injeção (S-1503) e frozen zone no gate (S-1504)"
 "$BIN" order --create --title "Segunda" --frozen "core/auth/" --project "$P" <<< "x" >/dev/null
-git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm "ordem 002"
+declare_order "$P" 2 true   # commita .maestro/ (a ordem 002) e grava o baseline do fim:
 OUT=$(printf '{"session_id":"o1"}' | CLAUDE_PROJECT_DIR="$P" bash "$SS" 2>/dev/null)
 grep -q 'ordens: 1 pendente(s)' <<<"$OUT" && ok "injeção conta só as NÃO-aceitas" || bad "injeção conta pendentes"
 grep -q 'ORDER_FROZEN="core/auth/"' "$MAESTRO_HOME/gate-policy.sh" && ok "política compila a zona" || bad "política compila"
@@ -196,6 +199,7 @@ YAML
 echo a > "$PV/src/auth/jwt.py"; echo d > "$PV/docs/d.md"
 git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm base
 "$BIN" order --create --title "Mexe na auth" --project "$PV" <<< "objetivo" >/dev/null
+declare_order "$PV" 1 true
 git -C "$PV" checkout -qb order/001-mexe-na-auth
 echo entrega >> "$PV/src/auth/jwt.py"
 git -C "$PV" add -A; git -C "$PV" -c user.email=t@t -c user.name=t commit -qm entrega
@@ -212,10 +216,17 @@ grep -q 'suite: NENHUMA — maestro evidence --record --label suite -- true' <<<
   && ok "a recusa lista o rótulo e o comando declarado" || bad "recusa lista o comando ($err)"
 grep -q '^accepted_at: ' "$PV/.maestro/orders/001-"*.md 2>/dev/null \
   && bad "recusa não pode carimbar aceite" || ok "recusa não carimba nada no arquivo"
-# Recibo do rótulo exigido, mas de OUTRO comando: não conta.
-"$BIN" evidence --record --label suite --project "$PV" -- echo outro >/dev/null
+# Recibo do rótulo exigido, mas de OUTRO comando: não conta. Ordem 078: o CLI nem executa o comando
+# diferente (recusa antes, sem recibo); o recibo cmd_match=no que o LEITOR ainda trata é fabricado
+# a partir de um recibo legítimo.
+"$BIN" evidence --record --label suite --project "$PV" -- echo outro >/dev/null 2>&1; rc=$?
+chk "gravar comando ≠ declarado → o CLI recusa (rc 1)" "$rc" "1"
+EFS="$MAESTRO_HOME/evidence/$(basename "$("$BIN" brief --path --project "$PV")" .md)-suite"
+[[ ! -e "$EFS" ]] && ok "a recusa não grava recibo" || bad "recibo gravado para comando diferente"
+"$BIN" evidence --record --label suite --project "$PV" -- true >/dev/null
+awk '/^cmd_match=/{print "cmd_match=no"; next} {print}' "$EFS" > "$EFS.fab" && mv -f "$EFS.fab" "$EFS"
 "$BIN" order --accept 1 --project "$PV" >/dev/null 2>&1
-chk "recibo do rótulo com comando ≠ declarado → segue recusando" "$?" "1"
+chk "recibo do rótulo com cmd_match=no → segue recusando" "$?" "1"
 grep -q 'comando diferente do declarado' <<<"$("$BIN" order --status 1 --project "$PV")" \
   && ok "status nomeia o motivo (comando diferente do declarado — veredito único, ordem 060)" || bad "motivo cmd_match no status"
 # Agora com o comando declarado, no conteúdo do tip.
@@ -244,6 +255,7 @@ cp "$PV/.maestro.yaml" "$PW/.maestro.yaml"
 echo a > "$PW/src/auth/jwt.py"; echo d > "$PW/docs/d.md"
 git -C "$PW" add -A; git -C "$PW" -c user.email=t@t -c user.name=t commit -qm base
 "$BIN" order --create --title "So docs" --project "$PW" <<< "objetivo" >/dev/null
+declare_order "$PW" 1 true
 git -C "$PW" checkout -qb order/001-so-docs
 echo doc >> "$PW/docs/d.md"
 git -C "$PW" add -A; git -C "$PW" -c user.email=t@t -c user.name=t commit -qm docs
@@ -325,6 +337,7 @@ mk_intent "$P4" 2 "a direção andou."
 
 echo "-- E22: aceite sob direção desatualizada é decisão NOVA do diretor"
 BR4=$(grep '^branch:' "$OF4" | awk '{print $2}')
+declare_order "$P4" 1 true
 git -C "$P4" checkout -qb "$BR4"; echo entrega >> "$P4/a.txt"; git -C "$P4" add -A
 git -C "$P4" -c user.email=t@t -c user.name=t commit -qm entrega
 "$BIN" evidence --record --label order-1 --project "$P4" -- true >/dev/null
@@ -351,6 +364,7 @@ grep -q 'maestro intent --init' <<<"$OUT" && ok "o aviso ensina como criar a dir
 OF5=$(ls "$P5/.maestro/orders/"001-*.md)
 grep -q '^intent_version: ' "$OF5" && bad "carimbou direção que não existe" || ok "sem direção, nada é carimbado"
 "$BIN" order --status 1 --project "$P5" | grep -q '  direção :' && bad "status inventou direção" || ok "ordem sem direção não ganha linha de direção"
+declare_order "$P5" 1 true
 git -C "$P5" checkout -qb "$(grep '^branch:' "$OF5" | awk '{print $2}')"
 git -C "$P5" add -A; git -C "$P5" -c user.email=t@t -c user.name=t commit -qm entrega
 "$BIN" evidence --record --label order-1 --project "$P5" -- true >/dev/null

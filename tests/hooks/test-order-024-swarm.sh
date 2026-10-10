@@ -182,7 +182,9 @@ echo "-- evidence --record: aviso de carga ANTES de medir, nos dois regimes"
 H8=$(mktemp -d "$SANDBOX/h8.XXXXXX")
 PROJ=$(mktemp -d "$SANDBOX/proj.XXXXXX")
 git -C "$PROJ" init -q
-git -C "$PROJ" -c user.email=t@t -c user.name=t commit --allow-empty -q -m init
+printf 'commands:\n  suite: true\n' > "$PROJ/.maestro.yaml"   # ordem 078: o rótulo de área só executa o comando declarado
+git -C "$PROJ" add .maestro.yaml
+git -C "$PROJ" -c user.email=t@t -c user.name=t commit -q -m init
 
 out=$(MAESTRO_EVIDENCE_LOAD1M_LIMIAR_X100=0 MAESTRO_HOME="$H8" "$BIN" evidence \
   --record --project "$PROJ" -- true 2>&1)

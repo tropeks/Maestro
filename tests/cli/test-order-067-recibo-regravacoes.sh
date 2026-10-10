@@ -17,6 +17,16 @@ P="$tmp/proj"; mkdir -p "$P"
 git -C "$P" init -q -b main; git -C "$P" config user.email t@t; git -C "$P" config user.name t
 echo a > "$P/a"; git -C "$P" add -A; git -C "$P" commit -qm base
 
+# ordem 078: order-N só grava o comando declarado entre crases no fim: da ordem N (commit-base). As ordens 67
+# e 68 são escritas à mão (o CLI numeraria 001, 002…) e declaram `true`, o comando que o teste grava.
+BIN="$MAESTRO"
+source "$REPO/tests/lib/declare-order.sh"
+mkdir -p "$P/.maestro/orders"
+for n in 067 068; do
+  printf '<!-- maestro-order v1\nid: %s\nts: x\nepoch: 1790000000\n-->\n# ordem %s\n\n## Turno\n- fatia: t\n- fim: x\n- teto: 1\n- fora: nada\n- relatório: v54\n' "$n" "$n" > "$P/.maestro/orders/$n-x.md"
+  declare_order "$P" "$n" true
+done
+
 rec() { (cd "$P" && "$MAESTRO" evidence --record --label "$1" -- true >/dev/null 2>&1); }
 efile() { ls "$MAESTRO_HOME"/evidence/*-"$1" 2>/dev/null | head -1; }
 field() { awk -F= -v k="$2" '$1==k{sub(/^[^=]*=/,""); print; exit}' "$1"; }

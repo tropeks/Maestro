@@ -20,6 +20,7 @@ BIN="$REPO/bin/maestro"
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -44,6 +45,9 @@ done
 G add -A; G commit -qm "ordens 1 e 2"
 OA=$(ls "$P"/.maestro/orders/001-*.md); BA=$(grep '^branch:' "$OA" | awk '{print $2}')
 OB=$(ls "$P"/.maestro/orders/002-*.md); BB=$(grep '^branch:' "$OB" | awk '{print $2}')
+# ordem 078: o recibo order-N só grava o comando declarado no fim: (commit-base via order --baseline)
+declare_order "$P" 1 true
+declare_order "$P" 2 true
 
 # A: entrega + recibo.   B: nasce SOBRE A, entrega + recibo.
 G checkout -qb "$BA"; echo a2 >> "$P/f.txt"; G add -A; G commit -qm "entrega A"

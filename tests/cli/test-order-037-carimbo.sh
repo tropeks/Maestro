@@ -110,6 +110,8 @@ author_session: teste-037
 ## Objetivo
 Ordem carimbada de um dígito — recibo no formato canônico.
 EOF
+source "$REPO/tests/lib/declare-order.sh"
+declare_order "$P2A" 5 'true'   # ordem 078: o record só executa o comando declarado no fim:
 "$BIN" evidence --record --label order-5 --project "$P2A" -- true >/dev/null 2>&1
 ST2A=$("$BIN" order --status 5 --project "$P2A" 2>&1)
 if grep -q '^ordem 005: provada' <<<"$ST2A"; then
@@ -141,6 +143,7 @@ author_session: teste-037
 ## Objetivo
 Ordem carimbada de um dígito — recibo no formato acolchoado.
 EOF
+declare_order "$P2B" 5 'true'
 "$BIN" evidence --record --label order-005 --project "$P2B" -- true >/dev/null 2>&1
 ST2B=$("$BIN" order --status 5 --project "$P2B" 2>&1)
 if grep -q '^ordem 005: provada' <<<"$ST2B"; then

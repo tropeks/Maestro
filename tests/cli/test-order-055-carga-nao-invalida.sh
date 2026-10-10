@@ -14,6 +14,7 @@ BIN="$REPO/bin/maestro"
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -35,6 +36,9 @@ fixture() {
 Carga não invalida.
 BODY
   G add -A; G commit -qm "ordem 1"
+  # ordem 078: o record só executa o comando declarado no fim: — o "muda a árvore" vira um script (fora do repo)
+  MUDA="$tmp/muda-$1.sh"; printf '#!/usr/bin/env bash\necho mudou >> %s/f.txt\n' "$P" > "$MUDA"
+  declare_order "$P" 1 'true' 'false' "bash $MUDA"
   BR=$(grep '^branch:' "$P"/.maestro/orders/001-*.md | awk '{print $2}')
   G checkout -qb "$BR"; echo b >> "$P/f.txt"; G add -A; G commit -qm entrega
 }
@@ -81,7 +85,7 @@ out=$("$BIN" order --accept 1 --project "$P" --session dir-1 2>&1); rc=$?
 
 # --- negativo 2: árvore mudou na corrida (comando edita o arquivo) ⇒ recibo inválido
 fixture neg2
-record_loaded bash -c "echo mudou >> '$P/f.txt'" || exit 1
+record_loaded bash "$MUDA" || exit 1
 out=$("$BIN" evidence --check --label order-1 --project "$P" 2>&1); rc=$?
 (( rc != 0 )) && grep -q 'VENCIDA' <<<"$out" && ok "controle: árvore mudada na corrida ⇒ VENCIDA (rc ≠ 0)" \
   || bad "árvore mudada na corrida não venceu (rc=$rc): $out"

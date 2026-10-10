@@ -33,6 +33,7 @@ PST="$REPO/hooks/lib/project-state.sh"
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"   # ordem 078: evidence --record order-N só executa o comando declarado no fim:
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -124,6 +125,7 @@ BODY
 OF2="$P/.maestro/orders/002-vai-aceitar.md"
 git_id "$P" add "$OF2"
 git_id "$P" commit -qm "ordem 2 versionada (pré-carimbo)"
+declare_order "$P" 2 'true'
 BR2=$(grep '^branch:' "$OF2" | awk '{print $2}')
 git_id "$P" checkout -qb "$BR2"
 echo c >> "$P/f.txt"; git_id "$P" add f.txt
@@ -171,6 +173,7 @@ else
 Simula ordem aceita sob o código anterior a esta emenda (sem registro nunca gravado).
 BODY
   OF3="$P/.maestro/orders/003-migracao.md"
+  declare_order "$P" 3 'true'
   BR3=$(grep '^branch:' "$OF3" | awk '{print $2}')
   git_id "$P" checkout -qb "$BR3"
   echo d >> "$P/f.txt"; git_id "$P" add f.txt

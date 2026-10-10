@@ -14,6 +14,7 @@ BIN="$REPO/bin/maestro"
 
 source "$HERE/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$HERE/tests/lib/declare-order.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -37,6 +38,7 @@ fixture() {
 Uma verdade só.
 BODY
   G add -A; G commit -qm "ordem 1"
+  declare_order "$P" 1 true   # ordem 078: o recibo order-1 só grava o comando declarado no fim:
   BR=$(grep '^branch:' "$P"/.maestro/orders/001-*.md | awk '{print $2}')
   G checkout -qb "$BR"; echo b >> "$P/f.txt"; G add -A; G commit -qm entrega
   "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null 2>&1

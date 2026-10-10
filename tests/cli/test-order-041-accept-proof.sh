@@ -38,6 +38,8 @@ git_init_main() { local d="$1"; git -C "$d" init -q; git -C "$d" symbolic-ref HE
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export MAESTRO_HOME="$tmp/home"
+# ordem 078: o record de order-N só executa o comando declarado no fim: (declare_order)
+source "$REPO/tests/lib/declare-order.sh"
 
 # openssl "ausente" sob demanda: PATH próprio, sem nenhum diretório que tenha
 # `openssl` — construído com symlink de TODO o resto de /usr/bin /bin (não é
@@ -187,6 +189,7 @@ Fixture da ordem 041 — cobre as recusas testáveis e o PASSA com par próprio.
 BODY
 OF="$P/.maestro/orders/001-aceite-por-identidade.md"
 BR=$(grep '^branch:' "$OF" | awk '{print $2}')
+declare_order "$P" 1 'true'
 git_id "$P" checkout -qb "$BR"
 echo b >> "$P/f.txt"; git_id "$P" add f.txt; git_id "$P" commit -qm entrega
 "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null
@@ -236,6 +239,7 @@ OF3="$P/.maestro/orders/002-outra-ordem.md"
 BR3=$(grep '^branch:' "$OF3" | awk '{print $2}')
 git_id "$P" checkout -qb "$BR3"
 git_id "$P" merge -q --no-edit "$BR" >/dev/null 2>&1 || true
+declare_order "$P" 2 'true'
 "$BIN" evidence --record --label order-2 --project "$P" -- true >/dev/null
 OUT=$(MAESTRO_ACCEPT_REQUIRE_PROOF=1 MAESTRO_ACCEPT_PROOF="v1:captain:$SIG_OK" \
   "$BIN" order --accept 2 --project "$P" --session x 2>&1)
@@ -260,6 +264,7 @@ D
 BODY
 OF="$P/.maestro/orders/001-d.md"
 BR=$(grep '^branch:' "$OF" | awk '{print $2}')
+declare_order "$P" 1 'true'
 git_id "$P" checkout -qb "$BR"
 echo b >> "$P/f.txt"; git_id "$P" add f.txt; git_id "$P" commit -qm entrega
 "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null
@@ -347,6 +352,7 @@ BR2=$(grep '^branch:' "$OF2" | awk '{print $2}')
 git_id "$P" checkout -qb "$BR2" 2>/dev/null || git_id "$P" checkout -q "$BR2"
 echo c >> "$P/f.txt"; git_id "$P" add f.txt; git_id "$P" commit -qm entrega-pf 2>/dev/null || true
 PF_ID=$(grep '^id:' "$OF2" | head -1 | awk '{print $2}')
+declare_order "$P" "$((10#$PF_ID))" 'true'
 "$BIN" evidence --record --label "order-$((10#$PF_ID))" --project "$P" -- true >/dev/null
 
 printf 'accepted_at: %s\naccepted_session: captain\naccepted_tree: forjada\n' "$(date -Iseconds)" >> "$OF2"

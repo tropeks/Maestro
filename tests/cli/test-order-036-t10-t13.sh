@@ -49,7 +49,9 @@ git_id "$A" branch order/1-t1011
 git_id "$B" checkout -qb order/1-t1011
 echo w >> "$B/g.txt"; git_id "$B" add g.txt; git_id "$B" commit -qm w
 D8=$(dono8 "$A")
-"$BIN" evidence --record --label "order-1-$D8" --project "$B" -- true >/dev/null
+# ordem 078: o CLI recusa `order-N-<dono8>` (a ordem vive em A); recibo por escrita direta — o LEITOR é o que se prova.
+source "$REPO/tests/lib/write-receipt-direct.sh"
+write_receipt "$B" "order-1-$D8" true
 
 # ===========================================================================
 # T10 — aceite cross-repo não mexe na árvore do repo do trabalho: HEAD/tip de
@@ -80,7 +82,7 @@ BODY
 git_id "$A" branch order/2-t11
 git_id "$B" checkout -qb order/2-t11
 echo w2 >> "$B/g.txt"; git_id "$B" add g.txt; git_id "$B" commit -qm w2
-"$BIN" evidence --record --label "order-2-$D8" --project "$B" -- true >/dev/null
+write_receipt "$B" "order-2-$D8" true
 
 PROVA_DE_A=$("$BIN" order --status 2 --project "$A" 2>&1 | grep '^  prova')
 # muda o CHECKOUT de B para um branch diferente do da ordem — é exatamente o

@@ -63,8 +63,10 @@ TREE_B=$(git -C "$B" rev-parse "$BR^{tree}")
   || bad "(T3) fixture quebrada: árvores iguais, o teste não prova nada"
 
 D8=$(REPO_DIR="$REPO" bash -c 'source "'"$REPO"'/hooks/lib/common.sh"; source "'"$REPO"'/lib/core-order-state.sh" 2>/dev/null; _order_dono8 "'"$A"'"')
-# recibo válido SÓ no ledger de B (o repo do TRABALHO) — nada gravado em A.
-"$BIN" evidence --record --label "order-1-$D8" --project "$B" -- true >/dev/null
+# recibo válido SÓ no ledger de B (o repo do TRABALHO) — nada gravado em A. Ordem 078: o CLI recusa
+# `order-N-<dono8>` (a ordem vive em A), então o recibo é gravado por escrita direta; o LEITOR é o que se prova.
+source "$REPO/tests/lib/write-receipt-direct.sh"
+write_receipt "$B" "order-1-$D8" true
 
 ST_COM_WP=$("$BIN" order --status 1 --project "$A" 2>&1 | head -1)
 [[ "$ST_COM_WP" == "ordem 001: provada" ]] \

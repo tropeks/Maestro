@@ -35,6 +35,7 @@ CMDJ="$REPO/lib/cmd-order-json.sh"   # emissão JSON em módulo próprio (catrac
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "PENDENTE  jq ausente — teste exige jq para validar JSON"; exit 0; }
 
@@ -90,6 +91,7 @@ git -C "$P" checkout -qb "$BR2"; echo e2 >> "$P/f.txt"; commit_f "$P" e2; git -C
 
 # 3: provada
 read -r OF3 BR3 <<<"$(new_order "provada")"
+declare_order "$P" "$(grep '^id:' "$OF3" | awk '{print $2}' | sed 's/^0*//')" 'true'   # ordem 078
 git -C "$P" checkout -qb "$BR3"; echo e3 >> "$P/f.txt"; commit_f "$P" e3
 "$BIN" evidence --record --label "order-$(grep '^id:' "$OF3" | awk '{print $2}' | sed 's/^0*//')" --project "$P" -- true >/dev/null
 git -C "$P" checkout -q main
@@ -97,6 +99,7 @@ git -C "$P" checkout -q main
 # 4: aceita
 read -r OF4 BR4 <<<"$(new_order "aceita")"
 ID4=$(grep '^id:' "$OF4" | awk '{print $2}' | sed 's/^0*//')
+declare_order "$P" "$ID4" 'true'   # ordem 078
 git -C "$P" checkout -qb "$BR4"; echo e4 >> "$P/f.txt"; commit_f "$P" e4
 "$BIN" evidence --record --label "order-$ID4" --project "$P" -- true >/dev/null
 git -C "$P" checkout -q main
@@ -110,6 +113,7 @@ ID5=$(grep '^id:' "$OF5" | awk '{print $2}' | sed 's/^0*//')
 # 6: adiada (deferred_by escrito à mão, recibo prévio congelado)
 read -r OF6 BR6 <<<"$(new_order "adiada")"
 ID6=$(grep '^id:' "$OF6" | awk '{print $2}' | sed 's/^0*//')
+declare_order "$P" "$ID6" 'true'   # ordem 078
 git -C "$P" checkout -qb "$BR6"; echo e6 >> "$P/f.txt"; commit_f "$P" e6
 "$BIN" evidence --record --label "order-$ID6" --project "$P" -- true >/dev/null
 git -C "$P" checkout -q main

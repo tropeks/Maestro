@@ -14,6 +14,7 @@ BIN="$REPO/bin/maestro"
 
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
+source "$REPO/tests/lib/declare-order.sh"
 
 # lib/ está na denylist de autoproteção do gate: a mudança sai como patch em
 # docs/patches/050-estados-de-validacao.patch e o Capitão aplica. Mecanismo
@@ -48,6 +49,7 @@ mk() { # <n> <com-validation:1|0> → projeto $P com a ordem 1 PROVADA no tip (r
 Teste.
 BODY
   G add -A; G commit -qm "ordem 1"
+  declare_order "$P" 1 'true'   # ordem 078: o record de order-1 só executa o declarado no fim:
   G checkout -qb "$(grep '^branch:' "$P"/.maestro/orders/001-*.md | awk '{print $2}')"
   echo b >> "$P/f.txt"; G add -A; G commit -qm entrega
   "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null

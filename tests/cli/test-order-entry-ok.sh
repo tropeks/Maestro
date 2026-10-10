@@ -11,6 +11,7 @@ BIN="$REPO/bin/maestro"
 source "$REPO/tests/lib/env-clean.sh"
 maestro_env_clean_inherit
 source "$REPO/tests/lib/entry-fixture.sh"
+source "$REPO/tests/lib/declare-order.sh"
 entry_pendente
 
 tmp=$(mktemp -d)
@@ -37,6 +38,7 @@ entry_project p2
 entry_order "base" "$TURNO_OK
 $CRIT_OK"
 OF1=$(ls "$P"/.maestro/orders/001-*.md); G add -A; G commit -qm "ordem 1"
+declare_order "$P" 1 'true'   # ordem 078: o record de order-1 só executa o declarado no fim:
 B1=$(grep '^branch:' "$OF1" | awk '{print $2}')
 G checkout -qb "$B1"; echo b >> "$P/f.txt"; G add -A; G commit -qm entrega
 "$BIN" evidence --record --label order-1 --project "$P" -- true >/dev/null

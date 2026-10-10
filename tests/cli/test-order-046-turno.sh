@@ -77,6 +77,10 @@ chk() { "$BIN" order --turno-check --project "$P" "$@"; }
 c=$(chk --session sA 2>&1); rc=$?
 [[ $rc -eq 0 && -z "$c" ]] && ok "check: fora de branch de ordem → libera, stdout vazio" || bad "check: main bloqueou/falou (rc=$rc: $c)"
 
+source "$REPO/tests/lib/declare-order.sh"
+# ordem 078: --record só executa o comando declarado entre crases no fim: (commit-base). Declarado em main,
+# antes de ramificar, para main e o branch da ordem terem o MESMO arquivo (o checkout abaixo não conflita).
+declare_order "$P" 2 true
 G checkout -qb "$BA"; echo b >> "$P/f.txt"; G add -A; G commit -qm entrega
 c=$(chk --session sB 2>&1); rc=$?
 [[ $rc -eq 1 ]] && grep -q 'order-2' <<<"$c" && grep -qi 'ausente' <<<"$c" \

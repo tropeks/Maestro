@@ -77,10 +77,13 @@ sed -i "s|^- fim: .*|- fim: \`bash $SCRIPT\`|" "$OF"; G add -A; G commit -qm "ru
 recusado "fim mudou em commit depois do baseline (script novo) → recusa" order-1 -- bash "$SCRIPT"
 recusado "fim mudou em commit depois do baseline (comando antigo) → recusa" order-1 -- bash tests/run-all.sh
 grep -q 'depois do baseline' <<<"$REC_OUT" && ok "a mensagem diz que o fim: mudou depois do baseline" || bad "sem motivo do baseline: $REC_OUT"
-"$BIN" order --baseline 1 --project "$P" >/dev/null
-aceito "re-baseline pelo Diretor regrava o fim_commit: o novo comando passa" order-1 -- bash "$SCRIPT"
 "$BIN" order --baseline 1 --project "$P" >/dev/null 2>&1; chk=$?
-(( chk == 0 )) && ok "baseline repetido com o arquivo limpo grava de novo" || bad "baseline repetido falhou rc=$chk"
+(( chk != 0 )) && ok "--baseline RECUSA sobrescrever baseline existente" || bad "--baseline sobrescreveu o baseline"
+recusado "baseline recusado não mexe no fim_commit: o novo comando segue recusado" order-1 -- bash "$SCRIPT"
+find "$MAESTRO_HOME" -name '*.baseline' -delete   # o Diretor re-despacha: apaga o registro do baseline antigo
+"$BIN" order --baseline 1 --project "$P" >/dev/null 2>&1; chk=$?
+(( chk == 0 )) && ok "re-despacho (registro apagado) grava o novo fim_commit" || bad "re-despacho falhou rc=$chk"
+aceito "re-baseline pelo Diretor regrava o fim_commit: o novo comando passa" order-1 -- bash "$SCRIPT"
 sed -i "s|^- fim: .*|- fim: \`bash x\`|" "$OF"
 "$BIN" order --baseline 1 --project "$P" >/dev/null 2>&1; chk=$?
 (( chk != 0 )) && ok "baseline recusa o arquivo da ordem com edição não commitada" || bad "baseline aceitou arquivo sujo"
@@ -99,5 +102,12 @@ grep -q 'commands.suite' <<<"$REC_OUT" \
 printf 'commands:\n  suite: bash tests/run-all.sh\n' > "$P/.maestro.yaml"; G add -A; G commit -qm "só suite"
 recusado "área sem declaração (billing) → recusa" billing -- bash tests/run-all.sh
 aceito "rótulo livre segue como hoje" qualquer -- bash "$SCRIPT"
+
+echo "-- área: o commands.<rótulo> vale o do COMMIT, não o da árvore de trabalho"
+printf 'commands:\n  suite: bash %s\n' "$SCRIPT" > "$P/.maestro.yaml"   # o run edita o yaml sem commitar
+recusado "suite: yaml editado sem commit declarando o script → recusa" suite -- bash "$SCRIPT"
+recusado "suite-1: yaml editado sem commit declarando o script → recusa" suite-1 -- bash "$SCRIPT"
+G checkout -q -- .maestro.yaml
+aceito "suite: yaml commitado volta a valer" suite -- bash tests/run-all.sh
 
 exit "$fail"

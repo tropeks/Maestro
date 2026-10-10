@@ -51,7 +51,7 @@ git_init_main() { # <dir> → git init com branch de topo 'main', independente d
 # mecanismo: presença nos 3 arquivos que a ordem 013 toca.
 # ---------------------------------------------------------------------------
 CORE_PATCHED=0; grep -qF '_order_deferred_tree' "$CORE" 2>/dev/null && CORE_PATCHED=1
-CMD_PATCHED=0;  grep -qF 'ADIADA por' "$CMD" 2>/dev/null && CMD_PATCHED=1
+CMD_PATCHED=0;  grep -qF 'ADIADA por' "$CMD" "$REPO"/lib/cmd-order-status.sh 2>/dev/null && CMD_PATCHED=1
 HOOK_PATCHED=0; grep -qF 'deferred_by' "$SS" 2>/dev/null && HOOK_PATCHED=1
 
 # ---------------------------------------------------------------------------
@@ -69,6 +69,10 @@ Caso Vitali: o Capitao adiou este trabalho POR DECISAO. Nao andou desde entao.
 BODY
 OF1="$P/.maestro/orders/001-adiada-por-decisao.md"
 BR1=$(grep '^branch:' "$OF1" | awk '{print $2}')
+# ordem 078: --record só executa o comando declarado entre crases no fim: da ordem (commit-base). Declarado
+# em main, antes de ramificar; `true` é o comando que o teste grava.
+source "$REPO/tests/lib/declare-order.sh"
+declare_order "$P" 1 true
 git -C "$P" checkout -qb "$BR1"
 echo entrega1 >> "$P/f.txt"; git -C "$P" add f.txt
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm entrega1
@@ -81,6 +85,7 @@ Controle da regressao: SEM deferred_by, continua vencendo exatamente como hoje.
 BODY
 OF2="$P/.maestro/orders/002-normal-sem-o-campo.md"
 BR2=$(grep '^branch:' "$OF2" | awk '{print $2}')
+declare_order "$P" 2 true
 git -C "$P" checkout -qb "$BR2"
 echo entrega2 >> "$P/f.txt"; git -C "$P" add f.txt
 git -C "$P" -c user.email=t@t -c user.name=t commit -qm entrega2

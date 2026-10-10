@@ -88,6 +88,8 @@ M — a ordem que efetivamente entrega o trabalho.
 BODY
 OFM="$P/.maestro/orders/001-absorvente-m.md"
 BRM=$(grep '^branch:' "$OFM" | awk '{print $2}')
+source "$REPO/tests/lib/declare-order.sh"
+declare_order "$P" 1 'true'   # ordem 078: o record só executa o comando declarado no fim:
 git -C "$P" checkout -qb "$BRM"
 echo b >> "$P/f.txt"
 git -C "$P" add -A

@@ -59,7 +59,11 @@ git_id "$A" branch order/1-t2
 git_id "$B" checkout -qb order/1-t2
 echo c >> "$B/g.txt"; git_id "$B" add g.txt; git_id "$B" commit -qm trabalho
 D8=$(dono8 "$A")
-"$BIN" evidence --record --label "order-1-$D8" --project "$B" -- true >/dev/null
+# ordem 078: o CLI recusa `order-N-<dono8>` (a ordem vive em A, não no repo do trabalho); os recibos
+# cross-repo e os legados sem ordem local são gravados por escrita direta — o que se prova é o LEITOR.
+source "$REPO/tests/lib/write-receipt-direct.sh"
+source "$REPO/tests/lib/declare-order.sh"
+write_receipt "$B" "order-1-$D8" true
 
 ST=$("$BIN" order --status 1 --project "$A" 2>&1 | head -1)
 [[ "$ST" == "ordem 001: provada" ]] && ok "(T2) --status deriva provada" || bad "(T2) esperava provada, obtido: $ST"
@@ -178,7 +182,7 @@ git_id "$A7" branch order/1-t7
 git_id "$B7" checkout -qb order/1-t7
 echo c >> "$B7/g.txt"; git_id "$B7" add g.txt; git_id "$B7" commit -qm w
 D8_7=$(dono8 "$A7")
-"$BIN" evidence --record --label "order-1-$D8_7" --project "$B7" -- true >/dev/null
+write_receipt "$B7" "order-1-$D8_7" true
 "$BIN" order --accept 1 --project "$A7" --session t7 >/dev/null
 
 git_id "$B7" checkout -q main
@@ -186,6 +190,7 @@ git_id "$B7" checkout -q main
 ## Objetivo
 T7 própria de B.
 BODY
+declare_order "$B7" 1 true   # ordem 078: a ordem PRÓPRIA de B7 vive nele; o CLI só grava `true` se o fim: declarar
 git_id "$B7" branch order/1-t7own
 "$BIN" evidence --record --label order-1 --project "$B7" -- true >/dev/null
 "$BIN" order --accept 1 --project "$B7" --session t7b >/dev/null
@@ -213,7 +218,7 @@ BODY
 git_id "$A8" branch order/1-t8
 git_id "$B8" checkout -qb order/1-t8
 echo c >> "$B8/g.txt"; git_id "$B8" add g.txt; git_id "$B8" commit -qm w
-"$BIN" evidence --record --label order-1 --project "$B8" -- true >/dev/null   # SÓ o legado
+write_receipt "$B8" order-1 true   # SÓ o legado (B8 não tem ordem 1 local: o CLI recusaria — escrita direta)
 ST8=$("$BIN" order --status 1 --project "$A8" 2>&1)
 [[ "$ST8" == "ordem 001: provada"* ]] && ok "(T8) legado order-1 casa quando BRANCH existe" \
   || bad "(T8) esperava provada via legado com branch vivo: $ST8"
@@ -232,12 +237,12 @@ T9.
 BODY
 # recibo LEGADO order-1 gravado no ledger de B9 (poderia ser de uma ordem
 # HOMÔNIMA de outro dono, M4) — branch nunca existiu, sem tip pra ancorar.
-"$BIN" evidence --record --label order-1 --project "$B9" -- true >/dev/null
+write_receipt "$B9" order-1 true
 ST9=$("$BIN" order --status 1 --project "$A9" 2>&1 | head -1)
 [[ "$ST9" == "ordem 001: aberta" ]] && ok "(T9) legado SEM branch NÃO vira provada (falso positivo travado)" \
   || bad "(T9) deveria continuar aberta com só o legado sem branch: $ST9"
 D8_9=$(dono8 "$A9")
-"$BIN" evidence --record --label "order-1-$D8_9" --project "$B9" -- true >/dev/null
+write_receipt "$B9" "order-1-$D8_9" true
 ST9b=$("$BIN" order --status 1 --project "$A9" 2>&1 | head -1)
 [[ "$ST9b" == "ordem 001: provada" ]] && ok "(T9) namespaceado SEM branch vira provada" \
   || bad "(T9) deveria virar provada com o namespaceado: $ST9b"

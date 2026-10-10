@@ -31,7 +31,7 @@ echo a > "$P/f.txt"; G add -A; G commit -qm base
 
 TURNO='## Turno
 - fatia: x
-- fim: bash t.sh
+- fim: `true`
 - teto: 2
 - fora: y
 - relatório: ENGINEERING_SPEC'
@@ -40,6 +40,7 @@ printf '> **Execução headless:** sandbox.\n' | "$BIN" order --create --title "
 # ordem ANTIGA: sem o bloco (o --create emite esqueleto; aqui ele sai de propósito)
 sed -i '/^## Turno/,/^## Contrato/{/^## Contrato/!d}' "$P"/.maestro/orders/002-*.md
 G add -A; G commit -qm ordens
+"$BIN" order --baseline 1 --project "$P" >/dev/null   # ordem 078: o recibo order-1 só executa o fim: do baseline
 BR1=$(grep '^branch:' "$P"/.maestro/orders/001-*.md | awk '{print $2}')
 BR2=$(grep '^branch:' "$P"/.maestro/orders/002-*.md | awk '{print $2}')
 

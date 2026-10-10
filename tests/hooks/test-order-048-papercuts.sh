@@ -42,6 +42,8 @@ for t in um dois tres; do
   "$BIN" order --create --title "ordem $t" --project "$P" <<< "objetivo" >/dev/null
 done
 G add -A; G commit -qm ordens
+source "$REPO/tests/lib/declare-order.sh"   # ordem 078: order-N só executa o fim: do baseline
+for n in 1 2 3; do declare_order "$P" "$n" true; done
 
 prove() { # <n> <slug> <rótulo-do-recibo-da-suíte>
   G checkout -qb "order/00$1-$2" main

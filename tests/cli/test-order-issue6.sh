@@ -36,6 +36,8 @@ git -C "$P" add -A; git -C "$P" -c user.email=t@t -c user.name=t commit -qm base
 ## Objetivo
 Reproduzir o caso do NetForge ordem 016.
 BODY
+source "$REPO/tests/lib/declare-order.sh"
+declare_order "$P" 1 'true'   # ordem 078: o record só executa o comando declarado no fim:
 OF=$(ls "$P/.maestro/orders/"001-*.md)
 BR=$(grep '^branch:' "$OF" | awk '{print $2}')
 
