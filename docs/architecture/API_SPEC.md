@@ -711,6 +711,34 @@ maestro conduct --session <session_id>
   `n_sem_dado`) e `n_com_dado`/`n_sem_dado` totais; `ausente` ou inexistente = sem dado (nunca zero nem
   FALHA; com `n_com_dado=0` a parcela sai `sem dado`, exit 0); FALHA só para ledger ilegível ou campo
   presente e inválido (float, texto que não seja `ausente`), exit 3.
+- **Emenda ordem 078 — `--record` recusa ANTES de executar (fase S0 de segurança).** Antes, o comando depois do
+  `--` rodava qualquer que fosse e só o recibo era marcado (`cmd_match=no`); como `Bash(maestro *)` está na
+  allowlist do gerente, o gerente gravava recibo de script arbitrário. Agora, em `lib/core-evidence-declared.sh`
+  (`_evd_gate`, chamado no início de `_ev_cmd_record`, antes da carga, da sonda e do comando):
+  - **`--label order-N` (também `order-0N`, `10#`):** só executa o comando que for **igual, palavra a palavra**, a um
+    dos trechos **entre crases** do `fim:` do bloco `## Turno` da ordem N, lido do **commit-base** (`fim_commit`, abaixo)
+    e nunca da árvore de trabalho. Comparação: o declarado tem a sequência de espaços/tabs normalizada; cada
+    argumento recebido tem de ser igual à palavra correspondente; **argumento com espaço dentro é recusado**; nada de
+    expandir variável, tirar aspas, absolutizar caminho ou tratar `;` `&&` `|` como vários comandos.
+  - **Rótulos de área** (`suite`, `tenant-isolation`, `billing`, `frontend`, e `<área>-N` como `suite-N`, que herda
+    o de `<área>`; mais qualquer rótulo que tenha `commands.<rótulo>`): só executa o `commands.<rótulo>` do
+    `.maestro.yaml`, pela **mesma** comparação. Rótulo de área **sem** declaração é recusado.
+  - **Rótulo livre** (nem `order-N`, nem área): como antes; nenhum gate lê esse recibo.
+  - **Recusa = exit 1** (validação), o comando **não roda**, **nenhum recibo é gravado** e o recibo existente não é tocado.
+    A mensagem diz o rótulo, o comando recebido, os comandos declarados e como declarar (editar o `fim:` ou
+    `commands.<rótulo>` é decisão do Diretor). Fecha para negado: ordem inexistente, sem `## Turno`, `fim:` sem
+    crases, sem `fim_commit`, `fim:` editado sem commit ou mudado em commit depois do baseline. Sem flag, sem variável
+    de ambiente (`MAESTRO_OFF=1` incluída) e sem `MAESTRO_HOME` diferente que liguem a recusa para "livre".
+  - **`maestro order --baseline N [--project p]`:** grava `fim_commit=<HEAD>` em
+    `~/.maestro/order-state/<proj>-<NNN>.baseline` (arquivo irmão do registro terminal, molde do `.validate` da 050;
+    o registro terminal fica intacto). Exige o arquivo da ordem **commitado e sem edição**; repetir regrava (o
+    Diretor re-despacha o `fim:` assim). `maestro order --create` **não** grava o baseline: o commit da ordem só
+    existe depois dele. Ordem sem baseline recusa `order-N`; **ordem existente não recebe o campo nesta ordem**.
+  - Formato do recibo, leitura e veredito (`maestro_proof_verdict`) **inalterados**; `cmd_match=no` por `--record`
+    deixa de ser gerado pelo CLI (o comando divergente nem executa).
+  - Fora desta emenda (ENGINEERING_SPEC, "Limites da recusa do recibo"): o comando declarado roda o que o repo
+    contém; o ledger em `~/.maestro/` é forjável pelo run; `order-N-<dono8>` (ordem cujo trabalho vive em outro repo)
+    é recusado porque a ordem não vive no repo do trabalho.
 
 ### `maestro graph` (E11)
 - Freshness do grafo graphify sem carimbo: mtime de `graphify-out/graph.json` vs último

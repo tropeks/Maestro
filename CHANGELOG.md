@@ -6,6 +6,14 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Security
+- **`evidence --record` recusa antes de executar o comando que não é o declarado (ordem 078, fase S0).** `--label order-N` só executa o
+  comando entre crases do `fim:` da ordem N **no commit-base** (`fim_commit`, gravado por `maestro order --baseline N`); rótulos de área
+  (`suite`, `tenant-isolation`, `billing`, `frontend`, `suite-N`) só o `commands.<rótulo>` do `.maestro.yaml`. Comparação por palavras,
+  argumento com espaço recusado, exit 1, nada executa e nenhum recibo é gravado. Fecha o recibo de comando arbitrário via `Bash(maestro *)`.
+  Não fecha o ledger em `~/.maestro` forjável pelo run (sandbox da ordem 107 do ponte-daemon) — ENGINEERING_SPEC, "Limites da recusa do recibo".
+  Testes: `tests/cli/test-evidence-comando-declarado{,-adversarial}.sh`.
+
 ### Added
 - **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
   as seis chaves no executável, `plugin validate`), mostra o diff dos settings gerenciados, pergunta, instala `mods/` em

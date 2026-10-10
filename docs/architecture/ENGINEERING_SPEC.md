@@ -253,6 +253,25 @@ Fechados pela revisão de segurança independente de 07/10 (`~/dev/spock/docs/re
 Falso positivo e falso negativo do corpus são medidos (só inteiros, em `docs/mods/CASOS-ADAPTADOR.md`); um corpus verde não é prova de
 cobertura fora dele. O mod nunca devolve texto do comando em `reason` nem no log.
 
+## Limites da recusa do recibo (ordem 078) — o que ela garante e o que não
+
+`maestro evidence --record` recusa **antes de executar** o comando que não é o declarado (`order-N`: o `fim:` do
+commit-base; área: o `commands.<rótulo>`). Contrato: API_SPEC, emenda da ordem 078.
+
+**Garante:** o gerente, com `Bash(maestro *)`, não grava recibo `order-N` nem de área de um script arbitrário
+(`bash /tmp/x.sh`, cadeias com `;` `&&` `|`, argumento com espaço, caminho absoluto no lugar do relativo, ordem
+inexistente, `fim:` em prosa), nem trocando o `fim:` na árvore (não commitado) ou em commit depois do baseline.
+
+**Não garante (declarado):**
+
+| não coberto | por quê |
+|---|---|
+| o comando declarado roda o que o repo contém: o run edita `tests/run-all.sh` e grava `order-N` com `bash tests/run-all.sh` | o recibo é do script editado; quem fecha é a revisão e o merge do Capitão |
+| o run edita `commands.<área>` no `.maestro.yaml` da árvore e grava a área | a declaração de área vale como está na árvore (não há baseline para ela); fecha com a ordem de identidade |
+| **o ledger em `~/.maestro/` é forjável pelo run** (recibo, `order-state`, `fim_commit`): medido, o gerente grava ali com a ferramenta Write | o run roda com o usuário do Capitão; o registro em `~/.maestro/` sozinho não prova quem escreveu. Fecha com o **sandbox da ordem 107 do ponte-daemon, que não monta `~/.maestro`**. Até lá, o `fim_commit` só protege contra o run que mexe no repo, não contra o que escreve no ledger |
+| o run chama `maestro order --baseline N` depois de commitar um `fim:` seu | a regravação do baseline não tem confirmação por identidade (`_order_accept_proof_verify` ainda é coto); fica só o rastro no commit do `fim:`. A confirmação assinada é a ordem de identidade |
+| `order-N-<dono8>` (ordem cujo trabalho vive em outro repo, `work_project`) | a ordem não vive no repo do trabalho: recusado (fecha para negado) até a ordem de identidade/work_project decidir o baseline |
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md
