@@ -79,6 +79,11 @@ para o seu script e gravaria o recibo. Por isso:
   `bash tests/run-all.sh`, o recibo é do script editado. Quem fecha isso é a revisão e o merge do Capitão, não o recibo.
 - **Gravar o arquivo do recibo direto**, fora do `evidence --record` (o arquivo mora em `~/.maestro/`): **medir** se o gerente
   consegue (Ask-First 4) e **relatar**; fechar é outra ordem.
+- **RESIDUAL REGISTRADO (Spock, 10/10; medido no turno 1):** o gerente **consegue** gravar em `~/.maestro/` com a ferramenta Write.
+  Logo **o ledger em `~/.maestro/` (recibo, `order-state`, `fim_commit`) é forjável pelo run enquanto ele roda com o usuário do
+  Capitão.** A recusa desta ordem fecha o comando arbitrário em `evidence --record`, **não** a forja do ledger. Fecha com o
+  **sandbox da ordem 107 do ponte-daemon, que não monta `~/.maestro`.** Até lá, o `fim_commit` só protege contra o run que mexe
+  no repo, não contra o que escreve no ledger.
 
 ## Critérios de aceite (com oráculo)
 
@@ -106,14 +111,21 @@ para o seu script e gravaria o recibo. Por isso:
 ## Ask-First
 
 1. **Fonte da verdade do `fim:` (item 3) — DECIDIDO pelo Spock em 10/10: opção (a).** Vale o `fim:` do **commit do despacho**;
-   mudança posterior no `fim:` **só vale com confirmação do Diretor, registrada**. Fica a desenhar, e o executor **propõe e PARA
-   antes de implementar** o que seguir: (i) **onde** o `fim:` do despacho fica registrado (o commit de despacho precisa ser
-   identificável por algo que o run não reescreve; ledger fora do repo é o candidato); (ii) **como** a confirmação do Diretor é
-   registrada, de modo que o **run não consiga** chamá-la (`Bash(maestro *)` está na allowlist do gerente: comando comum de
-   `maestro` não serve sozinho). Se (i) ou (ii) exigir mudar o ponte-daemon, PARE: está fora desta ordem. Sem baseline
-   registrado para a ordem, o recibo `order-N` é **recusado** (fecha para negado).
+   mudança posterior no `fim:` **só vale com confirmação do Diretor, registrada**. A proposta do turno 1
+   (`docs/designs/078-fim-do-despacho-proposta.md`) foi decidida pelo Spock em 10/10:
+   - **(i) = opção A:** o campo `fim_commit` no registro `order-state` (`~/.maestro/order-state/<proj>-<NNN>`), **gravado pelo
+     CLI**. O `maestro order` não tem `--dispatch`, então o **baseline é o commit da criação da ordem**. O recibo lê o `fim:` com
+     `git show <fim_commit>:<arquivo da ordem>`. O commit da criação só existe depois do `chore(order)`: o executor define o
+     momento da gravação; se não couber no CLI (nem no `--create`, nem em outro subcomando do `maestro order`), **PARE**.
+   - **(ii) = opção C:** `fim:` mudado depois do baseline → recibo `order-N` **recusado**, sempre. O Diretor **re-despacha para
+     regravar o baseline** (novo `fim_commit`). Não há confirmação mecânica nesta ordem; a confirmação assinada fica para a
+     **ordem de identidade** (`_order_accept_proof_verify` ainda é coto).
+   - Sem `fim_commit` para a ordem: recibo **recusado** (fecha para negado). Ordens já criadas hoje não têm o campo: o executor
+     lista o efeito e **não carrega** o campo em nenhuma. O comando que regrava o baseline é parte do patch; se precisar do
+     ponte-daemon, PARE.
 2. **Ordens abertas com `fim:` em prosa, sem crases — DECIDIDO:** o executor **só lista** quais das ordens não terminais do
-   projeto ficam assim; **não edita nenhuma**. O Spock acerta o `fim:` de cada uma quando ela voltar ao despacho.
+   projeto ficam assim; **não edita nenhuma**. O Spock acerta o `fim:` de cada uma quando ela voltar ao despacho. **A ordem 028
+   fica fora da lista: registre que não foi lida.**
 3. **Rótulo de área sem declaração no `.maestro.yaml`:** a proposta é **recusar**. Se algum projeto cadastrado depender de gravar
    `suite` sem declarar, PARE e relate qual.
 4. **Medir, não consertar — DECIDIDO:** o gerente consegue gravar o arquivo do recibo fora do `evidence --record`? Cole a medição no
@@ -141,12 +153,12 @@ item 4 acima), CHANGELOG (Security). Papercut: "recibo de comando arbitrário vi
 
 ## Turno
 
-ESTADO (Spock, 10/10): ordem criada, nenhum turno executado. Decisões fechadas: (1) opção (a), vale o `fim:` do commit do despacho e mudança posterior só com confirmação do Diretor registrada; (2) ordens abertas com `fim:` em prosa: o executor lista, não edita, o Spock acerta o `fim:` de cada uma quando voltar ao despacho; (3) a medição de gravação direta em `~/.maestro/` só mede e relata. O turno 1 não toca o registro do `fim:` do despacho (só propõe (i) e (ii)).
+ESTADO (Spock, 10/10): turno 1 FEITO (tip 3a2550f: testes vermelhos, medição, proposta de (i) e (ii)). Decisões do Diretor: (1) opção (a), vale o `fim:` do commit-base e mudança posterior só com confirmação registrada; (2) ordens abertas com `fim:` em prosa: o executor lista, não edita, o Spock acerta o `fim:` de cada uma quando voltar ao despacho; a 028 fica fora da lista, registrar que não foi lida; (3) a medição de gravação direta em `~/.maestro/` só mede e relata; (i) opção A: `fim_commit` no registro `order-state`, gravado pelo CLI, baseline = commit da criação da ordem (o `maestro order` não tem `--dispatch`); (ii) opção C: `fim:` mudou depois do baseline, recibo recusado, o Diretor re-despacha para regravar o baseline, confirmação assinada fica para a ordem de identidade. RESIDUAL: o ledger em `~/.maestro` é forjável pelo run (Write) enquanto ele roda com o usuário do Capitão; fecha com o sandbox da ordem 107 do ponte-daemon, que não monta `~/.maestro`. Turno 2: o patch.
 
-- fatia: o teste vermelho do caso real (`--label order-101 -- bash /tmp/script.sh` falha sem executar e sem gravar) e o adversarial, mais a medição e a lista do Ask-First 2 e 4, e a proposta escrita de (i) e (ii) do Ask-First 1; sem o patch ainda
+- fatia: o patch protegido com tudo o que está decidido: recusa antes de executar para `order-N` (comparação literal por palavras, número da ordem, `fim:` sem crases) e para os rótulos de área; `fim_commit` gravado pelo CLI e lido com `git show`; `fim:` mudado depois do baseline e ausência de `fim_commit` recusam; comando que regrava o baseline; ajuste dos testes existentes; emendas (API_SPEC, ENGINEERING_SPEC com o residual, CHANGELOG, papercut); a lista das ordens abertas com `fim:` sem crases (a 028 não lida)
 - fim: `bash tests/cli/test-evidence-comando-declarado.sh` e `bash tests/cli/test-evidence-comando-declarado-adversarial.sh` saem 1 antes (colado) e 0 depois, no sandbox, com `bash tests/cli/test-evidence.sh` verde; patch protegido pronto e `git apply --check` ok; `bash tests/run-all.sh` completa no sandbox sai 0
 - teto: 3
-- fora: implementar o registro do `fim:` do despacho e a confirmação do Diretor antes de propor (i) e (ii) e receber o aval, mexer no ponte-daemon, editar o `fim:` de qualquer ordem, fechar o vetor do arquivo de recibo gravado direto, mudar o formato do recibo ou o veredito, aplicar o patch, mergear e tocar vendor/
+- fora: confirmação assinada do Diretor, carregar `fim_commit` em ordem existente, mexer no ponte-daemon, editar o `fim:` de qualquer ordem, fechar o vetor do ledger em `~/.maestro` (é da ordem 107 do ponte-daemon), mudar o formato do recibo ou o veredito, aplicar o patch, mergear e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **`director_report` obrigatório.** O turno **só termina** com o `director_report` enviado (relato fixo da v54,
