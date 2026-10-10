@@ -69,8 +69,9 @@ para o seu script e gravaria o recibo. Por isso:
 
 - o `fim:` que vale é o do **arquivo commitado** da ordem; edição **não commitada** no `fim:` (diferença entre a árvore de trabalho
   e o commit) torna o recibo **recusado**, com a mensagem dizendo isso;
-- **o `fim:` mudar em commit depois do despacho** é o ponto aberto (Ask-First 1): o Diretor reescreve o `fim:` entre turnos de
-  propósito (a 077 faz isso), e o run também poderia commitar a mudança.
+- **o `fim:` mudar em commit depois do despacho** vale **só com confirmação do Diretor, registrada** (Ask-First 1, opção (a)
+  decidida): o Diretor reescreve o `fim:` entre turnos de propósito (a 077 faz isso), e o run também poderia commitar a mudança;
+  a confirmação é o que os distingue.
 
 ### 4. O que isto não resolve (declarado)
 
@@ -104,16 +105,19 @@ para o seu script e gravaria o recibo. Por isso:
 
 ## Ask-First
 
-1. **Fonte da verdade do `fim:` (item 3):** a regra para `fim:` alterado em commit depois do despacho **não está decidida**.
-   Opções: (a) vale o `fim:` do commit em que a ordem entrou na `main`/foi despachada; mudança posterior só vale se o Diretor a
-   confirmar; (b) vale o do tip do branch, e a defesa fica na revisão do diff de `.maestro/orders/`. **Implemente só a parte sem
-   dúvida** (árvore de trabalho diferente do commit é recusada) e **PARE com a pergunta e as duas opções** antes de escolher
-   (a) ou (b).
-2. **Ordens abertas com `fim:` em prosa, sem crases:** a regra do item 1 as recusa. **Liste** quais das ordens não terminais do
-   projeto ficam assim e **não edite nenhuma**: o `fim:` é do Diretor.
+1. **Fonte da verdade do `fim:` (item 3) — DECIDIDO pelo Spock em 10/10: opção (a).** Vale o `fim:` do **commit do despacho**;
+   mudança posterior no `fim:` **só vale com confirmação do Diretor, registrada**. Fica a desenhar, e o executor **propõe e PARA
+   antes de implementar** o que seguir: (i) **onde** o `fim:` do despacho fica registrado (o commit de despacho precisa ser
+   identificável por algo que o run não reescreve; ledger fora do repo é o candidato); (ii) **como** a confirmação do Diretor é
+   registrada, de modo que o **run não consiga** chamá-la (`Bash(maestro *)` está na allowlist do gerente: comando comum de
+   `maestro` não serve sozinho). Se (i) ou (ii) exigir mudar o ponte-daemon, PARE: está fora desta ordem. Sem baseline
+   registrado para a ordem, o recibo `order-N` é **recusado** (fecha para negado).
+2. **Ordens abertas com `fim:` em prosa, sem crases — DECIDIDO:** o executor **só lista** quais das ordens não terminais do
+   projeto ficam assim; **não edita nenhuma**. O Spock acerta o `fim:` de cada uma quando ela voltar ao despacho.
 3. **Rótulo de área sem declaração no `.maestro.yaml`:** a proposta é **recusar**. Se algum projeto cadastrado depender de gravar
    `suite` sem declarar, PARE e relate qual.
-4. **Medir, não consertar:** o gerente consegue gravar o arquivo do recibo fora do `evidence --record`? Cole a medição no relato.
+4. **Medir, não consertar — DECIDIDO:** o gerente consegue gravar o arquivo do recibo fora do `evidence --record`? Cole a medição no
+   relato. **Só mede e relata;** não fecha o vetor nesta ordem.
 5. **Toca `lib/` e `bin/` (autoprotegidos):** a entrega é **UM patch** em `docs/patches/NNN-*.patch`, feito em clone sandbox FORA
    do repo, testado antes e depois, aplicado pelo Capitão com um `git apply`; `git apply --check` no worktree. `tests/` e `docs/`
    direto no branch. **O merge é do Capitão.**
@@ -137,10 +141,12 @@ item 4 acima), CHANGELOG (Security). Papercut: "recibo de comando arbitrário vi
 
 ## Turno
 
-- fatia: o teste vermelho do caso real (`--label order-101 -- bash /tmp/script.sh` falha sem executar e sem gravar) e o adversarial, mais a medição e a lista do Ask-First 2 e 4; sem o patch ainda
+ESTADO (Spock, 10/10): ordem criada, nenhum turno executado. Decisões fechadas: (1) opção (a), vale o `fim:` do commit do despacho e mudança posterior só com confirmação do Diretor registrada; (2) ordens abertas com `fim:` em prosa: o executor lista, não edita, o Spock acerta o `fim:` de cada uma quando voltar ao despacho; (3) a medição de gravação direta em `~/.maestro/` só mede e relata. O turno 1 não toca o registro do `fim:` do despacho (só propõe (i) e (ii)).
+
+- fatia: o teste vermelho do caso real (`--label order-101 -- bash /tmp/script.sh` falha sem executar e sem gravar) e o adversarial, mais a medição e a lista do Ask-First 2 e 4, e a proposta escrita de (i) e (ii) do Ask-First 1; sem o patch ainda
 - fim: `bash tests/cli/test-evidence-comando-declarado.sh` e `bash tests/cli/test-evidence-comando-declarado-adversarial.sh` saem 1 antes (colado) e 0 depois, no sandbox, com `bash tests/cli/test-evidence.sh` verde; patch protegido pronto e `git apply --check` ok; `bash tests/run-all.sh` completa no sandbox sai 0
 - teto: 3
-- fora: escolher a regra (a) ou (b) do `fim:` sem a resposta do Diretor, editar o `fim:` de qualquer ordem, fechar o vetor do arquivo de recibo gravado direto, mudar o formato do recibo ou o veredito, aplicar o patch, mergear e tocar vendor/
+- fora: implementar o registro do `fim:` do despacho e a confirmação do Diretor antes de propor (i) e (ii) e receber o aval, mexer no ponte-daemon, editar o `fim:` de qualquer ordem, fechar o vetor do arquivo de recibo gravado direto, mudar o formato do recibo ou o veredito, aplicar o patch, mergear e tocar vendor/
 - relatório: formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
 
 > **`director_report` obrigatório.** O turno **só termina** com o `director_report` enviado (relato fixo da v54,
