@@ -8,6 +8,7 @@ frozen: vendor/
 intent_version: 6
 intent_hash: 31205cc5
 author_session: desconhecido
+deferred_by: spock 2026-10-12 regra da subtracao, item 3
 -->
 # Ordem 080 — recibo de suite so com a maquina leve e um por vez
 
@@ -120,6 +121,8 @@ Papercut: "recibo queimado por teste de tempo sob carga e por recibos simultâne
   `order-N` fora do run. Não lance `setsid`/`nohup`.
 
 ## Turno
+
+ESTADO (Spock, 12/10): ADIADA (`deferred_by`), nenhum turno executado. Motivo: regra da subtração, item 3. A ordem 106 da NetForge entra como ordem de método e passa os recibos da NetForge a ler a CI da lab, o que tira dali a maior parte da carga que esta ordem ataca. Retomar: tirar o campo `deferred_by` do cabeçalho e despachar.
 
 - fatia: os dois testes vermelhos (espera por load e trava por máquina) colados contra o `lib/` da `main`, a implementação em clone de trabalho na pasta temporária do run, os testes verdes, as emendas (API_SPEC, ENGINEERING_SPEC, CHANGELOG, papercut), o patch final em `docs/patches/` da worktree com `git apply --check` ok e `shellcheck` limpo, e as três amostras de load em repouso
 - fim: `bash tests/cli/test-evidence-espera-carga.sh` e `bash tests/cli/test-evidence-trava-maquina.sh` saem 1 antes (colado) e 0 depois no clone de trabalho, com `bash tests/cli/test-evidence.sh`, `bash tests/cli/test-order-060-verificador-unico.sh` e `bash tests/cli/test-order-044-recibo-empilhado.sh` verdes; patch protegido na worktree e `git apply --check` ok; o comando da suíte declarado aqui é `bash tests/run-all.sh`, que o run NÃO executa (o Spock roda e grava o recibo fora do run)
