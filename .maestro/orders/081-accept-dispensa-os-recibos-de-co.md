@@ -94,9 +94,10 @@ teste com `origin` bare, branch padrão, `.maestro.yaml` com `verification` por 
    NetForge é de outra ordem, **depois do release** (item 4).
 2. **Contrato do `.maestro.yaml`:** a chave nova é só `docs_only_paths` (lista de strings). Qualquer outra chave, ou mudar o
    formato do recibo ou o veredito: PARE (API_SPEC, DATA_MODEL). O campo novo do ledger é **aditivo**.
-3. **Toca `lib/` (autoprotegido):** a entrega é **UM patch** em `docs/patches/NNN-*.patch`, feito em clone de trabalho **na pasta
-   temporária do run**, testado antes e depois; o patch final fica na **worktree**, em `docs/patches/`, e `git apply --check` roda
-   nela. `tests/` e `docs/` direto no branch. **O merge é do Capitão.**
+3. **Toca `lib/` (autoprotegido):** a entrega é **UM patch** em `docs/patches/NNN-*.patch`, feito em clone de trabalho **em
+   `docs/research/work/` da worktree** (já ignorado pelo `.gitignore`; sob bwrap a `/tmp` do run **não persiste** entre chamadas
+   de Bash, então o clone não pode morar lá), testado antes e depois; o patch é gerado **de lá** para `docs/patches/`, e
+   `git apply --check` roda na worktree. `tests/` e `docs/` direto no branch. **O merge é do Capitão.**
 4. **Sandbox (se o run rodar nele):** sem `~/.maestro`; falta algo de que o turno precisa: **relate e PARE**, sem contornar.
 5. Logs: **só metadados**; nunca caminho completo de arquivo.
 
@@ -120,7 +121,7 @@ Papercut: "ordem só de docs nunca é aceita quando a CI pula docs".
 
 Limites do turno: **60 min · 100 turnos** (teto de turnos da ordem = 1). Fora do bloco por não serem rótulos.
 
-- fatia: o accept com dispensa (`docs_only_paths`, `--no-renames`, lista lida do merge-base, a marca na saída e no ledger), os testes vermelhos antes e verdes depois, as mutações M1 a M8 aplicadas e revertidas com o teste que caiu, as emendas, o patch final em `docs/patches/` da worktree com `git apply --check` ok e `shellcheck` limpo
+- fatia: (os três arquivos de teste que já estão na worktree sem commit, `tests/cli/test-order-docs-only-dispensa.sh`, `tests/cli/test-order-docs-only-adversarial.sh` e `tests/lib/docsonly-fixture.sh`, o run os valida e commita) o accept com dispensa (`docs_only_paths`, `--no-renames`, lista lida do merge-base, a marca na saída e no ledger), os testes vermelhos antes e verdes depois, as mutações M1 a M8 aplicadas e revertidas com o teste que caiu, as emendas, o patch final em `docs/patches/` da worktree com `git apply --check` ok e `shellcheck` limpo
 - fim: `bash tests/cli/test-order-docs-only-dispensa.sh` e `bash tests/cli/test-order-docs-only-adversarial.sh` saem 1 antes (colado) e 0 depois no clone de trabalho, com a tabela das mutações toda caída e revertida; patch protegido na worktree e `git apply --check` ok; o comando da suíte da Maestro declarado aqui é `bash tests/run-all.sh`, que o run NÃO executa (quem despacha roda e grava o recibo da ordem fora do run)
 - teto: 1
 - fora: o release (é do Capitão, pelo botão `release_maestro`), a chave `docs_only_paths` no `.maestro.yaml` da NetForge (ordem dela, depois do release), embutir qualquer lista de caminhos no Maestro, mudar o formato do recibo ou o veredito, dispensar o `order-NN`, rodar a suíte completa no run, processo destacado, mexer no ponte-daemon, aplicar o patch no repo, mergear e tocar vendor/
@@ -137,8 +138,8 @@ Limites do turno: **60 min · 100 turnos** (teto de turnos da ordem = 1). Fora d
 > **Comando simples:** um comando por chamada de Bash; caminho absoluto em vez de cd e &&; sem pipe para cortar
 > saída (| tail, | head), a ferramenta já corta; 2>&1 é permitido (junta saídas, não grava arquivo).
 
-> **Log e escrita:** log de suíte e saída de espera vão para a pasta temporária do próprio run,
-> `/tmp/claude-<uid>/<cwd codificado>`, nunca `/tmp` solto; escrita só com Edit ou Write.
+> **Log e escrita:** o clone de trabalho e os logs (de teste, de mutação, de espera) vão para `docs/research/work/` da worktree
+> (ignorado pelo `.gitignore`), nunca para `/tmp`: sob bwrap a `/tmp` do run não persiste entre chamadas de Bash. Escrita só com Edit ou Write.
 
 > **Headless:** nunca encerre a resposta esperando uma notificação nem um subagente: espere em laço até o fim antes de relatar.
 > Não lance processo destacado (`setsid`, `nohup`): ele morre com o run. Nenhuma espera fica para depois do relato.
