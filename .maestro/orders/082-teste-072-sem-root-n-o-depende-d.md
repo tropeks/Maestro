@@ -36,3 +36,7 @@ Pedido do Spock em 13/10/2026. A CI do `main` do Maestro está vermelha desde 08
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 082` (você não fecha a própria ordem).
+accepted_at: 2026-10-13T06:20:20-03:00
+accepted_session: desconhecido
+accepted_tree: e3e24edae32ccd9b87bfdab27ba817652fef4667
+accepted_intent: 6
