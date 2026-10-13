@@ -19,7 +19,7 @@ Pedido do Spock em 13/10/2026. A CI do `main` do Maestro está vermelha desde 08
   2. Escolha a forma que prove a recusa por falta de root **sem** passar pela recusa de modo: um destino absoluto cujos pais existam e não sejam graváveis por grupo ou outros na forge **e** no runner, ou, se o instalador permitir, uma raiz de teste. **Não** troque a expectativa por "qualquer rc 2", porque aí o caso deixaria de provar o root.
   3. Se a forma certa exigir mudar o instalador (`bin/`, `lib/`, `hooks/`), **PARE e reporte**: vira outra ordem, com patch protegido.
   4. Mantenha o caso "sem root nada foi criado".
-- fim: `bash tests/cli/test-order-072-install-managed-mods.sh` rc 0 (o run grava o recibo de trabalho com ele); a suíte inteira, recibo `maestro evidence --record --label order-82 -- bash tests/run-all.sh`, roda o Diretor fora do sandbox no tip; a CI do PR verde no job "suíte + doctor".
+- fim: `bash tests/cli/test-order-072-install-managed-mods.sh` rc 0 (o run grava o recibo de trabalho com ele); a suíte inteira, `bash tests/run-all.sh` como recibo order-82, roda o Diretor fora do sandbox no tip; a CI do PR verde no job "suíte + doctor".
 - teto: 1 · 45 min · 80 turnos
 - limite de CI e revisões: 2 rodadas de CI; sem revisão independente (só teste). PR em rascunho até a CI.
 - fora: o instalador e qualquer arquivo fora de `tests/`; outros testes; o `ci.yml`.
