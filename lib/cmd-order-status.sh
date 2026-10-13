@@ -50,6 +50,7 @@ _order_show_context() { # <proj> <wproj> <arquivo> [status] → blocos direção
       printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
       while IFS= read -r _vl; do [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"; done <<<"$_vrep"
     fi
+    _order_docsonly_say "$wproj" "$of"   # ordem 081: a dispensa dos recibos de código, dita (nada sem a chave)
   fi
   _od=$(_order_field "$of" doc)
   if [[ -n "$_od" ]]; then

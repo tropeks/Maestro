@@ -157,6 +157,9 @@ else die env "lib/core-proof-verdict.sh não encontrado em $REPO_DIR" "reinstale
 # ordem 078: `maestro order --baseline N` (grava o fim_commit que a recusa do evidence --record lê).
 if [[ -f "$REPO_DIR/lib/core-evidence-declared.sh" ]]; then source "$REPO_DIR/lib/core-evidence-declared.sh"
 else die env "lib/core-evidence-declared.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2; fi
+# ordem 081: dispensa dos recibos de código quando o diff é só de docs_only_paths; sem a lib, nada dispensa.
+if [[ -f "$REPO_DIR/lib/core-order-docsonly.sh" ]]; then source "$REPO_DIR/lib/core-order-docsonly.sh"
+else _order_docsonly() { return 0; }; _order_docsonly_say() { return 0; }; _order_docsonly_kv() { return 0; }; fi
 # ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
 # árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
 if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
@@ -333,6 +336,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
   [[ -n "$areas" ]] || return 0
   # shellcheck disable=SC2086
   labels=$(maestro_verif_labels "$proj" $areas); [[ -n "$labels" ]] || return 0
+  [[ "$(_order_docsonly "$proj" "$f")" == SIM* ]] && return 0   # ordem 081: diff só de docs_only_paths dispensa os recibos de CÓDIGO (o order-NN fica)
   br=$(_order_field "$f" branch)
   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
   for lb in $labels; do
@@ -349,6 +353,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
 }
 _order_verif_gate() { # <wproj> <arquivo> <id> — recusa (exit 1) o aceite sem o conjunto exigido
   local proj="$1" f="$2" id="$3" rep falta="" lb st
+  _order_docsonly_say "$proj" "$f"   # ordem 081: diz a dispensa (ou por que não)
   rep=$(_order_verif_report "$proj" "$f"); [[ -n "$rep" ]] || return 0
   while IFS= read -r st; do
     [[ -n "$st" ]] || continue

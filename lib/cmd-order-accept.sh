@@ -219,6 +219,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> ‚Ä
     local resolved sess kv kv_args=()
     resolved=$(_order_accept_session_resolve "$proj" "$oid" "$ptree" "$sid")
     sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
+    kv+=$(_order_docsonly_kv "$wproj" "$of")   # ordem 081: marca aditiva da dispensa dos recibos de c√≥digo
     [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
       "$ts" "$sess" "$ptree" >> "$of"
@@ -243,6 +244,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> ‚Ä
   local resolved sess kv kv_args=()
   resolved=$(_order_accept_session_resolve "$proj" "$oid" "${ptree:-desconhecida}" "$sid")
   sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
+  kv+=$(_order_docsonly_kv "$wproj" "$of")   # ordem 081: marca aditiva da dispensa dos recibos de c√≥digo
   [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
     "$ts" "$sess" "${ptree:-desconhecida}" >> "$of"
