@@ -99,6 +99,13 @@ teste com `origin` bare, branch padrão, `.maestro.yaml` com `verification` por 
    de Bash, então o clone não pode morar lá), testado antes e depois; o patch é gerado **de lá** para `docs/patches/`, e
    `git apply --check` roda na worktree. `tests/` e `docs/` direto no branch. **O merge é do Capitão.**
 4. **Sandbox (se o run rodar nele):** sem `~/.maestro`; falta algo de que o turno precisa: **relate e PARE**, sem contornar.
+   **Exceção, AUTORIZAÇÃO REGISTRADA DO DIRETOR (Spock, 13/10, opção A, restrita):** o bwrap exporta `GIT_OBJECT_DIRECTORY` e
+   `GIT_ALTERNATE_OBJECT_DIRECTORIES`, e os repos de fixture criados em `mktemp` nascem sem `objects`. Fica autorizado, e só isto:
+   (1) `tests/lib/docsonly-fixture.sh`, ou o `env-clean.sh` dos testes, dá `unset` das duas variáveis, para o teste ser
+   **hermético**; (2) o clone de trabalho em `docs/research/work/` pode rodar com `env -u GIT_OBJECT_DIRECTORY -u
+   GIT_ALTERNATE_OBJECT_DIRECTORIES`; (3) **nunca** `unset` (nem `env -u`) em `git` que aja sobre a **própria worktree**: `git add`,
+   `commit`, `push`, `status`, `diff` e `apply --check` dela seguem **com o ambiente do sandbox**. Qualquer outro contorno do sandbox
+   continua proibido: relate e PARE.
 5. Logs: **só metadados**; nunca caminho completo de arquivo.
 
 ## Como sai
