@@ -162,3 +162,7 @@ ESTADO (Spock, 13/10): turno 1 estourou o teto de parede aos 20 min: o daemon l�
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 081` (você não fecha a própria ordem).
+accepted_at: 2026-10-13T05:38:46-03:00
+accepted_session: desconhecido
+accepted_tree: 4b0f1c5703ef116999089daae2523564626f5a2b
+accepted_intent: 6
