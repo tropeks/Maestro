@@ -1,0 +1,176 @@
+diff --git a/lib/cmd-order-accept.sh b/lib/cmd-order-accept.sh
+index b5f7456..a4efe95 100644
+--- a/lib/cmd-order-accept.sh
++++ b/lib/cmd-order-accept.sh
+@@ -219,6 +219,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> 
+     local resolved sess kv kv_args=()
+     resolved=$(_order_accept_session_resolve "$proj" "$oid" "$ptree" "$sid")
+     sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
++    kv+=$(_order_docsonly_kv "$wproj" "$of")   # ordem 081: marca aditiva da dispensa dos recibos de código
+     [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
+     printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
+       "$ts" "$sess" "$ptree" >> "$of"
+@@ -243,6 +244,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> 
+   local resolved sess kv kv_args=()
+   resolved=$(_order_accept_session_resolve "$proj" "$oid" "${ptree:-desconhecida}" "$sid")
+   sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
++  kv+=$(_order_docsonly_kv "$wproj" "$of")   # ordem 081: marca aditiva da dispensa dos recibos de código
+   [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
+   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
+     "$ts" "$sess" "${ptree:-desconhecida}" >> "$of"
+diff --git a/lib/cmd-order-status.sh b/lib/cmd-order-status.sh
+index a9553ca..6d89f7a 100644
+--- a/lib/cmd-order-status.sh
++++ b/lib/cmd-order-status.sh
+@@ -50,6 +50,7 @@ _order_show_context() { # <proj> <wproj> <arquivo> [status] → blocos direção
+       printf '  verif   : áreas %s\n' "$(printf '%s\n' "$_vareas" | tr '\n' ' ' | sed 's/ $//')"
+       while IFS= read -r _vl; do [[ -n "$_vl" ]] && printf '            %s\n' "$_vl"; done <<<"$_vrep"
+     fi
++    _order_docsonly_say "$wproj" "$of"   # ordem 081: a dispensa dos recibos de código, dita (nada sem a chave)
+   fi
+   _od=$(_order_field "$of" doc)
+   if [[ -n "$_od" ]]; then
+diff --git a/lib/core-order-docsonly.sh b/lib/core-order-docsonly.sh
+new file mode 100644
+index 0000000..dc2bcfd
+--- /dev/null
++++ b/lib/core-order-docsonly.sh
+@@ -0,0 +1,108 @@
++#!/usr/bin/env bash
++# maestro lib/core-order-docsonly.sh — ordem 081: o accept (e o status, que usa o mesmo _order_verif_report) dispensa os
++# recibos de CÓDIGO quando o diff do branch contra o merge-base com o branch padrão REMOTO (origin/HEAD) só toca
++# `docs_only_paths` do `.maestro.yaml`. O recibo `order-NN` continua exigido (nada aqui o toca).
++#
++# Sourced por lib/core-order-state.sh. Sem a chave, sem origin/HEAD, sem merge-base, com padrão inválido ou com diff
++# vazio: NÃO dispensa (fecha para negado) e o fluxo é byte a byte o de antes.
++#   - a lista vem do `.maestro.yaml` do MERGE-BASE, nunca do tip: o run edita o tip, e uma lista lida dali deixaria
++#     um run declarar `src/**` como "docs" e se dispensar (mesmo princípio do fim_commit da ordem 078);
++#   - `git diff --no-renames`: com detecção de rename o caminho ANTIGO (código) some do diff e um arquivo movido para
++#     docs/ dispensaria; sem ela a remoção do caminho de código aparece e impede a dispensa;
++#   - o casamento é o glob do próprio git (pathspec `:(exclude,glob)`): sobra no diff o que NÃO casa com padrão algum.
++# Nenhum padrão é embutido: o projeto mantém a lista igual ao `paths-ignore` do CI dele.
++
++_dz_items() { # stdin: .maestro.yaml → "K" se a chave `docs_only_paths:` existe + "P<TAB>item" por item (lista em flow, uma linha)
++  awk '
++    { line = $0; sub(/\r$/, "", line) }
++    line ~ /^docs_only_paths:/ {
++      print "K"
++      s = substr(line, index(line, ":") + 1)
++      sub(/[ \t]+#.*$/, "", s); sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
++      if (s !~ /^\[.*\]$/) { print "P\t" s; exit }   # não é lista em flow: o item cru cai na validação
++      s = substr(s, 2, length(s) - 2)
++      n = split(s, a, ",")
++      for (i = 1; i <= n; i++) {
++        t = a[i]; sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
++        if (t ~ /^"[^"]*"$/ || t ~ /^\047[^\047]*\047$/) t = substr(t, 2, length(t) - 2)
++        if (n == 1 && t == "") break              # `[]`: lista vazia, sem itens
++        print "P\t" t
++      }
++      exit
++    }
++  '
++}
++_dz_pat_ok() { # <padrão> → rc 0 se o padrão é aceitável (allowlist: nada de vazio, raiz, absoluto, ../, magia de pathspec, só-curingas)
++  local p="$1"
++  [[ -n "$p" && "$p" != . && "$p" != ./* ]] || return 1
++  [[ "$p" != *[[:space:][:cntrl:]\"\'\\]* ]] || return 1
++  [[ "$p" != /* && "$p" != :* && "$p" != *..* ]] || return 1
++  [[ "$p" == *[!*/]* ]]   # só `*` e `/` (`*`, `**`, `**/*`...) casa o repo inteiro
++}
++_dz_tip_has_key() { # <wproj> <branch> → rc 0 se o .maestro.yaml do TIP cita a chave (só para explicar a recusa; nunca dispensa)
++  git -C "$1" show "$2:.maestro.yaml" 2>/dev/null | grep -q '^docs_only_paths:'
++}
++_order_docsonly() { # <wproj> <arquivo> → SIM + "ARQ <caminho>"..., ou "NAO <razão>" / "AVISO <texto>"; vazio = sem a chave ou nada a dispensar
++  local proj="$1" f="$2" br areas labels dref mb yml items tag it pats=() bad="" all hit l
++  br=$(_order_field "$f" branch); [[ -n "$br" ]] || return 0
++  git -C "$proj" rev-parse --verify --quiet "$br" >/dev/null 2>&1 || return 0
++  _verif_lib_load; maestro_verif_load   # ordem 011: não residentes; aqui, no próprio subshell
++  areas=$(_order_verif_areas "$proj" "$f"); [[ -n "$areas" ]] || return 0
++  # shellcheck disable=SC2086
++  labels=$(maestro_verif_labels "$proj" $areas); [[ -n "$labels" ]] || return 0   # sem recibo de código exigido, nada a dispensar
++  dref=$(git -C "$proj" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null) || dref=""
++  if [[ -z "$dref" ]] || ! git -C "$proj" rev-parse --verify --quiet "$dref^{commit}" >/dev/null 2>&1; then
++    _dz_tip_has_key "$proj" "$br" && echo "NAO sem origin/HEAD resolvível — recibos de código cobrados"
++    return 0
++  fi
++  mb=$(git -C "$proj" merge-base "$dref" "$br" 2>/dev/null) || mb=""
++  if [[ -z "$mb" ]]; then
++    _dz_tip_has_key "$proj" "$br" && echo "NAO sem merge-base entre o branch e origin/HEAD — recibos de código cobrados"
++    return 0
++  fi
++  yml=$(git -C "$proj" show "$mb:.maestro.yaml" 2>/dev/null) || yml=""
++  items=$(_dz_items <<<"$yml")
++  if [[ "$items" != K* ]]; then
++    _dz_tip_has_key "$proj" "$br" && echo "NAO docs_only_paths não está no .maestro.yaml do merge-base (a lista vale a de lá, não a do branch) — recibos de código cobrados"
++    return 0
++  fi
++  while IFS=$'\t' read -r tag it; do
++    [[ "$tag" == P ]] || continue
++    _dz_pat_ok "$it" || bad+="'${it:-<vazio>}' "
++    pats+=(":(glob)$it")
++  done <<<"$items"
++  [[ ${#pats[@]} -gt 0 ]] || return 0
++  [[ -z "$bad" ]] || { echo "AVISO docs_only_paths tem padrão inválido (${bad% }): a lista é ignorada, nada é dispensado"; return 0; }
++  all=$(git -C "$proj" diff --name-only --no-renames "$mb" "$br" -- 2>/dev/null) || all=""
++  [[ -n "$all" ]] || { echo "NAO diff contra o merge-base vazio — recibos de código cobrados"; return 0; }
++  while IFS= read -r l; do
++    [[ "$l" != *[[:space:]\"\\]* ]] || { echo "NAO caminho com espaço ou aspas no diff — recibos de código cobrados"; return 0; }
++  done <<<"$all"
++  hit=$(git -C "$proj" diff --name-only --no-renames "$mb" "$br" -- "${pats[@]}" 2>/dev/null) || hit="?"
++  [[ "$hit" == "$all" ]] || { echo "NAO o diff contra o merge-base toca fora de docs_only_paths — recibos de código cobrados"; return 0; }
++  echo SIM
++  while IFS= read -r l; do echo "ARQ $l"; done <<<"$all"
++  return 0
++}
++_order_docsonly_say() { # <wproj> <arquivo> → o que a dispensa decidiu, no mesmo formato para o status e o accept (nada sem a chave)
++  local ds l files=()
++  ds=$(_order_docsonly "$1" "$2")
++  while IFS= read -r l; do
++    case "$l" in
++      ARQ\ *) files+=("${l#ARQ }") ;;
++      NAO\ *|AVISO\ *) printf '  docs    : %s\n' "${l#* }" ;;
++    esac
++  done <<<"$ds"
++  (( ${#files[@]} > 0 )) || return 0
++  printf '  docs    : recibos de código DISPENSADOS: diff contra o merge-base só em docs_only_paths (o recibo da ordem continua exigido)\n'
++  printf '            %s\n' "${files[@]}"
++}
++_order_docsonly_kv() { # <wproj> <arquivo> → " docs_only_dispensa=1 docs_only_files=a,b" para o registro do aceite (vazio sem dispensa)
++  local ds l files=""
++  ds=$(_order_docsonly "$1" "$2")
++  [[ "$ds" == SIM* ]] || return 0
++  while IFS= read -r l; do
++    [[ "$l" == "ARQ "* ]] && files+="${files:+,}${l#ARQ }"
++  done <<<"$ds"
++  printf ' docs_only_dispensa=1 docs_only_files=%s' "$files"
++}
+diff --git a/lib/core-order-state.sh b/lib/core-order-state.sh
+index 7db453b..a5956fe 100644
+--- a/lib/core-order-state.sh
++++ b/lib/core-order-state.sh
+@@ -157,6 +157,9 @@ else die env "lib/core-proof-verdict.sh não encontrado em $REPO_DIR" "reinstale
+ # ordem 078: `maestro order --baseline N` (grava o fim_commit que a recusa do evidence --record lê).
+ if [[ -f "$REPO_DIR/lib/core-evidence-declared.sh" ]]; then source "$REPO_DIR/lib/core-evidence-declared.sh"
+ else die env "lib/core-evidence-declared.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2; fi
++# ordem 081: dispensa dos recibos de código quando o diff é só de docs_only_paths; sem a lib, nada dispensa.
++if [[ -f "$REPO_DIR/lib/core-order-docsonly.sh" ]]; then source "$REPO_DIR/lib/core-order-docsonly.sh"
++else _order_docsonly() { return 0; }; _order_docsonly_say() { return 0; }; _order_docsonly_kv() { return 0; }; fi
+ # ordem 050: estados de validação (em_validacao/validada/reprovada) derivados de recibos por
+ # árvore; sem a lib, nada deriva e `provada` segue sendo `provada`.
+ if [[ -f "$REPO_DIR/lib/core-order-validation.sh" ]]; then source "$REPO_DIR/lib/core-order-validation.sh"
+@@ -333,6 +336,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
+   [[ -n "$areas" ]] || return 0
+   # shellcheck disable=SC2086
+   labels=$(maestro_verif_labels "$proj" $areas); [[ -n "$labels" ]] || return 0
++  [[ "$(_order_docsonly "$proj" "$f")" == SIM* ]] && return 0   # ordem 081: diff só de docs_only_paths dispensa os recibos de CÓDIGO (o order-NN fica)
+   br=$(_order_field "$f" branch)
+   tip=$(git -C "$proj" rev-parse --verify --quiet "$br^{tree}" 2>/dev/null) || tip=""
+   for lb in $labels; do
+@@ -349,6 +353,7 @@ _order_verif_report() { # <wproj> <arquivo> [áreas] → uma linha "rótulo: est
+ }
+ _order_verif_gate() { # <wproj> <arquivo> <id> — recusa (exit 1) o aceite sem o conjunto exigido
+   local proj="$1" f="$2" id="$3" rep falta="" lb st
++  _order_docsonly_say "$proj" "$f"   # ordem 081: diz a dispensa (ou por que não)
+   rep=$(_order_verif_report "$proj" "$f"); [[ -n "$rep" ]] || return 0
+   while IFS= read -r st; do
+     [[ -n "$st" ]] || continue

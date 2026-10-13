@@ -23,6 +23,12 @@ from the decision log and tag messages when this file was introduced.
   do declarado e rótulo de área seguem recusados. Testes: `tests/cli/test-evidence-fim-composto{,-adversarial}.sh`.
 
 ### Added
+- **`order --accept` dispensa os recibos de código quando o diff é só de `docs_only_paths` (ordem 081).** Nova chave `docs_only_paths`
+  (lista de globs) no `.maestro.yaml`, lida do **merge-base** com `origin/HEAD` (nunca do tip). Se todo caminho de
+  `git diff --name-only --no-renames <merge-base> <branch>` casa (glob do git), as áreas de código (`suite`, …) não são cobradas, no
+  accept e no `order --status`; o recibo `order-NN` continua exigido. A dispensa é dita na saída com a lista de arquivos e gravada no
+  registro do aceite (`docs_only_dispensa=1`, `docs_only_files=…`, aditivos). Sem a chave, sem `origin/HEAD`, sem merge-base, diff vazio ou
+  padrão inválido (`**`, `*`, `.`, `..`, absoluto, vazio): nada dispensa. Patch protegido em `docs/patches/081-*.patch`.
 - **`tools/armar-mods.sh` — um comando para armar o mod `maestro-guard`.** `sudo tools/armar-mods.sh` confere o Claude Code instalado (versão,
   as seis chaves no executável, `plugin validate`), mostra o diff dos settings gerenciados, pergunta, instala `mods/` em
   `/opt/maestro/claude-plugins` e grava as etapas A e B juntas (`allowManagedModsOnly` aninhado, marketplace de root, `enabledPlugins`,

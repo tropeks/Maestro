@@ -277,6 +277,19 @@ que ele chama, o `cd` para uma pasta do repo) é o que o repo contém: o mesmo l
 | o run chama `maestro order --baseline N` depois de commitar um `fim:` seu | a regravação do baseline não tem confirmação por identidade (`_order_accept_proof_verify` ainda é coto); fica só o rastro no commit do `fim:`. A confirmação assinada é a ordem de identidade |
 | `order-N-<dono8>` (ordem cujo trabalho vive em outro repo, `work_project`) | a ordem não vive no repo do trabalho: recusado (fecha para negado) até a ordem de identidade/work_project decidir o baseline |
 
+## Limites da dispensa de docs (ordem 081) — o que ela garante e o que não
+
+`docs_only_paths` dispensa a **CI de código** (os recibos de área: `suite`, `frontend`…) no accept e no status, quando o diff contra o
+merge-base com `origin/HEAD` só toca esses caminhos. **Não dispensa a prova da ordem:** o recibo `order-NN` (veredito 060) segue exigido.
+
+**Garante:** a lista vem do `.maestro.yaml` do merge-base, não do tip (o run não se declara "docs"); `--no-renames` faz o caminho antigo
+de código aparecer (movido para `docs/` ou removido não dispensa); padrão largo/absoluto/`..`/vazio, diff vazio e falta de
+`origin/HEAD`/merge-base fecham para negado; a dispensa fica dita na saída e no ledger (`docs_only_files`).
+
+**Não garante:** que a lista do projeto seja igual ao `paths-ignore` do CI dele (é do projeto); que um `.md` não contenha algo
+executável por outro caminho; o `.maestro.yaml` do merge-base é o que a branch padrão local do clone diz (o `origin/HEAD` não é buscado
+pelo Maestro).
+
 ## Template de sessão de vibe-code
 
 1. Reler EPICS.md (story alvo) + fronteiras do CLAUDE.md

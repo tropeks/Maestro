@@ -459,6 +459,16 @@ rastreia `.maestro/` (E15/E22) via o próprio aceite vencer o recibo que o
 autorizou — caso real: NetForge, ordem 016. Prova: `tests/cli/test-order.sh`,
 falhando contra o `bin/maestro-wtree` anterior e passando com a exclusão.
 
+**Emenda (ordem 081) — `docs_only_paths`: o accept dispensa os recibos de CÓDIGO em ordem só de docs.** Chave nova do
+`.maestro.yaml` (única; lista de strings, ex.: `docs_only_paths: [docs/**, .maestro/**, "**/*.md"]`), que o projeto mantém igual ao
+`paths-ignore` do CI dele; o Maestro não embute padrão. `order --accept` e `order --status` (mesmo `_order_verif_report`) calculam
+`git diff --name-only --no-renames <merge-base> <branch>`, com `<merge-base>` do branch com `origin/HEAD`. Se **todos** os caminhos casam
+(glob do git, `:(glob)`) com a lista, as áreas de `maestro_verif_labels` ficam **DISPENSADAS** e o `_order_verif_gate` não as cobra.
+O recibo `order-NN` e o veredito `maestro_proof_verdict` seguem intactos e exigidos. A lista é lida do `.maestro.yaml` do **merge-base**,
+nunca do tip. Fecham para negado (nada dispensa; a razão sai em `docs    :`): sem a chave, sem `origin/HEAD`, sem merge-base, diff vazio,
+caminho com espaço/aspas, padrão inválido (vazio, `.`, `*`/`**` só-curingas, `..`, absoluto, `:pathspec`). A saída diz "recibos de código
+DISPENSADOS" com a lista de arquivos. Sem a chave, a saída é a de antes, byte a byte.
+
 **Emenda (ordem 036, DATA_MODEL §9 v1.22) — `work_project`: o trabalho mora em outro
 repo.** `--create --title t ... --work-project <nome>` grava `work_project: <nome>` no
 cabeçalho, validando NA HORA (recusa forma inválida, alvo que não resolve para repo git, ou

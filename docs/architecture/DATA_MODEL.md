@@ -1308,6 +1308,9 @@ outcome=aceita | absorvida
 accepted_at=<timestamp>
 accepted_session=<session_id>
 accepted_tree=<árvore (sha) provada no aceite>
+# aceita, ordem 081 (ADITIVO; só quando os recibos de código foram dispensados por docs_only_paths; o leitor antigo ignora):
+docs_only_dispensa=1
+docs_only_files=<caminhos do diff contra o merge-base, separados por vírgula>
 # absorvida:
 absorbed_by=<id numérico | "main">
 absorbed_tree=<árvore (sha) que a ABSORVENTE provou>
