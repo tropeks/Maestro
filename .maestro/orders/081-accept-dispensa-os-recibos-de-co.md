@@ -124,7 +124,7 @@ Limites do turno: **60 min · 100 turnos** (teto de turnos da ordem = 1). Fora d
 - fim: `bash tests/cli/test-order-docs-only-dispensa.sh` e `bash tests/cli/test-order-docs-only-adversarial.sh` saem 1 antes (colado) e 0 depois no clone de trabalho, com a tabela das mutações toda caída e revertida; patch protegido na worktree e `git apply --check` ok; o comando da suíte da Maestro declarado aqui é `bash tests/run-all.sh`, que o run NÃO executa (quem despacha roda e grava o recibo da ordem fora do run)
 - teto: 1
 - fora: o release (é do Capitão, pelo botão `release_maestro`), a chave `docs_only_paths` no `.maestro.yaml` da NetForge (ordem dela, depois do release), embutir qualquer lista de caminhos no Maestro, mudar o formato do recibo ou o veredito, dispensar o `order-NN`, rodar a suíte completa no run, processo destacado, mexer no ponte-daemon, aplicar o patch no repo, mergear e tocar vendor/
-- relatório: formato fixo da v54, um item por rótulo do bloco Turno (fatia, fim, teto, fora e relatório): de pé com evidência · aberto · decisão pedida · próximo turno sugerido
+- relatório: nos cinco rótulos: feito · provado · aberto · decisão · próximo
 
 > **`director_report` obrigatório.** O turno **só termina** com o `director_report` enviado (relato fixo da v54,
 > com o sha do tip). Terminar a resposta sem ele é turno sem relato. Se o MCP da Ponte não estiver disponível,
