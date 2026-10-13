@@ -50,9 +50,15 @@ expect "flag desconhecida" 2 "uso:" "$TOOL" --foo
 expect "--dest sem valor" 2 "uso:" "$TOOL" --dest
 
 # 7. sem root, sem --check: recusa (com root real o teste não roda: não instala de verdade aqui)
+# O instalador confere o modo dos pais (linha 62) ANTES de exigir root (linha 69); por isso o destino usa só
+# pais que não dependem do runner: /opt (0:755, como no caso 1) e /. /usr/share é 777 no runner do GitHub.
 if (( EUID != 0 )); then
-  expect "sem root não instala" 2 "sudo" "$TOOL" --dest /usr/share/maestro-mods-teste/claude-plugins
-  if [[ ! -e /usr/share/maestro-mods-teste ]]; then ok "sem root nada foi criado"; else bad "criou /usr/share/maestro-mods-teste"; fi
+  if [[ "$(stat -c '%u %a' /opt)" == "0 755" && "$(stat -c '%u' /)" == "0" ]]; then
+    expect "sem root não instala" 2 "sudo" "$TOOL" --dest /opt/maestro-mods-teste/claude-plugins
+    if [[ ! -e /opt/maestro-mods-teste ]]; then ok "sem root nada foi criado"; else bad "criou /opt/maestro-mods-teste"; fi
+  else
+    ok "sem root não instala (pulado: /opt não é 0:755 aqui)"
+  fi
 else
   ok "sem root não instala (pulado: o teste roda como root)"
 fi
