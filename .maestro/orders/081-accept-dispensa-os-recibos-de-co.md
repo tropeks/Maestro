@@ -126,11 +126,11 @@ Papercut: "ordem só de docs nunca é aceita quando a CI pula docs".
 
 ## Turno
 
-Limites do turno: **60 min · 100 turnos** (teto de turnos da ordem = 1). Fora do bloco por não serem rótulos.
+ESTADO (Spock, 13/10): turno 1 estourou o teto de parede aos 20 min: o daemon lê **só o rótulo `teto`**, e `teto: 1` sem minutos valia 1 × 20 min; a linha de limites fora do bloco era ignorada. Agora o limite mora no próprio rótulo: `teto: 2 · 60 min · 100 turnos`. TURNO 2 (o último): **abre conferindo o clone em `docs/research/work/clone`**, que tem a implementação **sem commit** e **pode ter mutante não revertido**. Confira em especial `lib/cmd-order-accept.sh`: `_order_state_proven` ou `docsonly_kv` **não podem** deixar aceitar sem prova (a ordem proíbe dispensar o `order-NN`): o caso (g) do teste da dispensa **e uma mutação dedicada** (M5) têm de provar que não dispensa; reverta qualquer mutante que achar e diga qual era. **Depois** commite os três testes (vermelhos contra o `lib/` da `main`, verdes), M1 a M8, emendas, patch, `git apply --check` e `shellcheck`.
 
 - fatia: (os três arquivos de teste que já estão na worktree sem commit, `tests/cli/test-order-docs-only-dispensa.sh`, `tests/cli/test-order-docs-only-adversarial.sh` e `tests/lib/docsonly-fixture.sh`, o run os valida e commita) o accept com dispensa (`docs_only_paths`, `--no-renames`, lista lida do merge-base, a marca na saída e no ledger), os testes vermelhos antes e verdes depois, as mutações M1 a M8 aplicadas e revertidas com o teste que caiu, as emendas, o patch final em `docs/patches/` da worktree com `git apply --check` ok e `shellcheck` limpo
 - fim: `bash tests/cli/test-order-docs-only-dispensa.sh` e `bash tests/cli/test-order-docs-only-adversarial.sh` saem 1 antes (colado) e 0 depois no clone de trabalho, com a tabela das mutações toda caída e revertida; patch protegido na worktree e `git apply --check` ok; o comando da suíte da Maestro declarado aqui é `bash tests/run-all.sh`, que o run NÃO executa (quem despacha roda e grava o recibo da ordem fora do run)
-- teto: 1
+- teto: 2 · 60 min · 100 turnos
 - fora: o release (é do Capitão, pelo botão `release_maestro`), a chave `docs_only_paths` no `.maestro.yaml` da NetForge (ordem dela, depois do release), embutir qualquer lista de caminhos no Maestro, mudar o formato do recibo ou o veredito, dispensar o `order-NN`, rodar a suíte completa no run, processo destacado, mexer no ponte-daemon, aplicar o patch no repo, mergear e tocar vendor/
 - relatório: nos cinco rótulos: feito · provado · aberto · decisão · próximo
 
