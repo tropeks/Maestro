@@ -128,6 +128,34 @@ recibos_json() {
   jarr "${rows[@]}"
 }
 
+# Revertidas em 14 dias (emenda v64 do posto: "ordem revertida ou reaberta em 14 dias"): commit
+# `Revert …` que cita a ordem (`order/NNN` ou `(NNN)`) até 14 dias depois do aceite, no git do repo do
+# próprio projeto (no --all, o rótulo do TARGET é a chave da ordem). → JSON da parcela da métrica 8
+revertidas_14d() {
+  local rv_rows=() rv_ok=0 t lbl r rows
+  for t in "${TARGETS[@]}"; do
+    lbl="${t%%|*}"; r="${t#*|}"
+    git_ok "$r" || continue
+    rows=$(git -C "$r" log --all -i --grep='^revert' --format='%ct%x09%s' 2>/dev/null | jq -Rsc --arg p "$lbl" \
+      'split("\n") | map(select(length>0) | split("\t") | {proj:$p, ts:(.[0]|tonumber), subj:(.[1:]|join("\t"))})') \
+      && { rv_rows+=("$rows"); rv_ok=1; }
+  done
+  jq -nc --argjson corte "$CORTE" --argjson rvok "$rv_ok" --argjson rv "$(jarr "${rv_rows[@]}" | jq -c 'add // []')" \
+    --argjson ords "$ORDERS_JSON" "$NOVAS_DEFS"'
+    if $rvok==0 then {status:"sem dado", motivo:"nenhum repositório git legível"}
+    else ($ords | map(select((.aceita|type)=="number")) ) as $pop
+      | ($pop | map(. as $o
+          | ($o.id|tostring) as $n
+          | ($rv | map(select(.proj == ($o.projeto // .proj) and .ts > $o.aceita and .ts <= ($o.aceita + 14*86400)
+              and ((.subj | test("order/0*" + $n + "([^0-9]|$)")) or (.subj | test("\\(0*" + $n + "\\)")))))) as $hits
+          | select(($hits|length) > 0) | {ordem:$o.id, lado:($o.aceita|lado), reverts:($hits|length)})) as $r
+      | {status:(if ($pop|length)==0 then "sem dado" else "ok" end),
+         antes:($r|conta("antes")), depois:($r|conta("depois")),
+         populacao:{antes:($pop|map(select(.aceita <= $corte))|length), depois:($pop|map(select(.aceita > $corte))|length)},
+         por_ordem:$r,
+         nota:"commit Revert que cita order/NNN ou (NNN) até 14 dias depois do aceite"} end'
+}
+
 m8_retrabalho() { # → JSON da métrica 8
   local f=() pre dev='[]' sr='[]' rec='[]' dev_ok=0 sr_ok=0 rec_ok=0 pfr=""
   pre=$(ponte_pre)
@@ -151,22 +179,10 @@ m8_retrabalho() { # → JSON da métrica 8
       f+=("$(falha "ledger evidence/<chave>-order-<n> (campo regravacoes)" "campo regravacoes presente e inválido (não é inteiro nem a palavra ausente): $invalidos")")
     fi
   fi
-  # Revertidas em 14 dias (emenda v64 do posto: "ordem revertida ou reaberta em 14 dias"): commit
-  # `Revert …` que cita a ordem (`order/NNN` ou `(NNN)`) até 14 dias depois do aceite, no git dos repos.
-  local rv_rows=() rv_ok=0 t lbl r
-  for t in "${TARGETS[@]}"; do
-    lbl="${t%%|*}"; r="${t#*|}"
-    git_ok "$r" || continue
-    local rows
-    rows=$(git -C "$r" log --all -i --grep='^revert' --format='%ct%x09%s' 2>/dev/null | jq -Rsc --arg p "$lbl" \
-      'split("\n") | map(select(length>0) | split("\t") | {proj:$p, ts:(.[0]|tonumber), subj:(.[1:]|join("\t"))})') \
-      && { rv_rows+=("$rows"); rv_ok=1; }
-  done
-  local reverts; reverts=$(jarr "${rv_rows[@]}" | jq -c 'add // []')
   f+=("${UNRES[@]}")
   jq -nc --argjson corte "$CORTE" --argjson dev "$dev" --argjson sr "$sr" --argjson rec "$rec" \
     --argjson dok "$dev_ok" --argjson sok "$sr_ok" --argjson rok "$rec_ok" --argjson npop "$(jq 'length' <<<"$rec")" \
-    --argjson rvok "$rv_ok" --argjson rv "$reverts" --argjson ords "$ORDERS_JSON" \
+    --argjson rv14 "$(revertidas_14d)" \
     --argjson f "$(jarr "${f[@]}")" "$FIN$NOVAS_DEFS"'
     def sub_($ok; $rows; $ref): if $ok==0 then {status:"FALHA"}
       else ($rows|length) as $n | {status:(if $n==0 then "sem dado" else "ok" end), antes:($rows|conta("antes")), depois:($rows|conta("depois")),
@@ -189,19 +205,7 @@ m8_retrabalho() { # → JSON da métrica 8
                 n:{antes:nlado("antes"), depois:nlado("depois")},
                 n_com_dado:($rg|length), n_sem_dado:(($rec|length)-($rg|length)), populacao:($rec|length),
                 por_ordem:($rg|map({ordem, n:.regravacoes}))} end),
-        revertidas_14d:(
-          if $rvok==0 then {status:"sem dado", motivo:"nenhum repositório git legível"}
-          else ($ords | map(select((.aceita|type)=="number")) ) as $pop
-            | ($pop | map(. as $o
-                | ($o.id|tostring) as $n
-                | ($rv | map(select(.proj == ($o.projeto // .proj) and .ts > $o.aceita and .ts <= ($o.aceita + 14*86400)
-                    and ((.subj | test("order/0*" + $n + "([^0-9]|$)")) or (.subj | test("\\(0*" + $n + "\\)")))))) as $hits
-                | select(($hits|length) > 0) | {ordem:$o.id, lado:($o.aceita|lado), reverts:($hits|length)})) as $r
-            | {status:(if ($pop|length)==0 then "sem dado" else "ok" end),
-               antes:($r|conta("antes")), depois:($r|conta("depois")),
-               populacao:{antes:($pop|map(select(.aceita <= $corte))|length), depois:($pop|map(select(.aceita > $corte))|length)},
-               por_ordem:$r,
-               nota:"commit Revert que cita order/NNN ou (NNN) até 14 dias depois do aceite"} end) }
+        revertidas_14d:$rv14 }
     | fin($f; ($dok+$sok+$rok)>0)'
 }
 
