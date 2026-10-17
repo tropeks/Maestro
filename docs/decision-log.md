@@ -972,3 +972,17 @@ Ficam para decisão do Capitão, como a A2 já registrava:
 - **Hooks `session-end` e `subagent-stop`:** o `session-end` faz o sync de telemetria; tirar o `subagent-stop` mexe
   no doctor, no contrato e em testes.
 - **Sensores de custo marginal zero:** vão para a revisão de 30 dias.
+
+## 2026-10-17 — Painel mede a saída para o Maestro light: interrupções por ordem e revertidas em 14 dias
+
+A frente "Maestro do tamanho certo" (emenda v64 do posto) só sai do Maestro pesado se as interrupções do Capitão
+por ordem caírem à metade e o retrabalho não subir. O painel (`tools/baseline.sh`) contava as ações do Capitão em
+totais, sem população, e não via ordem revertida. Duas parcelas novas, sem fonte nova:
+
+- **Métrica 7, `por_100_ordens`:** total do lado × 100 / ordens aceitas do lado (a população da métrica 1), em
+  inteiro. `null` quando o lado não tem ordem aceita.
+- **Métrica 8, `revertidas_14d`:** ordem aceita com commit `Revert …` que cita `order/NNN` ou `(NNN)` entre o aceite e
+  14 dias depois, no git dos repos medidos (no `--all`, só no repo do próprio projeto). Sem git legível, `sem dado`.
+
+Revert que não cita a ordem escapa da conta. Ele é o mesmo retrabalho que a métrica 8 já não via, e o critério fica
+declarado no campo `nota`. Teste: `tests/cli/test-baseline-novas-medidas.sh`.

@@ -7,7 +7,10 @@
 #   7 ações do Capitão  = ponte.db decision WHERE origin='spock' (são os captain_ask)
 #                         + git: commits que tocam hooks/ bin/ lib/ src/ .claude-plugin/plugin.json
 #                         (só o Capitão aplica patch ali). Contagem; o painel não tem tempo do Capitão.
+#                         por_100_ordens: total do lado × 100 / ordens aceitas do lado (inteiro, floor).
 #   8 retrabalho        = turnos devolvidos      → ponte.db director_inbox.state='returned'
+#                         revertidas em 14 dias  → git: commit `Revert …` que cita order/NNN ou (NNN)
+#                                                  entre o aceite e 14 dias depois dele
 #                         turnos sem relato      → ponte.db manager_run terminal (failed, cancelled, teto)
 #                                                  sem manager_event review_requested/completed do run
 #                         recibos regravados     → ledger evidence/<chave>-order-<n>, campo regravacoes
@@ -70,7 +73,14 @@ m7_acoes_capitao() { # → JSON da métrica 7
   done
   f+=("${UNRES[@]}")
   local commits; commits=$(jarr "${git_rows[@]}" | jq -c 'add // []')
+  # População por lado (ordens aceitas, a mesma regra da métrica 1): a taxa por ordem é o critério da
+  # saída para o Maestro light (emenda v64 do posto: "interrupções do Capitão por ordem caíram à metade?").
+  local pop; pop=$(jq -c --argjson corte "$CORTE" \
+    '[.[] | select((.aceita|type)=="number") | (if .aceita <= $corte then "antes" else "depois" end)]
+     | {antes:(map(select(.=="antes"))|length), depois:(map(select(.=="depois"))|length)}' <<<"$ORDERS_JSON" 2>/dev/null) \
+    || pop='{"antes":0,"depois":0}'
   jq -nc --argjson corte "$CORTE" --argjson sp "$spock" --argjson cm "$commits" --argjson f "$(jarr "${f[@]}")" \
+    --argjson pop "$pop" \
     --argjson pontes "$([[ -z "$pre" ]] && echo true || echo false)" --argjson gok "$gok" "$FIN$NOVAS_DEFS"'
     ( ($sp | map({fonte:"ponte", projeto:.project, ordem:(.order_ref // "" | nref), lado:(.ts|lado)}))
     + ($cm | map({fonte:"git", projeto, ordem:(.subj|nsubj), lado:(.ts|lado)})) ) as $a
@@ -80,6 +90,10 @@ m7_acoes_capitao() { # → JSON da métrica 7
       status:(if ($a|length)==0 then "sem dado" else "ok" end),
       fonte:"ponte.db decision.origin=spock + git log em hooks/ bin/ lib/ src/ .claude-plugin/plugin.json",
       antes:tot("antes"), depois:tot("depois"),
+      # inteiro por 100 ordens aceitas do lado (nunca float); null sem população no lado
+      por_100_ordens:{antes:(if $pop.antes > 0 then ((tot("antes").total * 100 / $pop.antes) | floor) else null end),
+                      depois:(if $pop.depois > 0 then ((tot("depois").total * 100 / $pop.depois) | floor) else null end),
+                      populacao:$pop},
       por_ordem:($a | map(select(.ordem != null)) | group_by([.projeto, .ordem])
         | map({projeto:.[0].projeto, ordem:.[0].ordem,
                ponte:(map(select(.fonte=="ponte"))|length), git:(map(select(.fonte=="git"))|length), total:length})),
@@ -137,9 +151,22 @@ m8_retrabalho() { # → JSON da métrica 8
       f+=("$(falha "ledger evidence/<chave>-order-<n> (campo regravacoes)" "campo regravacoes presente e inválido (não é inteiro nem a palavra ausente): $invalidos")")
     fi
   fi
+  # Revertidas em 14 dias (emenda v64 do posto: "ordem revertida ou reaberta em 14 dias"): commit
+  # `Revert …` que cita a ordem (`order/NNN` ou `(NNN)`) até 14 dias depois do aceite, no git dos repos.
+  local rv_rows=() rv_ok=0 t lbl r
+  for t in "${TARGETS[@]}"; do
+    lbl="${t%%|*}"; r="${t#*|}"
+    git_ok "$r" || continue
+    local rows
+    rows=$(git -C "$r" log --all -i --grep='^revert' --format='%ct%x09%s' 2>/dev/null | jq -Rsc --arg p "$lbl" \
+      'split("\n") | map(select(length>0) | split("\t") | {proj:$p, ts:(.[0]|tonumber), subj:(.[1:]|join("\t"))})') \
+      && { rv_rows+=("$rows"); rv_ok=1; }
+  done
+  local reverts; reverts=$(jarr "${rv_rows[@]}" | jq -c 'add // []')
   f+=("${UNRES[@]}")
   jq -nc --argjson corte "$CORTE" --argjson dev "$dev" --argjson sr "$sr" --argjson rec "$rec" \
     --argjson dok "$dev_ok" --argjson sok "$sr_ok" --argjson rok "$rec_ok" --argjson npop "$(jq 'length' <<<"$rec")" \
+    --argjson rvok "$rv_ok" --argjson rv "$reverts" --argjson ords "$ORDERS_JSON" \
     --argjson f "$(jarr "${f[@]}")" "$FIN$NOVAS_DEFS"'
     def sub_($ok; $rows; $ref): if $ok==0 then {status:"FALHA"}
       else ($rows|length) as $n | {status:(if $n==0 then "sem dado" else "ok" end), antes:($rows|conta("antes")), depois:($rows|conta("depois")),
@@ -161,7 +188,20 @@ m8_retrabalho() { # → JSON da métrica 8
                 antes:($rg|map(select(.lado=="antes")|.regravacoes)|add // 0), depois:($rg|map(select(.lado=="depois")|.regravacoes)|add // 0),
                 n:{antes:nlado("antes"), depois:nlado("depois")},
                 n_com_dado:($rg|length), n_sem_dado:(($rec|length)-($rg|length)), populacao:($rec|length),
-                por_ordem:($rg|map({ordem, n:.regravacoes}))} end) }
+                por_ordem:($rg|map({ordem, n:.regravacoes}))} end),
+        revertidas_14d:(
+          if $rvok==0 then {status:"sem dado", motivo:"nenhum repositório git legível"}
+          else ($ords | map(select((.aceita|type)=="number")) ) as $pop
+            | ($pop | map(. as $o
+                | ($o.id|tostring) as $n
+                | ($rv | map(select(.proj == ($o.projeto // .proj) and .ts > $o.aceita and .ts <= ($o.aceita + 14*86400)
+                    and ((.subj | test("order/0*" + $n + "([^0-9]|$)")) or (.subj | test("\\(0*" + $n + "\\)")))))) as $hits
+                | select(($hits|length) > 0) | {ordem:$o.id, lado:($o.aceita|lado), reverts:($hits|length)})) as $r
+            | {status:(if ($pop|length)==0 then "sem dado" else "ok" end),
+               antes:($r|conta("antes")), depois:($r|conta("depois")),
+               populacao:{antes:($pop|map(select(.aceita <= $corte))|length), depois:($pop|map(select(.aceita > $corte))|length)},
+               por_ordem:$r,
+               nota:"commit Revert que cita order/NNN ou (NNN) até 14 dias depois do aceite"} end) }
     | fin($f; ($dok+$sok+$rok)>0)'
 }
 
