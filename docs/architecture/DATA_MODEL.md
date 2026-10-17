@@ -1723,6 +1723,10 @@ derivados de recibos por árvore, nunca autodeclarados**, e só em projeto que d
 - `em_validacao` = pedido cuja `tree` é a árvore provada atual, sem recibo de validação nela.
 - **Recibo de validação** = recibo do ledger (§8) de rótulo `validation-<n>` (mesmo formato; gravado pelo
   runner, nunca pelo executor). `exit=0` na MESMA árvore do pedido → `validada`; `exit≠0` → `reprovada`.
+  **Emenda de 17/10 (D17 da auditoria de 05/10):** o recibo de validação passa pelo veredito único
+  (`maestro_proof_verdict`, ordem 060), contra a árvore provada: veredito limpo → `validada`; o único motivo sendo
+  a falha da execução → `reprovada`; qualquer outro motivo (árvore mudou na corrida, comando ≠
+  `commands.validation`, recibo ilegível) → o recibo não vale e a ordem segue `em_validacao`.
 - Árvore mudou depois (novo tip) → pedido e recibo deixam de casar (`maestro_tree_same`, ordem 044) e a ordem
   volta a `provada` (com recibo local no novo tip) ou `em_execucao` (sem). `reprovada` sem novo tip provado é o
   sinal de **reparo**; `--validate` sobre `reprovada` recusa (exit 1).

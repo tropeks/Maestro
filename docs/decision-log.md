@@ -986,3 +986,16 @@ totais, sem população, e não via ordem revertida. Duas parcelas novas, sem fo
 
 Revert que não cita a ordem escapa da conta. Ele é o mesmo retrabalho que a métrica 8 já não via, e o critério fica
 declarado no campo `nota`. Teste: `tests/cli/test-baseline-novas-medidas.sh`.
+
+## 2026-10-17 — O recibo de validação passa pelo veredito único (D17), antes de ligar a validação
+
+A fase B2 do posto liga a validação na mesma árvore (`validation:` no `.maestro.yaml`). A auditoria de 05/10 (D17)
+apontou que o recibo `validation-N` decidia `validada` só por `exit=0` e pela árvore final, fora do veredito único
+da ordem 060: um recibo com a árvore mudando durante a corrida, ou com comando diferente do declarado, validava.
+Estava dormente porque nenhum projeto declarava `validation:`; ligar sem fechar isto abriria a brecha.
+
+`_order_validation_state` lê o recibo pelo `maestro_proof_verdict` contra a árvore provada. Os estados e o gate do
+aceite não mudam. Teste: `tests/cli/test-order-050-validacao.sh`, bloco (8), vermelho na lib antiga.
+
+Fica de fora o outro caminho da D17 (branch ausente, `_order_evidence_frozen_tree`): ele lê ordem já mergeada e
+mexer nele muda o estado de histórico aceito.

@@ -141,4 +141,21 @@ grep -qi 'syntax error\|unbound\|command not found\|10#' <<<"$out" \
   && bad "(7) conform estourou sobre em_validacao: $(head -3 <<<"$out" | tr '\n' '|')" \
   || ok "(7) conform lê ordem em_validacao sem estourar"
 
+# --- (8) D17: o recibo de validação passa pelo veredito único (maestro_proof_verdict) -------
+# exit=0 na mesma árvore não basta: árvore que mudou durante a corrida, ou comando recusado,
+# não valida (antes da correção, os dois saíam 'validada').
+mk 10 1
+"$BIN" order --validate 1 --project "$P" --session s1 >/dev/null 2>&1
+validation_receipt true
+want "(8) recibo verde íntegro" validada
+rf=$(ls -t "$MAESTRO_HOME"/evidence/*-validation-1 2>/dev/null | head -1)   # o ledger é um só para os mk: o mais novo é o deste
+cp "$rf" "$tmp/rf.ok"
+sed -i 's/^wtree_before=.*/wtree_before=0000000000000000000000000000000000000000/' "$rf"
+want "(8) recibo verde com a árvore mudando na corrida" em_validacao
+cp "$tmp/rf.ok" "$rf"; sed -i 's/^cmd_match=.*/cmd_match=no/' "$rf"
+grep -q '^cmd_match=no$' "$rf" || printf 'cmd_match=no\n' >> "$rf"
+want "(8) recibo verde com comando diferente do declarado" em_validacao
+cp "$tmp/rf.ok" "$rf"; sed -i 's/^exit=0$/exit=1/' "$rf"
+want "(8) recibo íntegro com a execução falhando" reprovada
+
 exit $fail
