@@ -1,9 +1,7 @@
-# CHAVE DE TESTE do vetor canônico (docs-ops/045/VETOR-CANONICO-prova-de-aceite.md,
-# ponte-daemon) — publicada de propósito para os dois lados (daemon emite,
-# Maestro verifica) fecharem o contrato ANTES de a chave de PRODUÇÃO existir.
-# NUNCA é a chave real do Diretor. Quando a produção existir, esta linha e a
-# chave abaixo são substituídas NO MESMO commit que liga MAESTRO_ACCEPT_
-# REQUIRE_PROOF em qualquer projeto (default continua desligado até lá).
+# CHAVE DE PRODUÇÃO do ponte-daemon (ponte-daemon accept-proof pubkey, 17/10/2026).
+# Impressão digital sha256 do SPKI: 9d59f0c7f5eced24f6e89fb6f526a194158336235348251e3014887b92685251
+# Instalada pelo Capitão. A chave de teste do vetor canônico saiu daqui no mesmo commit.
+# Ligar a exigência é por projeto (accept_require_proof: true no .maestro.yaml do dono).
 -----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEARkaNyPRegAbbFAVQ54YlisOh02okQUqFL6xLg3vXecc=
+MCowBQYDK2VwAyEA6Z4IYAf9iDO2cDbR0nLNUwnIQe4j1pDnUX1dp7f5YRQ=
 -----END PUBLIC KEY-----
