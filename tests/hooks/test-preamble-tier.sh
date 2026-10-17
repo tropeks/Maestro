@@ -250,7 +250,42 @@ preamble: lean"
   || chk no "acusação do valor recusado não sobrevive ao valor bom"
 nucleo "chave repetida"
 
+echo "-- 10. run (INTENT do posto v65, linha 1): ordem com capability, injeção ≤ 2 KB"
+# run_cap <tag> <marca> <yaml|-> — como `run`, com PONTE_CAPABILITY_ORDEM no ambiente.
+run_cap() {
+  local tag="$1" marca="$2" yaml="${3:--}"
+  local p; p=$(mktemp -d "$SANDBOX/proj.XXXXXX")
+  [[ "$yaml" == "-" ]] || printf '%s\n' "$yaml" >"$p/.maestro.yaml"
+  env MAESTRO_HOME="$(mktemp -d "$SANDBOX/home.XXXXXX")" CLAUDE_PROJECT_DIR="$p" PONTE_CAPABILITY_ORDEM="$marca" \
+    bash "$HOOK" <"$IN" >"$SANDBOX/out.$tag" 2>"$SANDBOX/err.$tag"
+  RC=$?
+  OUT=$(cat "$SANDBOX/out.$tag")
+  BYTES=$(wc -c <"$SANDBOX/out.$tag" | tr -d ' ')
+}
+run_cap run 138 'preamble: full'
+B_RUN=$BYTES
+[[ $RC -eq 0 && "$OUT" == *"<maestro-routing>"* && "$OUT" == *"session_id: ses_E25"* && "$OUT" == *"</maestro-routing>"* ]] \
+  && chk yes "run: bloco, session_id e fechamento" || chk no "run: bloco, session_id e fechamento"
+[[ "$OUT" == *"ORDEM 138 COM CAPABILITY"* && "$OUT" != *"maestro decide --session"* ]] \
+  && chk yes "run: a ordem é o decision record, sem a instrução do decide" \
+  || chk no "run: a ordem é o decision record, sem a instrução do decide"
+[[ "$OUT" != *"$HDR_ROUTES"* && "$OUT" != *"$HDR_HEUR"* && "$OUT" != *"$HDR_ROSTER"* \
+   && "$OUT" != *"## Gates humanos"* && "$OUT" != *"## Bindings"* && "$OUT" != *"## Estilo"* ]] \
+  && chk yes "run: rotas, heurísticas, roster, gates, bindings e estilo fora" \
+  || chk no "run: rotas, heurísticas, roster, gates, bindings e estilo fora"
+[[ "$(tier_line "$SANDBOX/out.run")" == *"run (ordem 138)"* ]] \
+  && chk yes "run: o cabeçalho declara o tier e o que ficou fora" \
+  || chk no "run: o cabeçalho declara o tier" "'$(tier_line "$SANDBOX/out.run")'"
+[[ $B_RUN -le 2048 ]] \
+  && chk yes "run: injeção de ${B_RUN}B, dentro dos 2048B" || chk no "run: injeção dentro dos 2048B" "${B_RUN}B"
+for marca in "" 13 1388 "138;id" abc; do
+  run_cap invalida "$marca" -
+  cmp -s "$SANDBOX/out.ausente" "$SANDBOX/out.invalida" \
+    && chk yes "marca inválida '$marca': injeção de sempre, byte a byte" \
+    || chk no "marca inválida '$marca': injeção de sempre, byte a byte"
+done
+
 # =============================================================================
-printf -- '-- conta: full=%sB standard=%sB lean=%sB\n' "$B_FULL" "$B_STD" "$B_LEAN"
+printf -- '-- conta: full=%sB standard=%sB lean=%sB run=%sB\n' "$B_FULL" "$B_STD" "$B_LEAN" "$B_RUN"
 [[ $fail -eq 0 ]] && echo "test-preamble-tier: OK" || echo "test-preamble-tier: FALHAS" >&2
 exit $fail

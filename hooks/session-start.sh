@@ -907,6 +907,20 @@ build_and_emit() {
   if [[ -n "$P_PREAMBLE_BAD" ]]; then
     sec_head+="preâmbulo: valor inválido no .maestro.yaml ('$P_PREAMBLE_BAD') — usando full (full | standard | lean)"$'\n'
   fi
+  # INTENT do posto v65, linha 1 (17/10): o run headless que a Ponte lança com a
+  # capability ligada (PONTE_CAPABILITY_ORDEM=<NNN>) roda UMA ordem, sem humano na
+  # conversa, e a ordem é o decision record (pre-tool-gate, passo 2b). Ele não usa o
+  # catálogo de rotas, os gates humanos (plan mode trava um run sem humano), os
+  # bindings, as heurísticas, o roster nem o estilo de conversa com o usuário, e a
+  # instrução de `maestro decide` não vale para ele. Fica o que guia a ordem: cabeçalho,
+  # profile, projeto (docs, direção, brief) e o mote. Vence o `preamble:` do projeto.
+  if [[ "${PONTE_CAPABILITY_ORDEM:-}" =~ ^[0-9]{3}$ ]]; then
+    P_PREAMBLE="run"
+    sec_instr=$'\n'"ORDEM $PONTE_CAPABILITY_ORDEM COM CAPABILITY — a ordem é o decision record: não rode maestro decide."$'\n'
+    sec_instr+="Você decide dentro da caixa (escopo da ordem, sem push, sem aceite). O que for negado vai no relato do run; o Diretor julga a entrega no fim."$'\n'
+    sec_gate=""; sec_bind=""; sec_routes=""; sec_heur=""; sec_roster=""; sec_style=""
+    sec_head+="preâmbulo: run (ordem $PONTE_CAPABILITY_ORDEM) — rotas, workflows, gates humanos, bindings, heurísticas, roster e estilo fora; o contrato é a ordem"$'\n'
+  fi
   case "$P_PREAMBLE" in
     standard)
       sec_routes=""

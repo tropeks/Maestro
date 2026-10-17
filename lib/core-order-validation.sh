@@ -71,9 +71,16 @@ _order_validation_state() { # <dono> <wproj> <arquivo> → provada|em_validacao|
   [[ -n "$rtree" && -n "$ptree" ]] && maestro_tree_same "$wproj" "$rtree" "$ptree" || { printf 'provada'; return 0; }
   rf=$(_order_validation_receipt_file "$wproj" "$oid")
   [[ -n "$rf" && -f "$rf" ]] || { printf 'em_validacao'; return 0; }
-  ev_w=$(awk -F= '/^wtree_after=/ { print $2; exit }' "$rf" 2>/dev/null)
-  [[ -n "$ev_w" ]] && maestro_tree_same "$wproj" "$ev_w" "$ptree" || { printf 'em_validacao'; return 0; }   # recibo de outra árvore não vale
-  if grep -q '^exit=0$' "$rf" 2>/dev/null; then printf 'validada'; else printf 'reprovada'; fi
+  # D17 (auditoria de 05/10): o recibo de validação passa pelo MESMO veredito do order-N
+  # (maestro_proof_verdict, ordem 060), contra a árvore provada. Vazio = validada; o único motivo
+  # sendo a FALHA da execução = reprovada; qualquer outro (outra árvore, árvore mudou na corrida,
+  # comando ≠ commands.validation) = o recibo não vale e a ordem segue em_validacao.
+  ev_w=$(maestro_proof_verdict "$rf" "$wproj" "validation-$((10#$oid))" "$ptree") || { printf 'em_validacao'; return 0; }
+  case "$ev_w" in
+    '') printf 'validada' ;;
+    'a execução provou FALHA (exit '*')') [[ "$ev_w" == *';'* ]] && printf 'em_validacao' || printf 'reprovada' ;;
+    *) printf 'em_validacao' ;;
+  esac
 }
 _order_state_proven() { # <estado> → rc 0 se o estado carrega a prova LOCAL verde no tip (provada e os três de validação)
   case "$1" in provada | em_validacao | validada | reprovada) return 0 ;; *) return 1 ;; esac

@@ -39,6 +39,13 @@ commit $((CORTE-7000)) lib/x.sh "fix(041): lib"
 commit $((CORTE-6000)) docs/d.md "docs(041): fora dos caminhos protegidos"
 commit $((CORTE+1000)) src/z.ts "feat(050): src"
 commit $((CORTE+2000)) bin/b "chore: bin sem ordem"
+# reverts (fora dos caminhos protegidos, não mexem na métrica 7): conta só o que cita a ordem e cai
+# entre o aceite e 14 dias depois dele
+commit $((CORTE-4500)) docs/r1.md 'Revert "fix(041): lib"'              # antes do aceite da 41: não conta
+commit $((CORTE-1000)) docs/r2.md 'Revert "feat(040): hook"'            # 40, dentro da janela: conta
+commit $((CORTE+6000)) docs/r3.md "Revert merge of order/050-x"         # 50, dentro: conta
+commit $((CORTE+5000+15*86400)) docs/r4.md "Revert order/050-x again"   # 50, depois de 14 dias: não conta
+commit $((CORTE+6500)) docs/r5.md "Revert order/0500-y"                 # outra ordem (500): não conta
 
 # --- ledger: três ordens com carimbo (40 e 41 antes; 50 depois), recibo com regravacoes e tokens
 KEY=$(source "$REPO/hooks/lib/project-state.sh"; b=$(maestro_brief_file "$P"); b="${b##*/}"; echo "${b%.md}")
@@ -99,6 +106,8 @@ jq -e '.metricas[6] | .status=="ok"
 jq -e '.metricas[6].por_ordem | (map({(.ordem|tostring):.total})|add)=={"40":2,"41":1,"50":2} and (map(select(.ordem==40))[0]|.ponte==1 and .git==1)' <<<"$j" >/dev/null \
   && ok "ações do Capitão por ordem quando atribuível (40, 41, 50)" || bad "m7 por ordem: $(jq -c '.metricas[6].por_ordem' <<<"$j")"
 jq -e '.metricas[6].sem_ordem=={ponte:1, git:1}' <<<"$j" >/dev/null && ok "ações sem ordem atribuível contadas à parte" || bad "m7 sem ordem: $(jq -c '.metricas[6].sem_ordem' <<<"$j")"
+jq -e '.metricas[6].por_100_ordens=={antes:200, depois:300, populacao:{antes:2, depois:1}}' <<<"$j" >/dev/null \
+  && ok "interrupções do Capitão por 100 ordens aceitas: 200 antes (4/2), 300 depois (3/1), inteiro" || bad "m7 taxa: $(jq -c '.metricas[6].por_100_ordens' <<<"$j")"
 
 # 8. retrabalho
 jq -e '.metricas[7] | .status=="ok"
@@ -106,6 +115,9 @@ jq -e '.metricas[7] | .status=="ok"
   and .turnos_sem_relato.antes==1 and .turnos_sem_relato.depois==1
   and .recibos_regravados.antes==1 and .recibos_regravados.depois==2' <<<"$j" >/dev/null \
   && ok "retrabalho: devolvidos 2/1, sem relato 1/1, regravados 1/2" || bad "m8: $(jq -c '.metricas[7]' <<<"$j")"
+jq -e '.metricas[7].revertidas_14d | .status=="ok" and .antes==1 and .depois==1
+  and .populacao=={antes:2, depois:1} and (.por_ordem|map({(.ordem|tostring):.reverts})|add)=={"40":1,"50":1}' <<<"$j" >/dev/null \
+  && ok "revertidas em 14 dias: 40 e 50 (fora da janela, antes do aceite e ordem 500 não contam)" || bad "m8 revertidas: $(jq -c '.metricas[7].revertidas_14d' <<<"$j")"
 
 # 9. custo por ordem, inteiros
 jq -e '.metricas[8] | .status=="ok" and (.por_ordem|map({(.ordem|tostring):.tokens})|add)=={"40":1000,"41":2000,"50":3000}

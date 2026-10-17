@@ -71,6 +71,17 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   Ratchet da injeção bumpado deliberadamente por (a), no mesmo commit, conforme o
   protocolo no cabeçalho de `tests/hooks/test-injection-budget.sh`.
 
+- **Emenda de 17/10 (INTENT do posto v65, linha 1): tier `run`.** Com `PONTE_CAPABILITY_ORDEM`
+  de 3 dígitos no ambiente (o run headless da Ponte com a capability ligada), a injeção usa o
+  tier `run`, que vence o `preamble:` do projeto. Ficam cabeçalho, profile, `## Projeto` e o
+  mote. Saem rotas, heurísticas, roster, gates humanos (plan mode trava um run sem humano),
+  bindings e estilo. A instrução canônica do `decide` é trocada por duas linhas: a ordem é o
+  decision record, coerente com o passo 2b do `pre-tool-gate`. É a ÚNICA exceção ao "o núcleo
+  nunca cede": no run com capability o `decide` não vale. O cabeçalho declara o tier. Marca
+  inválida produz a injeção de sempre, byte a byte. Medido: 1.369 B no projeto do teste
+  (`tests/hooks/test-preamble-tier.sh`, bloco 10) e 1.836 B no repo do Maestro, contra 7,3 a
+  7,7 KB do `full`; a meta da fase A2 era de até 2.048 B.
+
 - **Emenda E26 (S-2601):** a política do gate passa a ser gravada em
   `${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}` — **o mesmo caminho que o
   `pre-tool-gate.sh` sempre leu**. Enquanto a escrita ignorava a variável, o arquivo era
@@ -94,6 +105,11 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
 - **Lógica:**
   1. **denylist por caminho** (repo do plugin, `agents/`, `config/routing-table.yaml`, `.github/workflows/`, configs executáveis) → block sempre (exit 2), mesmo com decisão registrada
   2. allowlist caminho+extensão de não-código (compilada de `routing-table.yaml::gate`) → exit 0
+  2b. **ordem com capability** (emenda de 17/10, INTENT do posto v65, linha 1): `PONTE_CAPABILITY_ORDEM`
+     no ambiente com exatamente 3 dígitos (posto pela Ponte no run headless lançado com a capability
+     ligada) → exit 0 + log `gate_pass` com `scope=capability`. A ordem é o decision record. Vem depois da
+     denylist (1) e da zona congelada, que seguem valendo; outro valor é ignorado. A marca é de ambiente e
+     forjável por quem lança o processo, e por isso não abre nada além do que um `maestro decide` daria.
   3. existe `~/.maestro/sessions/<session_id>.json` válido e **não expirado (TTL 4h)** → exit 0 + log `gate_pass`
   4. senão → conforme `gate.mode` na config: **`warn`** (exit 0 + log `gate_warn` + mensagem) ou **`block`** (exit 2). Default inicial: `warn`; promoção a `block` após 1 semana de dados.
 - **Latência:** < 50ms.

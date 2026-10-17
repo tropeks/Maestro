@@ -148,6 +148,36 @@ run deny-hooks-lib.json
 check "denylist em mode=block → exit 2" "$RC" "2"
 write_policy warn
 
+echo "-- v65 linha 1: ordem com capability é o decision record (mode=block, sem decisão)"
+write_policy block
+rm -f "$MAESTRO_HOME/sessions/sess-abc123.json"
+# run_cap <fixture> <valor de PONTE_CAPABILITY_ORDEM> -> define RC
+run_cap() {
+  OUT_ERR=$(PONTE_CAPABILITY_ORDEM="$2" "$GATE" < "$FIX/$1" 2>&1 >/dev/null)
+  RC=$?
+}
+reset_log
+run_cap edit-go.json 138
+check "capability: código sem decisão em mode=block → exit 0" "$RC" "0"
+check "capability: evento gate_pass" "$(last_event)" "gate_pass"
+if tail -1 "$LOG" | jq -e '.scope == "capability"' >/dev/null 2>&1; then
+  ok "capability: log registra scope=capability"
+else
+  bad "capability: log sem scope=capability"
+fi
+for f in deny-hooks-lib deny-bin deny-claude-settings deny-routing-table; do
+  reset_log
+  run_cap "$f.json" 138
+  check "capability não abre a denylist: $f → exit 2" "$RC" "2"
+done
+for v in "" "13" "1388" "138;id" "abc"; do
+  reset_log
+  run_cap edit-go.json "$v"
+  check "capability com marca inválida '$v' → bloqueia como antes" "$RC" "2"
+done
+write_policy warn
+write_record sess-abc123 14400
+
 echo "-- S-203: allowlist de não-código"
 reset_log
 run edit-md-root.json

@@ -941,3 +941,61 @@ disco é função de uma config do gstack que nada neste repo controla. Um
 `gstack-upgrade` que reinstale flat quebra os três bindings de novo, em
 silêncio, sem tocar em uma linha deste repositório. O doctor é a única defesa;
 rode-o depois de mexer no pack.
+
+## 2026-10-17 — Ordem com capability dispensa o `maestro decide` (INTENT do posto v65, linha 1)
+
+O Capitão decidiu em 16 e 17/10 que o gerente decide dentro da caixa e que o Spock julga a entrega no fim do run
+(`spock/.maestro/INTENT.md` v65, linha 1; histórico em `spock/.maestro/DECISOES.md`). O gate de decisão pedia
+`maestro decide` a cada sessão que editava código. No run headless que a Ponte lança com a capability ligada, a
+ordem já é o registro de decisão: tem Turno, escopo de escrita, e push e aceite negados pelo daemon. O
+`pre-tool-gate` passa (`gate_pass`, `scope=capability`) quando `PONTE_CAPABILITY_ORDEM` traz 3 dígitos.
+
+A denylist de autoproteção e a zona congelada continuam valendo para o run, e a marca não abre nenhuma das duas.
+A marca é de ambiente e pode ser forjada por quem lança o processo; quem a forja ganha só o que um `maestro decide`
+de 5 s daria (92% `direct`, auditoria de 05/10). Na primeira tentativa (16/10), o classificador da sessão na nuvem
+barrou a mudança como enfraquecimento; ela entra agora por ordem expressa do Capitão. Contrato: API_SPEC §1, passo
+2b. Teste: `tests/hooks/test-gate.sh`, bloco "v65 linha 1".
+
+## 2026-10-17 — Fase A2 do posto: sai o teto de idade, entra o tier `run` do preâmbulo
+
+Dois cortes da ordem A2 da frente "Maestro do tamanho certo" (`spock/docs/ideias/maestro-evolucao/ORDEM-A2-maestro-corte.md`):
+
+- **Sai o código morto do teto de idade do recibo** (`legado:teto-de-idade` no INVENTARIO-CONTROLES). `maxage` e
+  `MAESTRO_EVIDENCE_MAX_AGE` eram lidos em `lib/cmd-evidence.sh` e nenhum veredito os usava desde a ordem 060. O
+  teste que fixa "idade é informação, nunca veredito" segue valendo sem mudança.
+- **Entra o tier `run`** do SessionStart para o run headless com capability (API_SPEC, emenda de 17/10). A injeção
+  cai de ~7,5 KB para menos de 2 KB. Saem rotas, gates humanos, bindings, heurísticas, roster, estilo e a instrução do
+  `decide`, que esse run não usa.
+
+Ficam para decisão do Capitão, como a A2 já registrava:
+
+- **Hooks `session-end` e `subagent-stop`:** o `session-end` faz o sync de telemetria; tirar o `subagent-stop` mexe
+  no doctor, no contrato e em testes.
+- **Sensores de custo marginal zero:** vão para a revisão de 30 dias.
+
+## 2026-10-17 — Painel mede a saída para o Maestro light: interrupções por ordem e revertidas em 14 dias
+
+A frente "Maestro do tamanho certo" (emenda v64 do posto) só sai do Maestro pesado se as interrupções do Capitão
+por ordem caírem à metade e o retrabalho não subir. O painel (`tools/baseline.sh`) contava as ações do Capitão em
+totais, sem população, e não via ordem revertida. Duas parcelas novas, sem fonte nova:
+
+- **Métrica 7, `por_100_ordens`:** total do lado × 100 / ordens aceitas do lado (a população da métrica 1), em
+  inteiro. `null` quando o lado não tem ordem aceita.
+- **Métrica 8, `revertidas_14d`:** ordem aceita com commit `Revert …` que cita `order/NNN` ou `(NNN)` entre o aceite e
+  14 dias depois, no git dos repos medidos (no `--all`, só no repo do próprio projeto). Sem git legível, `sem dado`.
+
+Revert que não cita a ordem escapa da conta. Ele é o mesmo retrabalho que a métrica 8 já não via, e o critério fica
+declarado no campo `nota`. Teste: `tests/cli/test-baseline-novas-medidas.sh`.
+
+## 2026-10-17 — O recibo de validação passa pelo veredito único (D17), antes de ligar a validação
+
+A fase B2 do posto liga a validação na mesma árvore (`validation:` no `.maestro.yaml`). A auditoria de 05/10 (D17)
+apontou que o recibo `validation-N` decidia `validada` só por `exit=0` e pela árvore final, fora do veredito único
+da ordem 060: um recibo com a árvore mudando durante a corrida, ou com comando diferente do declarado, validava.
+Estava dormente porque nenhum projeto declarava `validation:`; ligar sem fechar isto abriria a brecha.
+
+`_order_validation_state` lê o recibo pelo `maestro_proof_verdict` contra a árvore provada. Os estados e o gate do
+aceite não mudam. Teste: `tests/cli/test-order-050-validacao.sh`, bloco (8), vermelho na lib antiga.
+
+Fica de fora o outro caminho da D17 (branch ausente, `_order_evidence_frozen_tree`): ele lê ordem já mergeada e
+mexer nele muda o estado de histórico aceito.

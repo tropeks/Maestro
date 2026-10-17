@@ -727,6 +727,22 @@ if _gate_ext_match "$EXT" "$ALLOW_EXT" || _gate_prefix_match "$REL" "$ALLOW_PATH
   exit 0
 fi
 
+# ── 4b. ordem com capability (INTENT do posto v65, linha 1) ────────────────
+# O run headless lançado pela Ponte com a capability LIGADA traz
+# PONTE_CAPABILITY_ORDEM=<NNN> no ambiente (ponte-daemon, frente v64 A1): ele roda
+# uma ordem com Turno, escopo de escrita e push/aceite negados pelo daemon, e
+# o gerente decide dentro dessa caixa. A ORDEM é o decision record: não se pede
+# `maestro decide` a cada edição. Vem DEPOIS da denylist de autoproteção (3/3a/3b)
+# e da zona congelada (3c), que seguem valendo para o run. A marca vem do ambiente
+# e pode ser forjada por quem lança o processo; quem a forja ganha só o que um
+# `maestro decide` de 5 s já daria (92% `direct`, auditoria de 05/10), nunca um
+# caminho protegido. Formato fixo (3 dígitos), qualquer outro valor é ignorado.
+if [[ "${PONTE_CAPABILITY_ORDEM:-}" =~ ^[0-9]{3}$ ]]; then
+  LOG_ARGS+=("scope=capability")
+  log_event gate_pass "${LOG_ARGS[@]}"
+  exit 0
+fi
+
 # ── 5. decision record válido e não expirado (TTL 4h) ──────────────────────
 if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
   # ── E14/S-1402: orçamento declarado — AND-of-caps, WARN-ONLY, 1 aviso/cap ──
