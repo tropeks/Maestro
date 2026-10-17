@@ -941,3 +941,17 @@ disco é função de uma config do gstack que nada neste repo controla. Um
 `gstack-upgrade` que reinstale flat quebra os três bindings de novo, em
 silêncio, sem tocar em uma linha deste repositório. O doctor é a única defesa;
 rode-o depois de mexer no pack.
+
+## 2026-10-17 — Ordem com capability dispensa o `maestro decide` (INTENT do posto v65, linha 1)
+
+O Capitão decidiu em 16 e 17/10 que o gerente decide dentro da caixa e que o Spock julga a entrega no fim do run
+(`spock/.maestro/INTENT.md` v65, linha 1; histórico em `spock/.maestro/DECISOES.md`). O gate de decisão pedia
+`maestro decide` a cada sessão que editava código. No run headless que a Ponte lança com a capability ligada, a
+ordem já é o registro de decisão: tem Turno, escopo de escrita, e push e aceite negados pelo daemon. O
+`pre-tool-gate` passa (`gate_pass`, `scope=capability`) quando `PONTE_CAPABILITY_ORDEM` traz 3 dígitos.
+
+A denylist de autoproteção e a zona congelada continuam valendo para o run, e a marca não abre nenhuma das duas.
+A marca é de ambiente e pode ser forjada por quem lança o processo; quem a forja ganha só o que um `maestro decide`
+de 5 s daria (92% `direct`, auditoria de 05/10). Na primeira tentativa (16/10), o classificador da sessão na nuvem
+barrou a mudança como enfraquecimento; ela entra agora por ordem expressa do Capitão. Contrato: API_SPEC §1, passo
+2b. Teste: `tests/hooks/test-gate.sh`, bloco "v65 linha 1".
