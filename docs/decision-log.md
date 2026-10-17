@@ -955,3 +955,20 @@ A marca é de ambiente e pode ser forjada por quem lança o processo; quem a for
 de 5 s daria (92% `direct`, auditoria de 05/10). Na primeira tentativa (16/10), o classificador da sessão na nuvem
 barrou a mudança como enfraquecimento; ela entra agora por ordem expressa do Capitão. Contrato: API_SPEC §1, passo
 2b. Teste: `tests/hooks/test-gate.sh`, bloco "v65 linha 1".
+
+## 2026-10-17 — Fase A2 do posto: sai o teto de idade, entra o tier `run` do preâmbulo
+
+Dois cortes da ordem A2 da frente "Maestro do tamanho certo" (`spock/docs/ideias/maestro-evolucao/ORDEM-A2-maestro-corte.md`):
+
+- **Sai o código morto do teto de idade do recibo** (`legado:teto-de-idade` no INVENTARIO-CONTROLES). `maxage` e
+  `MAESTRO_EVIDENCE_MAX_AGE` eram lidos em `lib/cmd-evidence.sh` e nenhum veredito os usava desde a ordem 060. O
+  teste que fixa "idade é informação, nunca veredito" segue valendo sem mudança.
+- **Entra o tier `run`** do SessionStart para o run headless com capability (API_SPEC, emenda de 17/10). A injeção
+  cai de ~7,5 KB para menos de 2 KB. Saem rotas, gates humanos, bindings, heurísticas, roster, estilo e a instrução do
+  `decide`, que esse run não usa.
+
+Ficam para decisão do Capitão, como a A2 já registrava:
+
+- **Hooks `session-end` e `subagent-stop`:** o `session-end` faz o sync de telemetria; tirar o `subagent-stop` mexe
+  no doctor, no contrato e em testes.
+- **Sensores de custo marginal zero:** vão para a revisão de 30 dias.

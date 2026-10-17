@@ -71,6 +71,17 @@ Entrada: JSON no stdin (formato nativo do Claude Code). Saída: exit code + stdo
   Ratchet da injeção bumpado deliberadamente por (a), no mesmo commit, conforme o
   protocolo no cabeçalho de `tests/hooks/test-injection-budget.sh`.
 
+- **Emenda de 17/10 (INTENT do posto v65, linha 1): tier `run`.** Com `PONTE_CAPABILITY_ORDEM`
+  de 3 dígitos no ambiente (o run headless da Ponte com a capability ligada), a injeção usa o
+  tier `run`, que vence o `preamble:` do projeto. Ficam cabeçalho, profile, `## Projeto` e o
+  mote. Saem rotas, heurísticas, roster, gates humanos (plan mode trava um run sem humano),
+  bindings e estilo. A instrução canônica do `decide` é trocada por duas linhas: a ordem é o
+  decision record, coerente com o passo 2b do `pre-tool-gate`. É a ÚNICA exceção ao "o núcleo
+  nunca cede": no run com capability o `decide` não vale. O cabeçalho declara o tier. Marca
+  inválida produz a injeção de sempre, byte a byte. Medido: 1.369 B no projeto do teste
+  (`tests/hooks/test-preamble-tier.sh`, bloco 10) e 1.836 B no repo do Maestro, contra 7,3 a
+  7,7 KB do `full`; a meta da fase A2 era de até 2.048 B.
+
 - **Emenda E26 (S-2601):** a política do gate passa a ser gravada em
   `${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}` — **o mesmo caminho que o
   `pre-tool-gate.sh` sempre leu**. Enquanto a escrita ignorava a variável, o arquivo era

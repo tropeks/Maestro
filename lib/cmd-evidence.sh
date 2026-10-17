@@ -281,8 +281,8 @@ _ev_cmd_qualifiers() { # <e_load> <load_limiar> <e_inc> → "load_qualif<US>inc_
   return 0
 }
 
-_ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime veredito; rc conforme --check
-  local proj="$1" label="$2" maxage="$3" load_limiar="$4" check="$5" ef rl
+_ev_cmd_verdict() { # <proj> <label> <load_limiar> <check> → imprime veredito; rc conforme --check
+  local proj="$1" label="$2" load_limiar="$3" check="$4" ef rl
   rl=$(_ev_resolve_label "$proj" "$label")   # ordem 048: suite-N da ordem do branch (também na dica)
   ef=$(maestro_evidence_file "$proj" "$rl")
   _verif_lib_load   # ordem 011: maestro_verif_load não é mais residente
@@ -320,8 +320,9 @@ _ev_cmd_verdict() { # <proj> <label> <maxage> <load_limiar> <check> → imprime 
 
 # ------------------------------------------------------------------ comando
 cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gstack-evidence)
-  local mode="read" label="suite" check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}" \
-        maxage="${MAESTRO_EVIDENCE_MAX_AGE:-86400}"
+  # Sem teto de idade: desde a ordem 060 a idade é só informação impressa, e o `maxage`
+  # (MAESTRO_EVIDENCE_MAX_AGE) ficou sem leitor; saiu em 17/10 (INTENT do posto v65, fase A2).
+  local mode="read" label="suite" check=0 proj="${CLAUDE_PROJECT_DIR:-$PWD}"
   # issue #11 (ordem 005): limiar de carga para a QUALIFICAÇÃO da leitura —
   # mesmo número (load 1min ABSOLUTO ≤ 2,0) de tests/lib/latency.sh
   # (ARCHITECTURE.md §NFRs); duplicado de propósito — bin/ não sourceia
@@ -341,7 +342,6 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
     shift
   done
   [[ "$label" =~ ^[a-z][a-z0-9-]{0,23}$ ]] || die validation "rótulo inválido" "minúsculas/dígitos/hífen, ≤24" 1
-  [[ "$maxage" =~ ^[0-9]{1,8}$ ]] || maxage=86400
   [[ "$load_limiar" =~ ^[0-9]{1,6}$ ]] || load_limiar=200
 
   # shellcheck source=hooks/lib/common.sh
@@ -352,6 +352,6 @@ cmd_evidence() { # S-1301: recibo de execução amarrado a CONTEÚDO (padrão gs
     _ev_cmd_record "$proj" "$label" "$ef" "$load_limiar" -- "${cmd_args[@]}"
     return $?
   fi
-  _ev_cmd_verdict "$proj" "$label" "$maxage" "$load_limiar" "$check"
+  _ev_cmd_verdict "$proj" "$label" "$load_limiar" "$check"
   return $?
 }
