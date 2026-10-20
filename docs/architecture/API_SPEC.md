@@ -684,7 +684,7 @@ maestro conduct --session <session_id>
 maestro decide --session <id> --workflow <feature|refactor> --mode <...>
                --brief "essencia: ...; impacto: ...; approach: <o plano>"
                [--targets "a/b.ts,deploy/"] [--effects "efeito 1; efeito 2"]
-               [--rollback "<caminho>[#ancora]"] [--order <ref>]
+               [--rollback "<caminho>#<ancora>"] [--order <ref>]
 maestro conduct --session <id> --domain-decision '<json da decisão>'
 ```
 - `decide`: em workflow com `gate: domain`, `--brief` é obrigatório e `approach: pendente`
@@ -692,10 +692,12 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   classificado pelos gatilhos de `domains:` — o mesmo texto que o roteador do ponte-daemon
   reclassifica; `--reason` não entra (não está no pedido nem no `plan.hash`, e classificar
   com ele abria pedido que a Ponte recusa por `dominio_diverge_do_roteamento`).
-  `--rollback` (v1.27, `rollback_ref`): caminho relativo ao projeto
-  (`^[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199}$`, sem segmento vazio, `.` ou `..`) com âncora
-  opcional `#[a-z0-9-]{1,80}`, que resolve: arquivo regular dentro do projeto (realpath) e,
-  com âncora, título Markdown do arquivo (sem acento, minúsculas, espaço → `-`). Texto livre
+  `--rollback` (CONTRATO v2, `rollback_ref`): `<caminho>#<ancora>`, no alfabeto do
+  `REF_CAMINHO_RE` do ponte-daemon: caminho relativo `^[A-Za-z0-9_.][A-Za-z0-9._/-]{0,159}`
+  (sem segmento vazio, `.`, `..`, `.git` ou `.env*`) e âncora obrigatória
+  `#[a-z0-9][a-z0-9_-]{0,79}`, que resolve: arquivo regular dentro do projeto (realpath) e
+  título Markdown do arquivo que aparece uma vez só (linha `#`..`######`; slug sem acento,
+  minúsculas, só `[a-z0-9 _-]`, espaço → `-`, como o `slugDoTitulo` do daemon). Texto livre
   (`git revert`) é recusa (exit 1), como placeholder; também o `rollback_ref` inteiro
   (caminho + âncora) acima de 200 chars e o que o `ehPlaceholder` do daemon acusa (`...`,
   `TODO`/`TBD`/`FIXME`, `placeholder`, `lorem`). O daemon confere de novo no branch da

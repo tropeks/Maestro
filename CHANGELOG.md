@@ -16,6 +16,10 @@ from the decision log and tag messages when this file was introduced.
   antigos com `revoked` seguem contando como revogados. Saem a condição em texto solto, `id` na condição, `reason` até 500 e
   `revoked` em texto. `plan.ref`: documentadas as três formas do contrato; o `decide` segue emitindo `maestro:sessions/<id>#brief`.
   Revogação continua só pelo espelho. Testes: `tests/hooks/test-gate-domain-v127.sh`.
+- **`--rollback` só na forma `<caminho>#<ancora>`** (CONTRATO v2), no alfabeto do `REF_CAMINHO_RE` do ponte-daemon: âncora
+  obrigatória (`[a-z0-9][a-z0-9_-]{0,79}`, aceita `_`), caminho até 160 sem `@`, `+`, `.git` nem `.env*`, título que aparece uma
+  vez só e slug igual ao `slugDoTitulo` do daemon. Antes o `decide` emitia pedido que a Ponte recusava
+  (`pedido_fora_do_contrato:rollback_ref`).
 
 ### Changed (E28, v1.27 da Enterprise)
 - **`gate: domain` segue a v1.27.** `maestro decide` imprime `domain_requests: [json]` e o gate manda o gerente passar a lista

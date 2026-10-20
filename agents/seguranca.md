@@ -75,7 +75,7 @@ remediação, mas o veredito sobre o código em si continua sendo do CSO ou do `
 - Nunca autoriza: aprovação de efeito é do diretor do domínio, pela Ponte.
 - Decisão de rumo vira registro (feature/refactor têm `gate: domain`: approach real,
   e alvos, efeitos e rollback quando o plano toca domínio):
-  `maestro decide --session <id> --workflow feature --mode subagent --agents seguranca --reason "por quê" --brief "essencia: ...; impacto: ...; approach: <o plano>" --targets "<arquivos>" --effects "<efeito 1; efeito 2>" --rollback "<caminho do procedimento de reversão no projeto>[#ancora]"`.
+  `maestro decide --session <id> --workflow feature --mode subagent --agents seguranca --reason "por quê" --brief "essencia: ...; impacto: ...; approach: <o plano>" --targets "<arquivos>" --effects "<efeito 1; efeito 2>" --rollback "<caminho do procedimento de reversão no projeto>#<ancora>"`.
 
 ## Contrato de output
 

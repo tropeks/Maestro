@@ -107,14 +107,14 @@ chk "plan.hash = sha256 do JSON {brief,targets,effects,rollback_ref,order_ref}" 
 echo "-- plano que toca compose: pedido de infra"
 decide --session dm-cmp --workflow refactor --mode direct \
   --brief "essencia: servico novo; impacto: x; approach: container novo no stack" \
-  --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md"
+  --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md#rollback"
 chk "exit 0" "$RC" "0"
 chk "pedido de infrastructure" "$(jq -r '[.domain.requests[].domain] | join(",")' "$(REC dm-cmp)")" "infrastructure"
 
 echo "-- gatilho por palavra do plano, sem caminho"
 decide --session dm-kw --workflow feature --mode direct \
   --brief "essencia: api; impacto: x; approach: libera CORS para o app" \
-  --targets "src/api/server.ts" --effects "origem nova aceita" --rollback "docs/rollback.md"
+  --targets "src/api/server.ts" --effects "origem nova aceita" --rollback "docs/rollback.md#rollback"
 chk "cors → security" "$(jq -r '[.domain.requests[].domain] | join(",")' "$(REC dm-kw)")" "security"
 decide --session dm-df --workflow feature --mode direct \
   --brief "essencia: imagem; impacto: x; approach: Dockerfile roda como USER app" \
@@ -133,13 +133,13 @@ chk "exit 1" "$RC" "1"
 [[ -f "$(REC dm-falta)" ]] && bad "gravou pedido incompleto" || ok "nada gravado"
 mv "$P/.maestro/INTENT.md" "$SB/intent.bak"
 decide --session dm-semintent --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md"
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md#rollback"
 chk "sem INTENT carimbado: exit 1" "$RC" "1"
 mv "$SB/intent.bak" "$P/.maestro/INTENT.md"
 cp "$P/.maestro/INTENT.md" "$SB/intent.bak"
 printf 'linha nova sem bump\n' >> "$P/.maestro/INTENT.md"
 decide --session dm-stale --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md"
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md#rollback"
 chk "INTENT editado desde o carimbo: exit 1" "$RC" "1"
 [[ "$ERR" == *"--bump"* ]] && ok "erro manda dar bump" || bad "erro: $ERR"
 mv "$SB/intent.bak" "$P/.maestro/INTENT.md"
@@ -348,7 +348,7 @@ echo "-- pre-tool-gate warn: avisa e segue o fluxo normal (orçamento conta)"
 policy warn
 decide --session dm-bud --workflow feature --mode direct --max-steps 5 \
   --brief "essencia: chave; impacto: x; approach: le a chave" \
-  --targets ".env.local" --effects "variavel nova" --rollback "docs/rollback.md"
+  --targets ".env.local" --effects "variavel nova" --rollback "docs/rollback.md#rollback"
 edit dm-bud ".env.local"
 chk "warn: alvo pendente → passa com aviso" "$GRC" "0"
 [[ "$GERR" == *"aviso"* ]] && ok "aviso no stderr" || bad "stderr: $GERR"

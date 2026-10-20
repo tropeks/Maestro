@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # E28 — gate domain na forma da v1.27 da Enterprise (API_SPEC §5.4.2 e §5.4.5,
 # DATA_MODEL domain_request e domain_decision). Par de test-gate-domain.sh. Cobre:
-# rollback como caminho do projeto com âncora opcional que resolve; o reason fora
+# rollback como <caminho>#<ancora> do projeto que resolve (CONTRATO v2); o reason fora
 # da classificação (o roteador do ponte-daemon não o lê); a lista domain_requests
 # que vai no director.ask; a forma da decisão do CONTRATO v2 (condições {texto,
 # check_ref}, reason até 120 no charset da Ponte, escalate_to/escalation_class,
@@ -40,25 +40,36 @@ decide() { OUT=$("$BIN" decide "$@" 2>"$SB/err"); RC=$?; ERR=$(cat "$SB/err"); }
 command -v jq >/dev/null || { echo "FAIL jq ausente"; exit 1; }
 if ! command -v bun >/dev/null; then echo "skip sem Bun (decide é src/cli.ts)"; exit 0; fi
 
-echo "-- --rollback: caminho do projeto com âncora opcional, que resolve"
+echo "-- --rollback: <caminho>#<ancora> do projeto, que resolve (alfabeto do REF_CAMINHO_RE do daemon)"
 ln -s /etc "$P/fora"
-for rb in "git revert" "../x.md" "/etc/hostname" "docs/nao-existe.md" "docs/rollback.md#nao-ha" \
-          "docs" "fora/hostname" "docs/rollback.md#Rollback" "docs//rollback.md"; do
+printf '# Plano\n\n## Rollback\nx\n' | tee "$P/docs/a+b@x.md" "$P/.env.rb" >/dev/null
+printf '# Plano\n\n## Rollback\nx\n\n## Rollback\ny\n' > "$P/docs/dup.md"
+for rb in "git revert" "../x.md#rollback" "/etc/hostname" "docs/nao-existe.md#rollback" "docs/rollback.md#nao-ha" \
+          "docs" "fora/hostname#rollback" "docs/rollback.md#Rollback" "docs//rollback.md#rollback" \
+          "docs/rollback.md" "docs/a+b@x.md#rollback" ".env.rb#rollback" "docs/dup.md#rollback" \
+          "docs/rollback.md#-rollback"; do
   decide --session dm-rb --workflow feature --mode direct \
     --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$rb"
   chk "--rollback '$rb': exit 1" "$RC" "1"
   [[ "$ERR" == *"--rollback"* ]] || bad "erro não cita --rollback ($rb): $ERR"
 done
-LONGDIR="docs/$(printf 'd%.0s' {1..190})"; mkdir -p "$P/$LONGDIR"
-printf '# Plano\n\n## Rollback\nx\n' | tee "$P/$LONGDIR/r.md" "$P/docs/TODO.md" "$P/docs/a...b.md" >/dev/null
-for rb in "$LONGDIR/r.md#rollback" "docs/TODO.md" "docs/a...b.md#rollback"; do
+LONGDIR="docs/$(printf 'd%.0s' {1..150})"; LONGA="rollback-$(printf 'a%.0s' {1..40})"
+mkdir -p "$P/$LONGDIR" "$P/${LONGDIR}e"
+printf '# Plano\n\n## Rollback\nx\n\n## %s\nx\n' "$LONGA" \
+  | tee "$P/$LONGDIR/r.md" "$P/${LONGDIR}e/r.md" "$P/docs/TODO.md" "$P/docs/a...b.md" >/dev/null
+for rb in "$LONGDIR/r.md#$LONGA" "${LONGDIR}e/r.md#rollback" "docs/TODO.md#rollback" "docs/a...b.md#rollback"; do
   decide --session dm-rb --workflow feature --mode direct \
     --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$rb"
   chk "--rollback que a Ponte recusa (${#rb} chars ou placeholder): exit 1" "$RC" "1"
 done
 decide --session dm-rb --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$LONGDIR/r.md"
-chk "--rollback de ${#LONGDIR} + 5 chars sem âncora (até 200): exit 0" "$RC" "0"
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$LONGDIR/r.md#rollback"
+chk "--rollback com caminho de 160 chars e âncora (até 200): exit 0" "$RC" "0"
+rm -f "$(REC dm-rb)"
+printf '# Plano\n\n## Roll_back\nx\n' > "$P/docs/sub.md"
+decide --session dm-rb --workflow feature --mode direct \
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/sub.md#roll_back"
+chk "--rollback com '_' na âncora (slug do daemon): exit 0" "$RC" "0"
 rm -f "$(REC dm-rb)"
 [[ -f "$(REC dm-rb)" ]] && bad "gravou com rollback que não resolve" || ok "nada gravado com rollback que não resolve"
 decide --session dm-rb --workflow feature --mode direct \
