@@ -13,8 +13,9 @@
 # campo fora ou faltando do contrato (tropeks/spock:docs/diretoria/
 # CONTRATO.md), pedido alheio, `response` fora do enum, diretor de outro
 # domínio, aprovação mecânica (timeout nunca aprova), INTENT diferente do
-# pedido, validade vencida, `decision_id` repetido e segunda resolução de
-# pedido já resolvido pela Ponte. `decided_by.label` é derivado, nunca lido.
+# pedido, validade vencida, `decision_id` repetido, segunda resolução de
+# pedido já resolvido pela Ponte e revogação (`revoked`), que só vem da Ponte.
+# `decided_by.label` é derivado, nunca lido.
 #
 # Sourced por bin/maestro (via _domain_lib_load, I-2) DENTRO do mesmo processo
 # — REPO_DIR, die, has, log_event já no escopo. Parâmetro posicional, nenhuma
@@ -38,6 +39,13 @@ cmd_domain_decision() { # <sid> <json> <n_flags> <approach>
   (( ${#ddec} <= 4096 )) || die validation "--domain-decision acima de 4096 bytes" "" 1
   jq -e 'type == "object"' <<<"$ddec" >/dev/null 2>&1 || die validation \
     "--domain-decision não é um objeto JSON" "passe a decisão como JSON de uma linha" 1
+  # Revogação só pelo espelho (via=ponte): texto digitado não desfaz decisão da Ponte —
+  # reabriria o pedido já resolvido e trocaria `denied` por `pending`.
+  if jq -e '(.revoked // false) as $v | $v == true or ($v | type == "string" and length > 0)' \
+       <<<"$ddec" >/dev/null 2>&1; then
+    die validation "--domain-decision recusada: revogação só pela Ponte" \
+      "a revogação chega pelo resultado do director_wait (espelhado sozinho); o conduct manual não revoga" 1
+  fi
   why=$(domain_decision_why "$rec" "$ddec")
   [[ "$why" == "ok" ]] || die validation "--domain-decision recusada: $why" \
     "contrato em tropeks/spock:docs/diretoria/CONTRATO.md" 1

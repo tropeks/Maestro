@@ -14,8 +14,13 @@
 # `ponte_sock` e `reentry` antes de chamar `maestro_domain_ask`). Bash puro,
 # sem fork, sem rede.
 
-# Texto fixo, ASCII, nunca cita o pedido (alvos e efeitos são do projeto).
-MCP_DOMAIN_REASON_JSON='{"decision":"block","reason":"maestro: o plano desta sessao tocou dominio (gate domain) e o pedido ao diretor do dominio esta pendente. Chame a tool MCP director.ask uma vez com o pedido que o maestro decide imprimiu, depois director.wait em laco (ate 5 min por chamada, teto de 30 min). A resposta do director.wait e registrada sozinha pelo maestro, sem conduct. Sem resposta, a edicao dos alvos do plano segue suspensa: timeout nao aprova."}'
+# Texto fixo, ASCII, nunca cita o pedido (alvos e efeitos são do projeto). O
+# pedido vai no campo `domain_requests` do director.ask (v1.27, API_SPEC §5.4.2
+# da Enterprise); as linhas `pedido:` na pergunta ficam para a Ponte anterior à
+# v1.27, que descarta o campo que não conhece. Run headless (director.wait_for):
+# a decisão chega como texto da retomada, que não é resultado de tool — só o
+# director.wait espelha (hooks/post-director-wait.sh).
+MCP_DOMAIN_REASON_JSON='{"decision":"block","reason":"maestro: o plano desta sessao tocou dominio (gate domain) e o pedido ao diretor do dominio esta pendente. Chame a tool MCP director.ask uma vez com o campo domain_requests igual a lista da linha domain_requests: que o maestro decide imprimiu (titulo curto; na pergunta, as linhas pedido:), depois director.wait em laco (ate 5 min por chamada, teto de 30 min). Num run que espera por director.wait_for, ao retomar chame director.wait uma vez com o decision_id. So a resposta do director.wait e registrada, sozinha, pelo maestro, sem conduct. Sem resposta, a edicao dos alvos do plano segue suspensa: timeout nao aprova."}'
 
 # maestro_domain_read <corpo do record> <settled 0|1>
 #   rc 0 = record de workflow com `gate: domain` (tem o bloco `domain`); rc 1 = não.
