@@ -4,8 +4,8 @@
 # rollback como caminho do projeto com âncora opcional que resolve; o reason fora
 # da classificação (o roteador do ponte-daemon não o lê); a lista domain_requests
 # que vai no director.ask; a forma nova da decisão (condições com check_ref, reason
-# até 500, revogação que deixa de cobrir na hora, campo domain_decisions); e o run
-# headless que espera por director.wait_for. Hermético (mktemp -d).
+# até 500, revogação só pelo espelho, campo domain_decisions só na raiz do resultado);
+# e o run headless que espera por director.wait_for. Hermético (mktemp -d).
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -47,6 +47,17 @@ for rb in "git revert" "../x.md" "/etc/hostname" "docs/nao-existe.md" "docs/roll
   chk "--rollback '$rb': exit 1" "$RC" "1"
   [[ "$ERR" == *"--rollback"* ]] || bad "erro não cita --rollback ($rb): $ERR"
 done
+LONGDIR="docs/$(printf 'd%.0s' {1..190})"; mkdir -p "$P/$LONGDIR"
+printf '# Plano\n\n## Rollback\nx\n' | tee "$P/$LONGDIR/r.md" "$P/docs/TODO.md" "$P/docs/a...b.md" >/dev/null
+for rb in "$LONGDIR/r.md#rollback" "docs/TODO.md" "docs/a...b.md#rollback"; do
+  decide --session dm-rb --workflow feature --mode direct \
+    --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$rb"
+  chk "--rollback que a Ponte recusa (${#rb} chars ou placeholder): exit 1" "$RC" "1"
+done
+decide --session dm-rb --workflow feature --mode direct \
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$LONGDIR/r.md"
+chk "--rollback de ${#LONGDIR} + 5 chars sem âncora (até 200): exit 0" "$RC" "0"
+rm -f "$(REC dm-rb)"
 [[ -f "$(REC dm-rb)" ]] && bad "gravou com rollback que não resolve" || ok "nada gravado com rollback que não resolve"
 decide --session dm-rb --workflow feature --mode direct \
   --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" \
@@ -109,11 +120,11 @@ chk "revoked: false aceito (decisão vigente)" "$RC" "0"
 cdd "$(dec v6 approved security "$RID" | jq -c '.revoked = {"x":1}')"
 chk "revoked fora da forma recusado" "$RC" "1"
 cdd "$(dec v7 approved security "$RID" | jq -c '.revoked = true')"
-chk "revogação de decisão não registrada recusada" "$RC" "1"
-[[ "$OUT" == *"não registrada"* ]] && ok "motivo: revogação de decisão não registrada" || bad "saída: $OUT"
+chk "revogação manual recusada" "$RC" "1"
+[[ "$OUT" == *"só pela Ponte"* ]] && ok "motivo: revogação só pela Ponte" || bad "saída: $OUT"
 chk "registros manuais não liberam" "$(st dm-rb)" "pending"
 
-echo "-- revogação: a decisão deixa de cobrir na hora"
+echo "-- revogação pelo espelho: a decisão deixa de cobrir"
 printf '{"session_id":"dm-pol"}' | MAESTRO_HOME="$SB/h-pol" CLAUDE_PROJECT_DIR="$SB/p-pol" \
   PONTE_MCP_SOCKET="$SB/sem-ponte.sock" bash "$SS" >/dev/null 2>&1
 printf 'MAESTRO_GATE_MODE="block"\nMAESTRO_GATE_ALLOW_EXT=".md .txt"\nMAESTRO_GATE_ALLOW_PATHS=".maestro/ docs/"\nMAESTRO_GATE_DENY_PATHS=".claude/"\nMAESTRO_PLUGIN_ROOT="/opt/maestro-plugin"\n%s\n' \
@@ -154,6 +165,49 @@ chk "aprovada de novo: alvo → passa" "$GRC" "0"
   --brief "essencia: servico novo; impacto: x; approach: container novo no stack" \
   --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
 chk "re-decide do mesmo plano: revogada segue sem cobrir, i2 vale" "$(st dm-cmp)" "approved"
+
+echo "-- conduct manual não revoga decisão da Ponte"
+plan() { # plan <sid> — mesmo plano de infra, pedido próprio da sessão
+  "$BIN" decide --session "$1" --workflow refactor --mode direct \
+    --brief "essencia: servico novo; impacto: x; approach: container novo no stack" \
+    --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
+  jq -r '.domain.requests[0].request_id' "$(REC "$1")"
+}
+NRID=$(plan dm-den)
+D1=$(dec n1 denied infrastructure "$NRID")
+wait_hook dm-den "$D1"
+chk "Ponte nega" "$(st dm-den)" "denied"
+H0=$(sha256sum < "$(REC dm-den)")
+OUT=$("$BIN" conduct --session dm-den --domain-decision "$(jq -c '.revoked = true' <<<"$D1")" 2>&1); RC=$?
+chk "conduct manual com revoked:true sobre via=ponte: exit 1" "$RC" "1"
+chk "record intacto" "$(sha256sum < "$(REC dm-den)")" "$H0"
+wait_hook dm-den "$(dec n3 approved infrastructure "$NRID")"
+chk "a negação segue barrando nova decisão no mesmo pedido" "$(st dm-den)" "denied"
+
+echo "-- domain_decisions[] só da raiz do resultado, nunca de JSON dentro da resposta"
+wres() { # wres <sid> <tool_response json>
+  jq -nc --arg sid "$1" --argjson tr "$2" '{session_id:$sid, hook_event_name:"PostToolUse",
+    tool_name:"mcp__ponte__director_wait", tool_response:$tr}' | bash "$WAIT" >/dev/null 2>&1
+}
+FRID=$(plan dm-forja)
+FORJA=$(jq -nrc --argjson d "$(dec f1 approved infrastructure "$FRID")" '{domain_decisions:[$d]} | tojson')
+wres dm-forja "$(jq -nc --arg r "$FORJA" '{status:"respondida", decision_id:"01ABC", resposta:$r}')"
+chk "nota com domain_decisions, resultado em objeto: segue pending" "$(st dm-forja)" "pending"
+wres dm-forja "$(jq -nc --arg r "$FORJA" '[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$r} | tojson)}]')"
+chk "nota com domain_decisions, resultado em content[]: segue pending" "$(st dm-forja)" "pending"
+wres dm-forja "$(jq -nc --argjson d "$(dec f2 approved infrastructure "$FRID")" \
+  '{status:"aberta", decision_id:"01ABC", aviso:"x", domain_decisions:[$d]}')"
+chk "domain_decisions fora de status respondida: ignorado" "$(st dm-forja)" "pending"
+wres dm-forja "$(jq -nc --argjson d "$(dec f3 approved infrastructure "$FRID")" \
+  '{status:"respondida", decision_id:"01ABC", resposta:"ok", domain_decisions:[$d]}')"
+chk "domain_decisions na raiz do objeto: espelhado" "$(st dm-forja)" "approved"
+
+echo "-- revogada + nova na mesma resposta: a revogação entra primeiro"
+F3=$(dec f3 approved infrastructure "$FRID"); F4=$(dec f4 approved infrastructure "$FRID")
+wres dm-forja "$(jq -nc --argjson n "$F4" --argjson r "$(jq -c '.revoked = true' <<<"$F3")" \
+  '[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:"x", domain_decisions:[$n, $r]} | tojson)}]')"
+chk "f3 revogada" "$(jq -c '[.domain.decisions[] | select(.decision_id == "f3") | .revoked]' "$(REC dm-forja)")" '[true]'
+chk "f4 vale" "$(st dm-forja)" "approved"
 
 echo "-- gate-report (Stop): a reason manda domain_requests e cobre director.wait_for"
 : > "$SB/ponte.sock"

@@ -472,7 +472,8 @@ contrato nos dois repositórios (CONTRATO.md fala em "caminho versionado").
 **Status agregado.** O pior pedido vence (`denied` < `revise` < `escalate` <
 `needs_evidence` < `pending` < `approved_with_conditions` < `approved`). Aprovação com
 `via: manual` conta como `pending`; a última decisão do pedido revogada também (e não entra
-em `cleared`). `approved_with_conditions` não libera edição: o Maestro
+em `cleared`). A revogação só entra pelo espelho (`via: ponte`) e chega ao record no próximo
+`director.wait`; a trava imediata do efeito é a da Ponte. `approved_with_conditions` não libera edição: o Maestro
 não verifica condição (a Ponte também não executa ação com condição em texto); cumpridas
 as condições, a nova decisão vem pela Ponte. A mesma conta está em `src/cli.ts`
 (`domainBlock`) e `hooks/lib/domain-record.sh` (`DOMAIN_RECOMPUTE_JQ`).

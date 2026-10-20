@@ -696,7 +696,9 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   (`^[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199}$`, sem segmento vazio, `.` ou `..`) com âncora
   opcional `#[a-z0-9-]{1,80}`, que resolve: arquivo regular dentro do projeto (realpath) e,
   com âncora, título Markdown do arquivo (sem acento, minúsculas, espaço → `-`). Texto livre
-  (`git revert`) é recusa (exit 1), como placeholder. O daemon confere de novo no branch da
+  (`git revert`) é recusa (exit 1), como placeholder; também o `rollback_ref` inteiro
+  (caminho + âncora) acima de 200 chars e o que o `ehPlaceholder` do daemon acusa (`...`,
+  `TODO`/`TBD`/`FIXME`, `placeholder`, `lorem`). O daemon confere de novo no branch da
   ordem: o arquivo precisa estar versionado. Não tocou: `domain.status: clear`, segue sem
   pedido. Tocou: os quatro campos do contrato (alvos, efeitos, rollback, INTENT carimbado)
   são exigidos (faltou → exit 1, nada gravado); um pedido por domínio vai para
@@ -714,6 +716,16 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   `mcp__.*director_wait`; só `mcp__ponte__director_wait` ou `mcp__plugin_*_ponte__director_wait`):
   lê do `tool_response` as linhas `decisao: {json}` (uma por pedido, ponte-daemon) e o campo
   `domain_decisions[]` (v1.27), deduplicados, e grava cada decisão no record com `via: ponte`.
+  `domain_decisions[]` só vale na raiz do `DirectorWaitOutput` (`status: respondida` com
+  `decision_id`): o próprio `tool_response` ou o texto JSON de cada bloco `content[]` de 1º
+  nível, nunca um JSON achado dentro de outra string (a `resposta` é texto de quem resolveu).
+  **Revogação (v1.27):** a decisão com `revoked` (`true` ou a data, texto até 64;
+  `false`/`null` = vigente) e o mesmo `decision_id`, pedido e resposta de uma já registrada
+  marca essa decisão no lugar; a última decisão do pedido revogada conta como `pending` e sai
+  de `cleared`. Revogação de decisão não registrada é recusada (não cobria nada). Revogações
+  são gravadas antes das decisões novas da mesma resposta. A revogação chega ao record no
+  **próximo** `director.wait` do gerente; até lá o espelho segue cobrindo, e quem trava o
+  efeito na hora é a Ponte (a cobertura do daemon só conta decisão com `revoked_at` nulo).
   Run headless que espera por `director.wait_for` recebe a decisão como texto da retomada
   (não é resultado de tool, não vale como prova): o gate (Stop) manda chamar `director.wait`
   uma vez ao retomar, e a decisão já resolvida volta na hora pelo resultado da tool. O resultado da tool é do servidor MCP, não do
@@ -731,11 +743,8 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   `role: mechanical` (timeout nunca aprova), `intent` diferente do pedido, `valid_until`
   vencido, `decision_id` repetido e segunda resolução de pedido já resolvido pela Ponte
   (só `needs_evidence`/`escalate`/`approved_with_conditions`, ou decisão revogada, admitem
-  nova decisão). **Revogação (v1.27):** campo opcional `revoked` (`true` ou a data, texto até
-  64; `false`/`null` = vigente). A revogação de um `decision_id` já registrado, com o mesmo
-  pedido e a mesma resposta, marca a decisão no lugar; a última decisão do pedido revogada
-  conta como `pending` e sai de `cleared` (deixa de cobrir na hora). Revogação de decisão não
-  registrada é recusada (não cobria nada).
+  nova decisão). `revoked` verdadeiro (`true` ou data) é recusado: revogação só pelo espelho
+  (`via: ponte`); texto digitado não desfaz decisão da Ponte.
   `decided_by.label` nunca é lido do cliente: sai de role/domain (`diretor-seguranca`,
   `diretor-infra`, `spock`, `capitao`, `mecanico`). `conduct --approach` em record com
   `domain` → exit 1 (plano mudou: decida de novo). **Autoridade:** o espelho é

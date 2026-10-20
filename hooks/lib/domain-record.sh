@@ -31,6 +31,7 @@
 #   conditions[]  texto (até 120) ou {texto ≤ 200, check_ref, id?}; até 8 itens
 #   reason        texto até 500
 #   revoked       opcional: true ou a data da revogação (texto); false/null = vigente.
+#                 Só pelo espelho (via=ponte): o caminho manual não revoga.
 #                 Revogação de decision_id já registrado marca a decisão no lugar
 #                 (não duplica); de decision_id desconhecido é recusada (não cobria nada).
 #
@@ -129,6 +130,12 @@ domain_record_apply() {
   local rec="$1" json="$2" via="$3" until="$4" now="$5" tmp="$1.tmp.$$"
   [[ "$via" == ponte || "$via" == manual ]] || return 1
   [[ "$until" =~ ^[0-9]{1,12}$ && "$now" =~ ^[0-9]{1,12}$ ]] || return 1
+  # Revogação só pelo espelho: o caminho manual nunca marca `revoked` (defesa em
+  # profundidade; lib/cmd-domain.sh já recusa antes).
+  if [[ "$via" != ponte ]] && jq -e '(.revoked // false) as $v | $v == true or ($v | type == "string" and length > 0)' \
+       <<<"$json" >/dev/null 2>&1; then
+    return 1
+  fi
   if jq -c --argjson d "$json" --arg via "$via" --argjson ue "$until" --argjson now "$now" '
        ($d.decided_by | {role, domain,
          label: (if .role == "director_domain"

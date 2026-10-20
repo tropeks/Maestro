@@ -44,15 +44,27 @@ IFS= read -r -d '' -t 2 -n 262144 raw 2>/dev/null || :
 # O resultado MCP pode vir como texto, lista de blocos ou objeto, e a nota pode
 # estar dentro de um JSON serializado em texto — por isso o `fromjson?`. Duas
 # formas de decisão, deduplicadas: a linha `decisao: {json}` da nota e o campo
-# `domain_decisions[]` da v1.27 (API_SPEC §5.4.2 da Enterprise).
+# `domain_decisions[]` da v1.27 (API_SPEC §5.4.2 da Enterprise). O campo só é
+# lido da RAIZ do DirectorWaitOutput (`status: respondida` + `decision_id`): o
+# próprio tool_response, ou o texto JSON de cada bloco `content[]` de 1º nível —
+# nunca de um JSON achado dentro de outra string (a `resposta` é texto de quem
+# resolveu). Revogações vêm antes das decisões novas: a nova decisão do mesmo
+# pedido só é aceita depois que a anterior está revogada.
 out=$(jq -r '
   def s: if type == "string" then . else "" end;
+  def rev: (.revoked // false) as $v | $v == true or ($v | type == "string" and length > 0);
+  def blocks: if type == "object" then ., (.content? | arrays | .[] | objects | .text? | strings | fromjson?)
+              elif type == "array" then (.[] | objects | .text? | strings | fromjson?)
+              else empty end;
   "\((.tool_name? // "") | s)\t\((.session_id? // "") | s)",
   ([.tool_response? | .. | ., (strings | fromjson? | ..)] as $all
+    | [.tool_response? | if type == "string" then (fromjson? // null) else . end | blocks | objects
+        | select(.status == "respondida" and (.decision_id | type == "string"))] as $roots
     | [ ($all[] | strings | split("\n")[]
           | capture("^\\s*decisao:\\s*(?<j>\\{.*\\})\\s*$")? | .j | fromjson? | select(type == "object")),
-        ($all[] | objects | .domain_decisions? | arrays | .[] | objects) ]
+        ($roots[] | .domain_decisions? | arrays | .[] | objects) ]
     | reduce .[] as $d ([]; if any(.[]; . == $d) then . else . + [$d] end)
+    | sort_by(if rev then 0 else 1 end)
     | .[] | tojson)
 ' <<<"$raw" 2>/dev/null) || exit 0
 

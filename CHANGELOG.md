@@ -12,8 +12,11 @@ from the decision log and tag messages when this file was introduced.
   `--rollback` passa a ser caminho do projeto com âncora opcional que resolve (arquivo dentro do projeto; âncora = título
   Markdown); texto livre é recusa. `--reason` sai da classificação de domínio, que fica igual à do roteador do ponte-daemon
   (brief, efeitos, rollback, alvos). O espelho da decisão aceita `conditions[]` como `{texto, check_ref}`, `reason` até 500,
-  `revoked` (a decisão revogada deixa de cobrir na hora) e o campo `domain_decisions[]` do resultado do `director.wait`; o
+  `revoked` (só pelo espelho; a revogação chega ao record no próximo `director.wait`, e a trava imediata é a do daemon) e o
+  campo `domain_decisions[]` da raiz do resultado do `director.wait` (nunca de JSON dentro da `resposta`); o
   gate cobre o run headless que espera por `director.wait_for` (chamar `director.wait` uma vez ao retomar).
+  `conduct --domain-decision` recusa `revoked` (revogação manual não desfaz decisão da Ponte). `--rollback` acima de 200
+  chars (caminho + âncora) ou com marcador de placeholder ('...', TODO, TBD, FIXME) é recusa, como no daemon.
   Testes: `tests/hooks/test-gate-domain-v127.sh` (e `test-gate-domain.sh` com rollback que resolve).
 
 ### Security

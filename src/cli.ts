@@ -284,6 +284,13 @@ const EFFECT_MAX = 120;
 // v1.27 (Enterprise DATA_MODEL `domain_request.rollback_ref`): caminho ASCII relativo ao
 // projeto, com âncora opcional, que o daemon resolve no branch da ordem.
 const RE_ROLLBACK_REF = /^([A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199})(?:#([a-z0-9-]{1,80}))?$/;
+// O daemon recusa o `rollback_ref` inteiro (caminho + âncora) acima de 200 chars (ITEM_MAX,
+// CHECK da migração 0045) e o que `ehPlaceholder` acusa (ponte-daemon, domain/diretoria.ts):
+// recusar aqui evita o pedido que a Ponte devolveria.
+const ROLLBACK_REF_MAX = 200;
+const RE_PLACEHOLDER_INTEIRO =
+  /(\.\.\.)|(^\s*(\?+|-+|n\/?a|none|null|tbd|todo|pendente|a definir|exemplo|example|placeholder|x{3,})\s*$)|(\b(placeholder|lorem)\b)/i;
+const RE_PLACEHOLDER_MARCADOR = /\b(TODO|TBD|FIXME)\b/;
 const ROLLBACK_FILE_MAX = 1024 * 1024;
 
 function parseDomains(raw: unknown): DomainTriggerMap | null {
@@ -984,12 +991,15 @@ function isRevoked(v: unknown): boolean {
 function resolveRollbackRef(raw: string): string {
   const hint =
     'aponte o procedimento de reversão versionado no projeto, ex.: --rollback "docs/planos/160.md#rollback"';
-  const m = RE_ROLLBACK_REF.exec(raw);
+  const m = raw.length > ROLLBACK_REF_MAX ? null : RE_ROLLBACK_REF.exec(raw);
   if (m === null || m[1]!.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
     throw invalid(
-      "--rollback não é caminho relativo com âncora opcional (caminho[#ancora], ASCII, sem '..')",
+      `--rollback não é caminho relativo com âncora opcional (caminho[#ancora], ASCII, sem '..', até ${ROLLBACK_REF_MAX} chars)`,
       hint,
     );
+  }
+  if (RE_PLACEHOLDER_INTEIRO.test(raw) || RE_PLACEHOLDER_MARCADOR.test(raw)) {
+    throw invalid("--rollback parece placeholder ('...', TODO, TBD, FIXME): a Ponte recusa", hint);
   }
   const path = m[1]!;
   const anchor = m[2];
