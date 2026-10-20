@@ -29,8 +29,9 @@
 #
 # Forma da decisão aceita (CONTRATO v2, tropeks/spock:docs/diretoria/CONTRATO.md):
 #   conditions[]      {texto, check_ref}: texto no charset do reason da Ponte, até 120;
-#                     check_ref texto até 200 ou null; até 8 itens; vazia fora de
-#                     approved_with_conditions
+#                     check_ref em ^[A-Za-z0-9._:/#-]{1,120}$ ou null; até 3 itens; vazia
+#                     fora de approved_with_conditions (CHECK_REF_RE e CONDICOES_MAX do
+#                     ponte-daemon, domain/diretoria.ts)
 #   reason            ^[A-Za-z0-9 .,:/_-]{1,120}$ (texto longo só por referência ao decision_id)
 #   escalate_to       spock | captain só em `escalate`; null (ou ausente) nas outras
 #   escalation_class  desvio_de_curso | crash, obrigatória com escalate_to=captain; null fora
@@ -82,7 +83,7 @@ domain_decision_why() {
     def s: type == "string";
     def curto: s and test("^[A-Za-z0-9 .,:/_-]{1,120}$");
     def cond: type == "object" and (keys == ["check_ref","texto"]) and (.texto | curto)
-      and (.check_ref == null or (.check_ref | s and length > 0 and length <= 200));
+      and (.check_ref == null or (.check_ref | s and test("^[A-Za-z0-9._:/#-]{1,120}$")));
     def iso: s and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$");
     ["decision_id","request_id","response","conditions","reason","decided_by",
      "policy_ref","intent","valid_until"] as $f
@@ -99,7 +100,7 @@ domain_decision_why() {
       elif ((.decision_id | s and test("^[A-Za-z0-9._:-]{1,64}$")) | not) then "decision_id inválido"
       elif $req == null then "request_id não é pedido deste record"
       elif ((.response as $x | ["approved","approved_with_conditions","needs_evidence","revise","denied","escalate"] | index($x)) == null) then "response fora do enum"
-      elif ((.conditions | type == "array" and length <= 8 and all(.[]; cond)) | not) then "conditions não é lista de até 8 {texto, check_ref} (texto no charset do reason, até 120)"
+      elif ((.conditions | type == "array" and length <= 3 and all(.[]; cond)) | not) then "conditions não é lista de até 3 {texto, check_ref} (texto no charset do reason, até 120; check_ref em [A-Za-z0-9._:/#-] até 120)"
       elif .response == "approved_with_conditions" and (.conditions | length) == 0 then "approved_with_conditions sem condição"
       elif .response != "approved_with_conditions" and (.conditions | length) > 0 then "conditions só em approved_with_conditions"
       elif (.reason | curto | not) then "reason fora do charset ou acima de 120 (texto longo só por referência ao decision_id)"

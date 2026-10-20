@@ -169,7 +169,7 @@ dec() { # dec <decision_id> <response> <role> <domain|null> [valid_until] [inten
     {decision_id:$did, request_id:$rid, response:$r,
      conditions:(if $r == "approved_with_conditions" then [{texto:"sem segredo no log", check_ref:null}] else [] end),
      reason:"plano verificado", decided_by:{role:$role, domain:(if $d == "null" then null else $d end), label:"eu mesmo"},
-     policy_ref:"MANDATOS.md#security", intent:{version:7, hash:$ih}, valid_until:$vu}'
+     policy_ref:"tropeks/spock:docs/diretoria/MANDATOS@v2#1a2b3c4d5e6f+LIMITES@v2#2b3c4d5e6f7a+CONTRATO@v2#3c4d5e6f7a8b", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }
 cdd() { OUT=$("$BIN" conduct --session dm-env --domain-decision "$1" 2>&1); RC=$?; }
 # wait_hook <sid> <decisão...> — o director_wait como o servidor MCP devolve: a nota em texto e

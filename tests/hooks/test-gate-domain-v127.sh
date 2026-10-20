@@ -6,8 +6,8 @@
 # que vai no director.ask; a forma da decisão do CONTRATO v2 (condições {texto,
 # check_ref}, reason até 120 no charset da Ponte, escalate_to/escalation_class,
 # revoked_at com o revoked antigo lido por compatibilidade, revogação só pelo espelho,
-# campo domain_decisions só na raiz do resultado); e o run headless que espera por
-# director.wait_for. Hermético (mktemp -d).
+# campo domain_decisions só na raiz do resultado); INTENT novo suspendendo as decisões
+# do projeto; e o run headless que espera por director.wait_for. Hermético (mktemp -d).
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -106,7 +106,7 @@ dec() { # dec <decision_id> <response> <domain> <request_id>
     {decision_id:$did, request_id:$rid, response:$r,
      conditions:(if $r == "approved_with_conditions" then [{texto:"sem segredo no log", check_ref:null}] else [] end),
      reason:"plano verificado", decided_by:{role:"director_domain", domain:$d, label:"x"},
-     policy_ref:"MANDATOS.md#v1", intent:{version:7, hash:$ih}, valid_until:$vu}'
+     policy_ref:"tropeks/spock:docs/diretoria/MANDATOS@v2#1a2b3c4d5e6f+LIMITES@v2#2b3c4d5e6f7a+CONTRATO@v2#3c4d5e6f7a8b", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }
 cdd() { OUT=$("$BIN" conduct --session dm-rb --domain-decision "$1" 2>&1); RC=$?; }
 wait_hook() { # wait_hook <sid> <decisão> — como o ponte-daemon devolve: a linha `decisao:` na nota e domain_decisions[] na raiz
@@ -123,10 +123,15 @@ cdd "$(dec v1 approved_with_conditions security "$RID" | jq -c --argjson c "$CON
 chk "conditions como {texto, check_ref}: aceito" "$RC" "0"
 cdd "$(dec v1b approved_with_conditions security "$RID")"
 chk "check_ref null: aceito" "$RC" "0"
-for c in '[{"texto":"x"}]' '["sem segredo no log"]' '[{"texto":"sem acentuação","check_ref":null}]' \
+cdd "$(dec v1c approved_with_conditions security "$RID" | jq -c --arg r "$(printf 'r%.0s' {1..120})" \
+  '.conditions = [range(3) | {texto:"c\(.)", check_ref:("doc/x.md#c" + (. | tostring))}] | .conditions[0].check_ref = $r')"
+chk "3 condições, check_ref de 120 no alfabeto do daemon: aceito" "$RC" "0"
+n=0; for c in '[{"texto":"x"}]' '["sem segredo no log"]' '[{"texto":"sem acentuação","check_ref":null}]' \
          '[{"texto":"a; b","check_ref":null}]' '[{"texto":"x","check_ref":null,"id":"c1"}]' \
-         "$(jq -nc '[range(9) | {texto:"c\(.)", check_ref:null}]')"; do
-  cdd "$(dec v2 approved_with_conditions security "$RID" | jq -c --argjson c "$c" '.conditions = $c')"
+         '[{"texto":"x","check_ref":"maestro:evidence/e 1"}]' '[{"texto":"x","check_ref":""}]' \
+         "[{\"texto\":\"x\",\"check_ref\":\"$(printf 'r%.0s' {1..121})\"}]" \
+         "$(jq -nc '[range(4) | {texto:"c\(.)", check_ref:null}]')"; do
+  n=$((n + 1)); cdd "$(dec "v2c$n" approved_with_conditions security "$RID" | jq -c --argjson c "$c" '.conditions = $c')"
   chk "condição fora da forma recusada: $c" "$RC" "1"
 done
 cdd "$(dec v2 approved security "$RID" | jq -c --argjson c "$COND" '.conditions = $c')"
@@ -210,6 +215,47 @@ chk "aprovada de novo: alvo → passa" "$GRC" "0"
   --brief "essencia: servico novo; impacto: x; approach: container novo no stack" \
   --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
 chk "re-decide do mesmo plano: revogada segue sem cobrir, i2 vale" "$(st dm-cmp)" "approved"
+
+echo "-- INTENT novo suspende as decisões do projeto (CONTRATO v2): falha fechada"
+cp "$P/.maestro/INTENT.md" "$SB/intent.v7"
+body8=$'## Problema\nnovo rumo\n'
+stamp() { printf '<!-- maestro-intent\nversion: %s\nhash: %s\n-->\n%s' "$1" "$2" "$body8" > "$P/.maestro/INTENT.md"; }
+stamp 8 "$(printf '%s' "$body8" | sha256sum | head -c 8)"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "re-carimbado (v8) com aprovação vigente: alvo suspenso → exit 2" "$GRC" "2"
+GERR=$(printf '{"tool_name":"Edit","session_id":"dm-cmp","tool_input":{"file_path":"%s/deploy/compose.prod.yaml"}}' "$P" \
+  | bash "$GATE" 2>&1 >/dev/null)
+[[ "$GERR" == *"INTENT"* ]] && ok "mensagem cita o INTENT novo" || bad "stderr: $GERR"
+grep -q '"cmd":"domain_intent"' "$MAESTRO_HOME/logs/routing.jsonl" && ok "log com cmd=domain_intent" || bad "log sem domain_intent"
+edit dm-cmp "src/ui/perfil.tsx"
+chk "fora do scope e sem domínio: o record vale como sempre" "$GRC" "0"
+stamp 7 "$IH"; printf '\nlinha nova\n' >> "$P/.maestro/INTENT.md"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "mesmo carimbo do pedido (só o corpo mudou): o gate lê o carimbo → passa" "$GRC" "0"
+stamp 7 "deadbeef"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "mesma versão, hash outro: suspenso → exit 2" "$GRC" "2"
+printf '<!-- maestro-intent\nversion: 7\nhash: %s\n' "$IH" > "$P/.maestro/INTENT.md"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "carimbo sem fechamento (ilegível): suspenso → exit 2" "$GRC" "2"
+rm -f "$P/.maestro/INTENT.md"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "INTENT ausente: suspenso → exit 2" "$GRC" "2"
+cp "$SB/intent.v7" "$P/.maestro/INTENT.md"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "carimbo do pedido de volta: passa (é comparação, nada foi apagado)" "$GRC" "0"
+jq -c '.session_id = "dm-ilg" | .domain.requests[0].intent = null' "$(REC dm-cmp)" > "$(REC dm-ilg)"
+edit dm-ilg "deploy/compose.prod.yaml"
+chk "intent do pedido ilegível no record: suspenso → exit 2" "$GRC" "2"
+stamp 8 "$(printf '%s' "$body8" | sha256sum | head -c 8)"
+"$BIN" decide --session dm-cmp --workflow refactor --mode direct \
+  --brief "essencia: servico novo; impacto: x; approach: container novo no stack" \
+  --targets "deploy/compose.prod.yaml" --effects "sobe container" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
+chk "re-decide sob o carimbo novo: a aprovação antiga não é preservada" "$(st dm-cmp)" "pending"
+chk "pedido novo cita o INTENT v8" "$(jq -r '.domain.requests[0].intent.version' "$(REC dm-cmp)")" "8"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "re-decide sob o carimbo novo: alvo segue suspenso → exit 2" "$GRC" "2"
+cp "$SB/intent.v7" "$P/.maestro/INTENT.md"
 
 echo "-- conduct manual não revoga decisão da Ponte"
 plan() { # plan <sid> — mesmo plano de infra, pedido próprio da sessão

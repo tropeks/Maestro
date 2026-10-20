@@ -948,15 +948,21 @@ function decideDomain(
   // Re-decide do MESMO plano preserva as decisões já espelhadas (mesmo
   // request_id) que não venceram; plano novo = pedido novo, e decisão velha
   // não vale para ele. Vencida, a decisão não cobre execução nova (CONTRATO).
+  // INTENT novo suspende as decisões do projeto (CONTRATO v2): decisão dada sob
+  // outro carimbo não é preservada, e o pedido volta a esperar o diretor.
   const ids = new Set(requests.map((r) => r.request_id));
   const nowS = Math.floor(Date.now() / 1000);
-  const kept = (prev?.domain?.decisions ?? []).filter(
-    (x) =>
+  const kept = (prev?.domain?.decisions ?? []).filter((x) => {
+    const xi = x?.intent as { version?: unknown; hash?: unknown } | undefined;
+    return (
       typeof x?.request_id === "string" &&
       ids.has(x.request_id as string) &&
       typeof x.until_epoch === "number" &&
-      x.until_epoch > nowS,
-  );
+      x.until_epoch > nowS &&
+      xi?.version === intent!.version &&
+      xi?.hash === intent!.hash
+    );
+  });
   const block = domainBlock(requests, kept, scope, nowS);
 
   let out =

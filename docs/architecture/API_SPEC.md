@@ -739,8 +739,9 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   contra o pedido do próprio record, gravado com `via: manual`. **Não libera nada:**
   aprovação manual conta como `pending` no status. Recusa (exit 1, record intacto): campo
   fora ou faltando do contrato, `request_id` alheio, `response` fora do enum,
-  `conditions[]` fora da forma do CONTRATO v2 (até 8 itens `{texto, check_ref}`: `texto` no
-  charset do `reason`, `check_ref` texto até 200 ou `null`; vazia fora de
+  `conditions[]` fora da forma do CONTRATO v2 (até 3 itens `{texto, check_ref}`: `texto` no
+  charset do `reason`, `check_ref` em `^[A-Za-z0-9._:/#-]{1,120}$` ou `null`, como o
+  `CHECK_REF_RE`/`CONDICOES_MAX` do ponte-daemon; vazia fora de
   `approved_with_conditions`), `approved_with_conditions` sem condição, `reason` fora de
   `^[A-Za-z0-9 .,:/_-]{1,120}$` (texto longo só por referência ao `decision_id`), escalada
   fora da regra (`escalate_to` `spock|captain` só em `escalate`, e nele obrigatório;
@@ -763,8 +764,13 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   o Maestro não verifica condição); (b) caminho que casa `domains.<d>.paths` (ERE compilada
   pelo session-start no `gate-policy.sh`, `MAESTRO_GATE_DOMAIN_<D>_RE`) só passa se estiver
   no scope e `<d>` estiver em `domain.cleared` — plano `clear`, alvo omitido e workflow sem
-  gate domain não cobrem caminho de domínio. `block` → exit 2 + `gate_block
-  cmd=domain_<status>|domain_expired|domain_path`; `warn` → aviso + `gate_warn` com o mesmo
+  gate domain não cobrem caminho de domínio; (c) INTENT novo suspende as decisões do projeto
+  (CONTRATO v2): com `domain.status` diferente de `clear`, o carimbo (`version:`/`hash:`) de
+  `.maestro/INTENT.md` tem de ser o `intent` do pedido (`domain.requests[0].intent`); se
+  diverge, ou se o carimbo ou o pedido estão ilegíveis, o gate trata o record como `pending`
+  sem nada em `cleared` (falha fechada). O `decide` do mesmo plano sob outro carimbo não
+  preserva a decisão dada sob o antigo: o pedido volta a esperar o diretor. `block` → exit 2 +
+  `gate_block cmd=domain_<status>|domain_expired|domain_path|domain_intent`; `warn` → aviso + `gate_warn` com o mesmo
   `cmd` e segue o fluxo normal (orçamento do E14 conta o passo; sem `gate_pass` extra).
   Fora disso, o record vale como sempre. Runs com `PONTE_CAPABILITY_ORDEM` (passo 4b) ficam
   fora: a caixa da ordem é do daemon.
