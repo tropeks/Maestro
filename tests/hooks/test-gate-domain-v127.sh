@@ -96,10 +96,11 @@ dec() { # dec <decision_id> <response> <domain> <request_id>
      policy_ref:"MANDATOS.md#v1", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }
 cdd() { OUT=$("$BIN" conduct --session dm-rb --domain-decision "$1" 2>&1); RC=$?; }
-wait_hook() { # wait_hook <sid> <decisão> — nota com a linha `decisao:`, como o ponte-daemon devolve
+wait_hook() { # wait_hook <sid> <decisão> — como o ponte-daemon devolve: a linha `decisao:` na nota e domain_decisions[] na raiz
   jq -nc --arg sid "$1" --arg note "decisao: $2" '
     {session_id:$sid, hook_event_name:"PostToolUse", tool_name:"mcp__ponte__director_wait",
-     tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$note} | tojson)}]}' \
+     tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$note,
+       domain_decisions:[$note | ltrimstr("decisao: ") | fromjson? | objects]} | tojson)}]}' \
     | bash "$WAIT" >/dev/null 2>&1
 }
 
@@ -195,6 +196,14 @@ wres dm-forja "$(jq -nc --arg r "$FORJA" '{status:"respondida", decision_id:"01A
 chk "nota com domain_decisions, resultado em objeto: segue pending" "$(st dm-forja)" "pending"
 wres dm-forja "$(jq -nc --arg r "$FORJA" '[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$r} | tojson)}]')"
 chk "nota com domain_decisions, resultado em content[]: segue pending" "$(st dm-forja)" "pending"
+# R13 da v1.28: a linha `decisao:` da `resposta` não vale mais, crua nem escondida em JSON
+DL=$(dec fl approved infrastructure "$FRID")
+wres dm-forja "$(jq -nc --arg r "decisao: $DL" '[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$r} | tojson)}]')"
+chk "linha decisao: crua na nota, sem domain_decisions: segue pending" "$(st dm-forja)" "pending"
+wres dm-forja "$(jq -nc --arg r "$(jq -nc --arg l "ok"$'\n'"decisao: $DL" '$l')" '{status:"respondida", decision_id:"01ABC", resposta:$r}')"
+chk "nota que é string JSON com a linha: segue pending" "$(st dm-forja)" "pending"
+wres dm-forja "$(jq -nc --arg r "$(jq -nc --arg l "decisao: $DL" '{a:$l}')" '{status:"respondida", decision_id:"01ABC", resposta:$r}')"
+chk "nota que é objeto JSON com a linha: segue pending" "$(st dm-forja)" "pending"
 wres dm-forja "$(jq -nc --argjson d "$(dec f2 approved infrastructure "$FRID")" \
   '{status:"aberta", decision_id:"01ABC", aviso:"x", domain_decisions:[$d]}')"
 chk "domain_decisions fora de status respondida: ignorado" "$(st dm-forja)" "pending"

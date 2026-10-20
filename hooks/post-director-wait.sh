@@ -4,15 +4,15 @@
 #
 # O gate domain libera a edição dos alvos de um plano só com a decisão do diretor
 # do domínio. Essa decisão chega ao gerente no RESULTADO da tool `director_wait`
-# (linhas `decisao: {json}`, uma por pedido — ponte-daemon, notaDasDecisoes — ou
-# o campo `domain_decisions[]` da v1.27), e o resultado de uma tool MCP é escrito
+# (campo `domain_decisions[]` da raiz, v1.27 e R13 da v1.28), e o resultado de
+# uma tool MCP é escrito
 # pelo servidor, não pelo modelo. Este hook é
-# o espelho: lê essas linhas do `tool_response` e grava cada decisão no record da
+# o espelho: lê esse campo do `tool_response` e grava cada decisão no record da
 # sessão com via=ponte (hooks/lib/domain-record.sh). O `maestro conduct
 # --domain-decision` digitado continua existindo, mas grava via=manual e não
 # libera — identidade de quem decidiu nunca sai de campo de texto do cliente.
 #
-# Só a linha `decisao:` e `domain_decisions[]` são lidos; o resto da resposta
+# Só `domain_decisions[]` é lido; o resto da resposta
 # (texto do Diretor) não é logado nem guardado. Run headless que espera por
 # `director.wait_for` recebe a decisão como texto da retomada, que não é resultado
 # de tool e não vale como prova: o gate manda chamar `director.wait` uma vez ao
@@ -41,10 +41,11 @@ IFS= read -r -d '' -t 2 -n 262144 raw 2>/dev/null || :
 [[ -n "$raw" ]] || exit 0
 
 # Um fork de jq: 1ª linha "tool<TAB>sid"; depois cada decisão em JSON compacto.
-# O resultado MCP pode vir como texto, lista de blocos ou objeto, e a nota pode
-# estar dentro de um JSON serializado em texto — por isso o `fromjson?`. Duas
-# formas de decisão, deduplicadas: a linha `decisao: {json}` da nota e o campo
-# `domain_decisions[]` da v1.27 (API_SPEC §5.4.2 da Enterprise). O campo só é
+# O resultado MCP pode vir como texto, lista de blocos ou objeto — por isso o
+# `fromjson?` de 1º nível. Uma forma de decisão só: o campo `domain_decisions[]`
+# (v1.27, API_SPEC §5.4.2 da Enterprise; R13 da v1.28). A linha `decisao: {json}`
+# da `resposta` NÃO é lida: a `resposta` carrega texto de quem resolveu, e ler
+# linha (inclusive decodificando JSON em texto) abria decisão forjada. O campo só é
 # lido da RAIZ do DirectorWaitOutput (`status: respondida` + `decision_id`): o
 # próprio tool_response, ou o texto JSON de cada bloco `content[]` de 1º nível —
 # nunca de um JSON achado dentro de outra string (a `resposta` é texto de quem
@@ -57,12 +58,9 @@ out=$(jq -r '
               elif type == "array" then (.[] | objects | .text? | strings | fromjson?)
               else empty end;
   "\((.tool_name? // "") | s)\t\((.session_id? // "") | s)",
-  ([.tool_response? | .. | ., (strings | fromjson? | ..)] as $all
-    | [.tool_response? | if type == "string" then (fromjson? // null) else . end | blocks | objects
-        | select(.status == "respondida" and (.decision_id | type == "string"))] as $roots
-    | [ ($all[] | strings | split("\n")[]
-          | capture("^\\s*decisao:\\s*(?<j>\\{.*\\})\\s*$")? | .j | fromjson? | select(type == "object")),
-        ($roots[] | .domain_decisions? | arrays | .[] | objects) ]
+  ([.tool_response? | if type == "string" then (fromjson? // null) else . end | blocks | objects
+      | select(.status == "respondida" and (.decision_id | type == "string"))] as $roots
+    | [ $roots[] | .domain_decisions? | arrays | .[] | objects ]
     | reduce .[] as $d ([]; if any(.[]; . == $d) then . else . + [$d] end)
     | sort_by(if rev then 0 else 1 end)
     | .[] | tojson)
