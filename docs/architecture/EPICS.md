@@ -926,6 +926,30 @@ isso é do swarm, caso a caso, nunca prescrito aqui.
 **Dependências:** E15 (ordens, estado derivado), E22 (INTENT), E23b (`.maestro.yaml`,
 `verifications:`), E16 (`docs:`), E8 (brief).
 
+### E28 — Diretoria por domínio: plano técnico sem humano, efeito com o diretor do domínio (P1, M) — ordem do Capitão, 19/10
+
+Origem: diretoria por domínio (Capitão, 19/10; pacote
+`tropeks/spock:docs/ideias/especialistas/projetos/03-Maestro.md`, análise `ANALISE-v1.md`).
+`gate: plan` punha todo plano técnico de `feature`/`refactor` à espera de humano ou do
+Spock. Agora o plano é do especialista e do gerente; autorizar efeito (segredo, exposição,
+infra) é do diretor do domínio, por plano de mudança, nunca por comando, e só quando o
+plano toca o domínio. Fonte única de alçada: `tropeks/spock:docs/diretoria/`.
+
+**S-2801 — `gate: domain` e `domains:`** na routing table (`feature`, `refactor`), com os
+gatilhos determinísticos de `security` e `infrastructure` (DATA_MODEL §1/§3 v1.26).
+**S-2802 — o pedido no `decide`:** classificação por regra, contrato mínimo sem
+placeholder, bloco `domain` no record. **S-2803 — `conduct --domain-decision`:** espelho
+da decisão da Ponte com as recusas do contrato (API_SPEC). **S-2804 — hooks:**
+`pre-tool-gate.sh` suspende só a mutação dependente; `gate-report.sh` segura a rodada pela
+Ponte; `session-start.sh` ensina o gate. **S-2805 — roster:** `agents/infra.md` (desenha,
+não autoriza) e `agents/seguranca.md` explícito sobre não autorizar.
+
+**Fora do épico:** quem decide (diretor de domínio como peer da Ponte, `domain.decide`,
+`domain.requests.list`) é do ponte-daemon; Bash (`docker compose up`, `systemctl`) segue com
+o pre-bash-guard e as permissões da Ponte. Rollback: `gate: plan` de volta nas duas linhas.
+
+**Dependências:** E17 (brief regido), E21 (gate no herdr), E22 (INTENT carimbado).
+
 ---
 
 ## Grafo de dependências

@@ -183,6 +183,9 @@ interface RoutingTable {
   // E17/S-1701 — gate DECLARADO por workflow (workflows.<nome>.gate), usado
   // pelo enforcement plan-gated do --brief. Ausente na entry = "none".
   gates: Record<string, string>;
+  // E28 — gatilhos determinísticos por domínio (seção `domains:`). null = a
+  // tabela não declara nenhum; `gate: domain` sem esta seção é erro de config.
+  domains: DomainTriggerMap | null;
 }
 
 function loadRoutingTable(): RoutingTable {
@@ -245,7 +248,235 @@ function loadRoutingTable(): RoutingTable {
   const gateMode =
     gate && typeof gate.mode === "string" ? (gate.mode as string) : null;
 
-  return { workflows, gateMode, gates };
+  const domains = parseDomains(table?.domains);
+  if (domains === null && Object.values(gates).includes("domain")) {
+    throw configErr(
+      "routing-table.yaml declara `gate: domain` sem a seção `domains`",
+      "declare domains.security e domains.infrastructure (rode `maestro doctor`)",
+    );
+  }
+
+  return { workflows, gateMode, gates, domains };
+}
+
+// ------------------------------------------- diretoria por domínio (E28)
+//
+// Contrato mínimo do pedido e da decisão: tropeks/spock:docs/diretoria/
+// (CONTRATO.md). O Maestro NÃO decide nada aqui: classifica o plano por regra
+// (gatilhos da routing table), registra o pedido no record e diz ao gerente
+// que a decisão vem do diretor do domínio, pela Ponte. Timeout nunca aprova:
+// sem decisão registrada, o pedido fica pendente até o record expirar.
+
+const DOMAINS = ["security", "infrastructure"] as const;
+type Domain = (typeof DOMAINS)[number];
+const DOMAIN_TRIGGER_KEYS = ["paths", "keywords", "dockerfile", "other"] as const;
+type DomainTriggers = Record<(typeof DOMAIN_TRIGGER_KEYS)[number], string[]>;
+type DomainTriggerMap = Partial<Record<Domain, DomainTriggers>>;
+
+const RE_TARGET = /^[A-Za-z0-9._@+/-]{1,200}$/;
+const RE_ORDER_REF = /^[A-Za-z0-9._:#/-]{1,64}$/;
+const TARGETS_MAX = 32;
+const SCOPE_MAX = 1500; // `domain.scope` é lido pelo gate (bash) numa janela fixa
+const EFFECTS_MAX = 8;
+const EFFECT_MAX = 120;
+
+function parseDomains(raw: unknown): DomainTriggerMap | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw configErr(
+      "routing-table.yaml: `domains` não é um mapa",
+      "rode `maestro doctor` e corrija a seção domains",
+    );
+  }
+  const out: DomainTriggerMap = {};
+  for (const [name, body] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(DOMAINS as readonly string[]).includes(name)) {
+      throw configErr(
+        `routing-table.yaml: domínio '${name}' fora do vocabulário (${DOMAINS.join(", ")})`,
+        "domínio novo entra primeiro em tropeks/spock:docs/diretoria/",
+      );
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw configErr(
+        `routing-table.yaml: domains.${name} não é um mapa`,
+        "use paths/keywords/dockerfile/other como listas",
+      );
+    }
+    const b = body as Record<string, unknown>;
+    const t = { paths: [], keywords: [], dockerfile: [], other: [] } as DomainTriggers;
+    for (const k of DOMAIN_TRIGGER_KEYS) {
+      const v = b[k];
+      if (v === undefined) continue;
+      if (!Array.isArray(v) || !v.every((x) => typeof x === "string" && x.length > 0)) {
+        throw configErr(
+          `routing-table.yaml: domains.${name}.${k} não é lista de strings`,
+          "rode `maestro doctor`",
+        );
+      }
+      t[k] = v as string[];
+    }
+    if (t.paths.length + t.keywords.length === 0) {
+      throw configErr(
+        `routing-table.yaml: domains.${name} sem paths nem keywords`,
+        "um domínio sem gatilho nunca seria tocado — declare os gatilhos",
+      );
+    }
+    out[name as Domain] = t;
+  }
+  return out;
+}
+
+/** minúsculas, sem acento: o casamento de palavra não depende de grafia. */
+function foldText(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** glob → RegExp ancorada: `**\/` = zero ou mais diretórios, `*` = sem `/`. */
+function globToRegExp(glob: string): RegExp {
+  let re = "";
+  let i = 0;
+  while (i < glob.length) {
+    if (glob.startsWith("**/", i)) {
+      re += "(?:.*/)?";
+      i += 3;
+    } else if (glob.startsWith("/**", i) && i + 3 === glob.length) {
+      re += "(?:/.*)?";
+      i += 3;
+    } else if (glob.startsWith("**", i)) {
+      re += ".*";
+      i += 2;
+    } else {
+      const c = glob[i]!;
+      re += c === "*" ? "[^/]*" : c === "?" ? "[^/]" : escapeRe(c);
+      i += 1;
+    }
+  }
+  return new RegExp(`^${re}$`, "i");
+}
+
+function globMatches(glob: string, target: string): boolean {
+  const t = target.replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  if (t.length === 0) return false;
+  if (!glob.includes("/")) {
+    const base = t.slice(t.lastIndexOf("/") + 1);
+    return globToRegExp(glob).test(base);
+  }
+  return globToRegExp(glob).test(t);
+}
+
+/** Domínios tocados pelo plano, cada um com os gatilhos que casaram. */
+function classifyPlan(
+  domains: DomainTriggerMap,
+  text: string,
+  targets: string[],
+): Map<Domain, string[]> {
+  const raw = `${text} ${targets.join(" ")}`;
+  const folded = foldText(raw);
+  const dockerCtx =
+    folded.includes("dockerfile") ||
+    targets.some((t) => /(^|\/)dockerfile[^/]*$|\.dockerfile$/i.test(t));
+  const hit = new Map<Domain, string[]>();
+  for (const d of DOMAINS) {
+    const t = domains[d];
+    if (!t) continue;
+    const why: string[] = [];
+    for (const g of t.paths) {
+      if (targets.some((x) => globMatches(g, x))) why.push(`path ${g}`);
+    }
+    for (const k of t.keywords) {
+      const re = new RegExp(`(^|[^a-z0-9])${escapeRe(foldText(k))}`);
+      if (re.test(folded)) why.push(`keyword ${k}`);
+    }
+    if (dockerCtx) {
+      for (const k of t.dockerfile) {
+        const hitK = /^[A-Z_]+$/.test(k)
+          ? new RegExp(`(^|[^A-Za-z0-9_])${escapeRe(k)}([^A-Za-z0-9_]|$)`).test(raw)
+          : folded.includes(foldText(k));
+        if (hitK) why.push(`dockerfile ${k}`);
+      }
+    }
+    for (const k of t.other) {
+      if (folded.includes(foldText(k))) why.push(`other ${k}`);
+    }
+    if (why.length > 0) hit.set(d, why);
+  }
+  return hit;
+}
+
+function sha256Hex(s: string): string {
+  const h = new Bun.CryptoHasher("sha256");
+  h.update(s);
+  return h.digest("hex");
+}
+
+/**
+ * Carimbo do INTENT do projeto, no MESMO formato de lib/core-intent.sh:
+ * `version:` no carimbo e hash = 8 hex do sha256 do corpo (tudo depois da
+ * primeira linha `-->`, a partir da linha 2 — o `sed '1,/^-->$/d'` de lá).
+ */
+function projectIntent(): { version: number; hash: string } | null {
+  const dir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const f = join(dir, ".maestro", "INTENT.md");
+  if (!existsSync(f)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(f, "utf8");
+  } catch {
+    return null;
+  }
+  const lines = raw.split("\n");
+  let version: number | null = null;
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    const l = lines[i]!;
+    if (l === "-->") break;
+    const m = /^version: ([0-9]{1,9})$/.exec(l);
+    if (m) {
+      version = Number(m[1]);
+      break;
+    }
+  }
+  if (version === null || version < 1) return null;
+  let off = lines[0]!.length + 1;
+  let body = "";
+  for (let i = 1; i < lines.length; i++) {
+    off += lines[i]!.length + 1;
+    if (lines[i] === "-->") {
+      body = raw.slice(Math.min(off, raw.length));
+      break;
+    }
+  }
+  return { version, hash: sha256Hex(body).slice(0, 8) };
+}
+
+interface DomainRequest {
+  request_id: string;
+  project: string;
+  order_ref: string | null;
+  intent: { version: number; hash: string };
+  domain: Domain;
+  plan: { ref: string; hash: string };
+  targets: string[];
+  effects: string[];
+  rollback_ref: string;
+}
+
+/** Bloco `domain` do record — `status` e `scope` PRIMEIRO: o gate os lê por regex. */
+interface DomainBlock {
+  status: string;
+  scope?: string;
+  requests: DomainRequest[];
+  decisions?: Array<Record<string, unknown>>;
+}
+
+function splitList(raw: string, sep: RegExp): string[] {
+  return raw
+    .split(sep)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 // -------------------------------------------------------------------- roster
@@ -491,6 +722,9 @@ interface DecisionRecord {
   // ordem 024 fatia 1 (H6) — eixo recurso: marca esta frente como MEDIDORA
   // (roda suíte/benchmark). Só existe `true` — ausência é "não mede".
   measures?: true;
+  // E28 — gate domain: pedidos ao diretor do domínio e as decisões espelhadas
+  // da Ponte. Schema autoritativo em `lib/core-record.sh record_schema_ok`.
+  domain?: DomainBlock;
 }
 
 function readRecord(sessionId: string): DecisionRecord | null {
@@ -552,12 +786,174 @@ function otherLiveSessionExists(currentSession: string): boolean {
 
 // ---------------------------------------------------------------- comando: decide
 
+/**
+ * E28 — `gate: domain`. Devolve null quando o workflow não tem esse gate
+ * (o record não ganha o campo). Com o gate: exige o plano (brief com approach
+ * real — `pendente` não é plano), classifica por regra e, se tocar domínio,
+ * exige o contrato mínimo (targets, effects, rollback, INTENT carimbado):
+ * nenhum placeholder vale como evidência, então campo faltando é recusa.
+ */
+function decideDomain(
+  args: Args,
+  table: RoutingTable,
+  workflow: string,
+  session: string,
+  brief: string | undefined,
+  reason: string | undefined,
+  prev: DecisionRecord | null,
+): { block: DomainBlock; text: string } | null {
+  const targetsRaw = requireValue(args, "targets");
+  const effectsRaw = requireValue(args, "effects");
+  const rollbackRaw = requireValue(args, "rollback");
+  const orderRaw = requireValue(args, "order");
+  if (table.gates[workflow] !== "domain") {
+    if (targetsRaw ?? effectsRaw ?? rollbackRaw ?? orderRaw) {
+      throw invalid(
+        `--targets/--effects/--rollback/--order só se aplicam a workflow com gate domain ('${workflow}' não tem)`,
+        "remova essas opções ou use um workflow com gate domain (feature, refactor)",
+      );
+    }
+    return null;
+  }
+  if (brief === undefined) {
+    throw invalid(
+      `workflow '${workflow}' tem gate domain e exige --brief`,
+      'o brief é o plano que o gate classifica: --brief "essencia: ...; impacto: ...; approach: <o plano>"',
+    );
+  }
+  const approach = /approach:\s*(.*?)\s*(;|$|essencia:|impacto:)/.exec(brief)?.[1] ?? "";
+  if (approach === "" || /^pendente\b/i.test(approach)) {
+    throw invalid(
+      `workflow '${workflow}' tem gate domain: approach pendente não é plano`,
+      "planeje primeiro e decida com o approach real; plano mudou → decida de novo (o decide reclassifica)",
+    );
+  }
+
+  const targets = targetsRaw === null ? [] : splitList(targetsRaw, /[\s,]+/);
+  if (targets.length > TARGETS_MAX) {
+    throw invalid(`--targets aceita até ${TARGETS_MAX} caminhos`, "agrupe por diretório (ex.: deploy/)");
+  }
+  for (const t of targets) {
+    if (!RE_TARGET.test(t) || t.split("/").includes("..")) {
+      throw invalid(
+        `--targets: caminho inválido '${t}'`,
+        "caminho relativo ao projeto, sem espaço nem '..', em [A-Za-z0-9._@+/-]",
+      );
+    }
+  }
+  const scope = targets.join(" ");
+  if (scope.length > SCOPE_MAX) {
+    throw invalid(`--targets excede ${SCOPE_MAX} caracteres no total`, "agrupe por diretório (ex.: deploy/)");
+  }
+  const effects = effectsRaw === null ? [] : splitList(effectsRaw.replace(/[\u0000-\u001f\u007f]/g, " "), /;/);
+  if (effects.length > EFFECTS_MAX || effects.some((e) => e.length > EFFECT_MAX)) {
+    throw invalid(
+      `--effects: até ${EFFECTS_MAX} efeitos separados por ';', cada um com até ${EFFECT_MAX} chars`,
+      'use --effects "abre a porta 443 no túnel; reinicia o serviço x"',
+    );
+  }
+  const rollback = rollbackRaw === null ? "" : rollbackRaw.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  if (rollback.length > EFFECT_MAX) {
+    throw invalid(`--rollback excede ${EFFECT_MAX} chars`, "aponte o passo de rollback (doc, commit, comando)");
+  }
+  let orderRef: string | null = null;
+  if (orderRaw !== null) {
+    if (!RE_ORDER_REF.test(orderRaw)) {
+      throw invalid("--order inválido", "use a referência da ordem, ex.: --order 110");
+    }
+    orderRef = orderRaw;
+  }
+
+  const text = [brief, reason ?? "", effects.join(" "), rollback].join(" ");
+  const hits = classifyPlan(table.domains ?? {}, text, targets);
+  if (hits.size === 0) {
+    return {
+      block: { status: "clear", requests: [] },
+      text: "gate domain: o plano não toca domínio declarado — segue sem pedido.\n",
+    };
+  }
+
+  const project = currentProject();
+  const intent = projectIntent();
+  const missing: string[] = [];
+  if (targets.length === 0) missing.push("--targets");
+  if (effects.length === 0) missing.push("--effects");
+  if (rollback === "") missing.push("--rollback");
+  if (project === null) missing.push("projeto (nome do diretório)");
+  if (intent === null) missing.push("INTENT carimbado (maestro intent --check)");
+  const touched = [...hits.keys()];
+  if (missing.length > 0) {
+    throw invalid(
+      `gate domain: o plano toca ${touched.join(", ")} e o pedido ao diretor exige: ${missing.join(", ")}`,
+      "nenhum placeholder vale como evidência — informe os campos reais e decida de novo",
+    );
+  }
+
+  const planHash = sha256Hex(
+    JSON.stringify({ brief, targets, effects, rollback_ref: rollback, order_ref: orderRef }),
+  );
+  const requests: DomainRequest[] = touched.map((d) => ({
+    request_id: `dreq-${sha256Hex(`${project}|${session}|${d}|${planHash}`).slice(0, 16)}`,
+    project: project!,
+    order_ref: orderRef,
+    intent: intent!,
+    domain: d,
+    plan: { ref: `maestro:sessions/${session}#brief`, hash: planHash },
+    targets,
+    effects,
+    rollback_ref: rollback,
+  }));
+
+  // Re-decide do MESMO plano preserva as decisões já espelhadas (mesmo
+  // request_id); plano novo = pedido novo, e decisão velha não vale para ele.
+  const ids = new Set(requests.map((r) => r.request_id));
+  const kept = (prev?.domain?.decisions ?? []).filter(
+    (x) => typeof x?.request_id === "string" && ids.has(x.request_id as string),
+  );
+  const block: DomainBlock = {
+    status: domainStatus(requests, kept),
+    scope,
+    requests,
+    ...(kept.length ? { decisions: kept } : {}),
+  };
+
+  let out =
+    `gate domain: o plano toca ${touched.join(", ")} — pedido ao diretor do domínio registrado (status: ${block.status}).\n` +
+    `  edição em ${scope} fica suspensa até a decisão; timeout não aprova.\n`;
+  for (const r of requests) {
+    out += `  ${r.domain}: ${hits.get(r.domain)!.join(", ")}\n`;
+  }
+  out +=
+    "  com a Ponte: director.ask com o pedido abaixo, director.wait em laço; registre a resposta com\n" +
+    `    maestro conduct --session ${session} --domain-decision '<json da decisão>'\n` +
+    "  sem a Ponte: leve o pedido ao humano responsável; nada segue por silêncio.\n";
+  for (const r of requests) out += `pedido: ${JSON.stringify(r)}\n`;
+  return { block, text: out };
+}
+
+/** Status agregado: o pior vence; aprovado só quando todos os pedidos foram aprovados. */
+function domainStatus(
+  requests: DomainRequest[],
+  decisions: Array<Record<string, unknown>>,
+): string {
+  const order = ["denied", "revise", "escalate", "needs_evidence", "pending", "approved_with_conditions", "approved"];
+  let worst = order.length - 1;
+  for (const r of requests) {
+    const d = [...decisions].reverse().find((x) => x.request_id === r.request_id);
+    const resp = typeof d?.response === "string" ? d.response : "pending";
+    const i = order.indexOf(resp);
+    worst = Math.min(worst, i < 0 ? order.indexOf("pending") : i);
+  }
+  return order[worst]!;
+}
+
 function cmdDecide(args: Args): number {
   rejectUnknown(args, [
     "session", "workflow", "mode", "agents", "reason",
     "max-steps", "max-min", "max-cents", // E14: orçamento declarado
     "depth", "profile", "brief", // E17/S-1701: compilador de intenção
     "fronts", "measures", // ordem 024 fatia 1 — H6, eixo arquivo + eixo recurso
+    "targets", "effects", "rollback", "order", // E28 — pedido ao diretor do domínio
   ]);
 
   // --session (obrigatório)
@@ -878,6 +1274,11 @@ function cmdDecide(args: Args): number {
     );
   }
 
+  // ---- E28: gate domain — o plano segue sem humano; se tocar domínio, o
+  // pedido ao diretor do domínio nasce aqui, com o contrato mínimo.
+  const prevForDomain = readRecord(session);
+  const domainOut = decideDomain(args, table, workflow, session, brief, reason, prevForDomain);
+
   // ---- gravação
   ensureDirs();
 
@@ -891,7 +1292,7 @@ function cmdDecide(args: Args): number {
   // por `maestro conduct`. A trilha de dissenso é da SESSÃO, não do workflow
   // decidido: sobrevive mesmo quando este decide muda workflow/mode. O decide
   // só PRESERVA; validar o conteúdo das flags é assunto do doctor.
-  const prev = readRecord(session);
+  const prev = prevForDomain;
 
   const record: DecisionRecord = {
     session_id: session,
@@ -899,6 +1300,8 @@ function cmdDecide(args: Args): number {
     expires_at: expires,
     workflow,
     mode,
+    // E28: logo depois de `mode`, para caber na janela fixa que o gate lê.
+    ...(domainOut ? { domain: domainOut.block } : {}),
     ...(agents ? { agents } : {}),
     ...(reason ? { reason } : {}),
     ...(wtree ? { wtree } : {}),
@@ -958,6 +1361,7 @@ function cmdDecide(args: Args): number {
       `sessão=${session} workflow=${workflow} mode=${mode}${alvo}\n` +
       `válida até ${expires} (TTL ${humanDuration(ttlSeconds())})\n`,
   );
+  if (domainOut) process.stdout.write(domainOut.text);
   return 0;
 }
 

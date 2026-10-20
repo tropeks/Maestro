@@ -205,12 +205,12 @@ expect_err "(f) --brief marcador >200 chars → 1/validation" 1 validation -- \
 run decide --session sess-fix-nobrief --workflow fix --mode direct
 chk "fix (gate none) sem --brief sai 0" "$rc" "0"
 
-expect_err "(g) feature (gate plan) sem --brief → 1/validation" 1 validation -- \
+expect_err "(g) feature (gate domain, E28) sem --brief → 1/validation" 1 validation -- \
     decide --session s9 --workflow feature --mode direct
 chk_grep "(g) envelope de erro cita --brief" "$ERR" 'exige --brief'
 
 run decide --session sess-feature-brief --workflow feature --mode direct \
-    --brief "essencia: normaliza X; impacto: usuario ve Y; approach: pendente"
+    --brief "essencia: normaliza X; impacto: usuario ve Y; approach: funcao pura no parser"
 chk "(h) feature com --brief válido sai 0" "$rc" "0"
 BRIEF_REC="$MAESTRO_HOME/sessions/sess-feature-brief.json"
 chk_grep "(h) brief gravado com os 3 marcadores" "$BRIEF_REC" \

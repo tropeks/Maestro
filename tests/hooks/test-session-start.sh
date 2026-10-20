@@ -353,7 +353,7 @@ run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGE
   || bad "heurísticas+roster cortados: respeita o teto ($OUTBYTES > $B_C)"
 [[ "$OUT" != *"$HEUR_HDR"* && "$OUT" != *"$ROSTER_HDR"* ]] \
   && ok "heurísticas e roster cederam" || bad "heurísticas e roster cederam"
-[[ "$OUT" == *"$GATE_HDR"* && "$OUT" == *"Aprovo o plano?"* && "$OUT" == *"Shipo agora?"* ]] \
+[[ "$OUT" == *"$GATE_HDR"* && "$OUT" == *"gate domain ("* && "$OUT" == *"Shipo agora?"* ]] \
   && ok "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)" \
   || bad "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)"
 [[ "$OUT" == *"$BIND_HDR"* && "$OUT" == *"- implement → agent:dev-pleno"* ]] \

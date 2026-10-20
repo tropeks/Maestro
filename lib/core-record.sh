@@ -74,6 +74,19 @@ record_schema_ok() { # DATA_MODEL §3, sem campos extras
       and all($fr[]; type == "array" and (length >= 1)
         and all(.[]; type == "string" and length > 0 and length <= 200))) else true end)
     and (if has("measures") then (.measures == true) else true end)
+    and (if has("domain") then (.domain | type == "object"
+      and ((keys - ["status","scope","requests","decisions"]) | length == 0)
+      and (.status as $s | ["clear","pending","approved","approved_with_conditions","needs_evidence","revise","denied","escalate"] | index($s) != null)
+      and (.requests | type == "array")
+      and ((.status == "clear") == ((.requests | length) == 0))
+      and (if has("scope") then (.scope | type == "string" and length <= 1500) else true end)
+      and all(.requests[]; type == "object" and (.request_id | type == "string")
+        and (.domain as $d | ["security","infrastructure"] | index($d) != null))
+      and (if has("decisions") then (.decisions | type == "array"
+        and all(.[]; type == "object" and (.request_id | type == "string")
+          and (.response as $r | ["approved","approved_with_conditions","needs_evidence","revise","denied","escalate"] | index($r) != null)))
+        else true end))
+      else true end)
   ' "$f" >/dev/null 2>&1
 }
 

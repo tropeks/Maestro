@@ -127,7 +127,8 @@ jq -e '.kill_reason | test("\\uFFFD") | not' "$SYM" >/dev/null \
   && ok "sem caractere de substituição (UTF-8 não foi partido)" || bad "UTF-8 partido no corte"
 
 echo "-- E25: o doctor não cobra approach de quem descartou"
-"$BIN" decide --session sym-2 --workflow feature --mode direct \
+# E28: feature é gate domain e recusa approach pendente; fix aceita brief pendente.
+"$BIN" decide --session sym-2 --workflow fix --mode direct \
   --brief "essencia: ideia; impacto: y; approach: pendente" >/dev/null 2>&1
 "$BIN" outcome --session sym-2 killed --reason "não vale construir" >/dev/null 2>&1
 "$BIN" doctor 2>&1 | grep -q 'record sym-2: outcome registrado com approach pendente' \

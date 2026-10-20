@@ -46,7 +46,7 @@ MAESTRO_TTL_SECONDS="${MAESTRO_TTL_SECONDS:-14400}"
 
 EXPECTED_EVENTS=(SessionStart PreToolUse PostToolUse UserPromptSubmit SessionEnd Stop SubagentStop)   # S-1811 SessionEnd · S-2101 Stop · S-2301 SubagentStop
 EXPECTED_MATCHER_TOOLS=(Edit Write MultiEdit)
-RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications kill_reason fronts measures'
+RECORD_FIELDS='session_id ts expires_at workflow mode agents reason wtree outcome outcome_ts suite suite_evidence budget depth profile brief flags delegation_proof verifications kill_reason fronts measures domain'
 
 usage() {
   cat <<'U'
@@ -100,7 +100,9 @@ maestro <comando>
                   --session <id> conta a sessão · --all agrega as últimas 20 sessões
   conduct         regência (E17): muta o decision record existente — --flag
                   "sev|decisao|tradeoff|mitigacao" (repetível, acumula em .flags) e/ou
-                  --approach "texto" (fecha o approach: pendente do brief); pelo menos um
+                  --approach "texto" (fecha o approach: pendente do brief) e/ou
+                  --domain-decision '<json>' (E28: espelha a decisão do diretor do
+                  domínio vinda da Ponte no pedido do gate domain); pelo menos um
   retro           relatório de calibração (E10): agrega o log da janela (--days N) —
                   override rate, gates, smells, desfechos, critério de promoção
                   --all: soma o barramento de telemetria (E20) — outras máquinas, sem
@@ -360,6 +362,32 @@ if (!isObj(d)) {
   }
   if (!isObj(d.workflows) || Object.keys(d.workflows).length === 0)
     errs.push("workflows ausente ou vazio");
+  // E28: gate é vocabulário fechado; `domain` exige a seção `domains` com os
+  // domínios da diretoria (fonte de alçada: tropeks/spock:docs/diretoria/).
+  if (isObj(d.workflows)) {
+    const GATES = ["none", "plan", "ship", "domain"];
+    let usesDomain = false;
+    for (const [w, e] of Object.entries(d.workflows)) {
+      const g = isObj(e) ? e.gate : undefined;
+      if (g !== undefined && !GATES.includes(g))
+        errs.push("workflows." + w + ".gate fora de " + GATES.join("|") + " (achado: " + JSON.stringify(g) + ")");
+      if (g === "domain") usesDomain = true;
+    }
+    if (d.domains !== undefined) {
+      if (!isObj(d.domains)) errs.push("domains existe mas não é mapa");
+      else for (const [n, b] of Object.entries(d.domains)) {
+        if (!["security", "infrastructure"].includes(n)) errs.push("domains." + n + " fora de security|infrastructure");
+        else if (!isObj(b)) errs.push("domains." + n + " não é mapa");
+        else {
+          for (const k of Object.keys(b))
+            if (!["paths", "keywords", "dockerfile", "other"].includes(k)) errs.push("domains." + n + "." + k + " desconhecido");
+          for (const k of ["paths", "keywords", "dockerfile", "other"])
+            if (b[k] !== undefined && !(Array.isArray(b[k]) && b[k].every((x) => typeof x === "string" && x.length > 0)))
+              errs.push("domains." + n + "." + k + " não é lista de strings");
+        }
+      }
+    } else if (usesDomain) errs.push("gate: domain sem a seção domains");
+  }
   // v2 (S-401): o bloco `bindings` deixou de ser opcional — é ele que faz o
   // step referenciar comando existente. A checagem de que CADA step tem
   // binding, e de que cada alvo resolve no ambiente, é do check_bindings
@@ -1924,8 +1952,9 @@ _conduct_parse_args() { # flags do conduct (args do comando); grava sid/approach
       --session)  sid="${2:-}"; shift ;;
       --flag)     flags+=("${2:-}"); shift ;;
       --approach) approach="${2:-}"; shift ;;
+      --domain-decision) ddec="${2:-}"; ddec_set=1; shift ;;
       *) die validation "argumento desconhecido '$1'" \
-           "maestro conduct --session <id> [--flag \"sev|decisao|tradeoff|mitigacao\"]... [--approach texto]" 1 ;;
+           "maestro conduct --session <id> [--flag \"sev|decisao|tradeoff|mitigacao\"]... [--approach texto] [--domain-decision '<json>']" 1 ;;
     esac
     shift
   done
@@ -1949,6 +1978,24 @@ _conduct_flag_objs() { # valida cada --flag e acumula o JSON em flag_objs do cha
   done
 }
 
+_domain_lib_load() { # carrega lib/cmd-domain.sh (E28) — uma vez, degradando por comando (I-2)
+  declare -f cmd_domain_decision >/dev/null 2>&1 && return 0
+  if [[ -f "$REPO_DIR/lib/cmd-domain.sh" ]]; then
+    # shellcheck source=lib/cmd-domain.sh
+    source "$REPO_DIR/lib/cmd-domain.sh" && return 0
+  fi
+  die env "lib/cmd-domain.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+}
+
+_conduct_approach_ok() { # <rec> — approach exige brief; no gate domain (E28) o approach é o plano já classificado
+  jq -e 'has("brief")' "$1" >/dev/null 2>&1 || die validation "record sem brief" \
+    "approach exige brief no record (maestro decide --brief \"essencia: ... impacto: ... approach: pendente\")" 1
+  if jq -e 'has("domain")' "$1" >/dev/null 2>&1; then
+    die validation "record com gate domain: o approach é o plano já classificado" \
+      "plano mudou → decida de novo (maestro decide reclassifica e refaz o pedido)" 1
+  fi
+}
+
 cmd_conduct() { # S-1702: regência — mutação genérica do decision record
   # decide grava a APOSTA (workflow/mode/agents/depth/profile/brief); conduct
   # MUTA o record já existente, mesmo precedente de escrita de `outcome`:
@@ -1956,12 +2003,13 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
   # pelo diretor a partir dos veredicts dos agentes; (ii) fecha o `approach:`
   # pendente do brief quando o plano nasce. Verbo genérico: cobre os dois
   # pontos de enforcement do item 4 do design com um único subcomando.
-  local sid="" approach="" flags=()
+  local sid="" approach="" flags=() ddec="" ddec_set=0
   _conduct_parse_args "$@"
   [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die validation "session_id obrigatório" \
-    "maestro conduct --session <id> [--flag ...] [--approach ...]" 1
+    "maestro conduct --session <id> [--flag ...] [--approach ...] [--domain-decision ...]" 1
+  (( ddec_set == 0 )) || { _domain_lib_load; cmd_domain_decision "$sid" "$ddec" "${#flags[@]}" "$approach"; return 0; }
   if [[ ${#flags[@]} -eq 0 && -z "$approach" ]]; then
-    die validation "nada a registrar" "informe pelo menos um --flag ou --approach" 1
+    die validation "nada a registrar" "informe pelo menos um --flag, --approach ou --domain-decision" 1
   fi
   [[ -z "$approach" || "${#approach}" -le 200 ]] || die validation "--approach excede 200 chars" "" 1
   has jq || die env "conduct exige jq" "instale jq (dependência declarada)" 2
@@ -1984,8 +2032,7 @@ cmd_conduct() { # S-1702: regência — mutação genérica do decision record
 
   local approach_flag="no"
   if [[ -n "$approach" ]]; then
-    jq -e 'has("brief")' "$rec" >/dev/null 2>&1 || die validation "record sem brief" \
-      "approach exige brief no record (maestro decide --brief \"essencia: ... impacto: ... approach: pendente\")" 1
+    _conduct_approach_ok "$rec"
     approach_flag="yes"
   fi
 

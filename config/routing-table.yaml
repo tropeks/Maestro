@@ -29,8 +29,12 @@ workflows:
   # a premissa da mudança ANTES do plano; o que sobrevive vira a emenda ao doc
   # canônico (E16) que o plano cita. Mudança de produto sem interrogação era o
   # buraco entre "construir certo" e "construir o certo".
-  feature:  {steps: [interrogate, plan, implement, review, qa], gate: plan}
-  refactor: {steps: [plan, implement, review], gate: plan}
+  # gate: domain (diretoria por domínio, Capitão 19/10; E28): o plano técnico é do
+  # especialista e do gerente e segue SEM humano. Só quando o plano toca um domínio
+  # declarado em `domains:` (abaixo) o `maestro decide` abre o pedido ao diretor do
+  # domínio, pela Ponte. Era `gate: plan`; ROLLBACK = estas duas linhas de volta a plan.
+  feature:  {steps: [interrogate, plan, implement, review, qa], gate: domain}
+  refactor: {steps: [plan, implement, review], gate: domain}
   ship:     {steps: [ship], gate: ship}
   audit:    {steps: [audit], gate: none}
   # escape hatch do API_SPEC §2: tarefa que não cai em nenhum fluxo catalogado.
@@ -113,6 +117,29 @@ bindings:
   # auditoria OWASP + STRIDE. Não há agente de segurança no roster (ADR-004) e
   # o superpowers não cobre segurança; é o caso puro de "ferramenta pesada".
   audit:       skill:gstack-cso
+# ---------------------------------------------------------------------------
+# domains (E28) — gatilhos DETERMINÍSTICOS que fazem um plano de `gate: domain`
+# tocar o domínio. Quem lê: src/cli.ts (`maestro decide`), contra o brief (o
+# plano), os `--targets` e os `--effects`. Ao contrário de `routes`, aqui o
+# casamento é LEXICAL de propósito: quem decide se o pedido existe é a regra,
+# nunca o modelo. Na dúvida o gatilho casa — falso positivo custa um pedido ao
+# diretor; falso negativo custa um efeito sem autorização.
+#   paths      glob contra cada target (`**` = qualquer profundidade; padrão sem
+#              `/` casa o nome do arquivo); sem diferença de caixa
+#   keywords   início de palavra no texto do plano e nos targets (sem caixa, sem acento)
+#   dockerfile só com Dockerfile no plano: token MAIÚSCULO casa a palavra exata
+#   other      trecho literal no texto do plano (sem caixa, sem acento)
+# Nomes dos domínios e dos diretores: tropeks/spock:docs/diretoria/ (fonte única
+# de alçada). Domínio novo entra lá primeiro.
+domains:
+  security:
+    paths: [".env*", "**/auth/**", "**/secrets/**", "**/permissions/**"]
+    keywords: [auth, secret, cors, permissions]
+    dockerfile: [USER, "--privileged"]
+    other: ["porta publica", "0.0.0.0"]
+  infrastructure:
+    paths: ["**/docker*", "**/compose*.y*ml", "**/*.service", "**/cloudflared/**", "**/*.tf"]
+    keywords: [docker, compose, systemd, cloudflared, terraform, vm, dns]
 # O casamento é SEMÂNTICO, não lexical — o leitor é um LLM, não uma regex. As
 # palavras abaixo são âncoras, não a lista fechada. Estão no imperativo porque é
 # assim que o pedido chega ("adiciona o campo", não "adicionar campo") — a versão
@@ -154,8 +181,10 @@ execution_heuristics:
   # deixaria a implementação sem dono. Foi a única divergência que os dois juízes
   # cegos apontaram em todas as rodadas de avaliação.
   - "H4 decisão de arquitetura, escolha entre alternativas ou refactor amplo → engenheiro PLANEJA. Ele não escreve o código final: componha com H5 para implementar — engenheiro + especialista em mode: multi. Decisão ESTRUTURAL CRÍTICA (cross-sistema, migração de dados, concorrência, segurança, cara de reverter) → arquiteto (opus) planeja; comum fica no engenheiro"
-  # Limite conhecido: não há agente de infra/homelab no roster (ADR-004), então
-  # tarefa de infra cai em dev-pleno ou custom. Registrado em ROUTING_EVAL R8.
+  # E28: o roster ganhou `infra` (agents/infra.md), especialista que DESENHA a
+  # mudança de infraestrutura e não autoriza nada — autorizar é do diretor do
+  # domínio (`domains.infrastructure`). Fecha o limite registrado em ROUTING_EVAL R8
+  # (tarefa de infra caía em dev-pleno ou custom).
   - "H7 a PROFUNDIDADE do plano é decisão sua e vai no record (--depth): standard por padrão; deep quando a mudança toca contrato ou fronteira de doc canônico; day-zero NUNCA automático — só por decide explícito com --profile (prototipo|piloto|produto)"
   # ordem 024 fatia 1 (item 4 do escopo): binding e heurística são eixos
   # diferentes (comentário de bindings, acima) — o binding fixa O QUE roda, a

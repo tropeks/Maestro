@@ -745,6 +745,33 @@ fi
 
 # ── 5. decision record válido e não expirado (TTL 4h) ──────────────────────
 if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
+  # ── E28: gate domain — pedido ao diretor do domínio sem decisão que libere ──
+  # Só a MUTAÇÃO DEPENDENTE fica suspensa: edição em caminho do `domain.scope`
+  # (os --targets do plano). Fora dele, o record vale como sempre. O decide
+  # grava `domain` logo depois de `mode` com `status` e `scope` primeiro, então a
+  # janela de 4 KiB basta (scope ≤1500 chars). Sem campo, ou status que libera
+  # (clear/approved/approved_with_conditions), nada muda. Timeout não aprova:
+  # este bloco não olha relógio — pendente fica pendente até a decisão ou até o
+  # record expirar (e aí cai no passo 6, sem decisão).
+  _d_json=""
+  IFS= read -r -d '' -n 4096 _d_json < "$MAESTRO_SESSIONS_DIR/$SID.json" 2>/dev/null || true
+  if [[ "$_d_json" =~ \"domain\"[[:space:]]*:[[:space:]]*\{[[:space:]]*\"status\"[[:space:]]*:[[:space:]]*\"(pending|needs_evidence|revise|denied|escalate)\" ]]; then
+    _d_status="${BASH_REMATCH[1]}"
+    _d_scope=""
+    [[ "$_d_json" =~ \"scope\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9._@+/\ -]*)\" ]] && _d_scope="${BASH_REMATCH[1]}"
+    # scope ilegível com status suspensivo = suspende tudo (falha fechada no
+    # pedido aberto; o modo warn continua deixando passar com aviso).
+    if [[ -z "$_d_scope" ]] || _gate_prefix_match "$REL" "$_d_scope"; then
+      if [[ "$GATE_MODE" == "block" ]]; then
+        printf 'maestro: edição bloqueada — este caminho é alvo de um plano que tocou domínio (gate domain) e o pedido ao diretor do domínio está %s. Peça a decisão pela Ponte (director.ask/director.wait) e registre com maestro conduct --domain-decision; plano mudou, decida de novo. Timeout não aprova.\n' "$_d_status" >&2
+        log_event gate_block "${LOG_ARGS[@]}" "cmd=domain_$_d_status" "gate_mode=block"
+        exit 2
+      fi
+      printf 'maestro: aviso — editando alvo de plano com pedido de domínio %s (gate domain): a decisão vem do diretor do domínio pela Ponte; timeout não aprova.\n' "$_d_status" >&2
+      log_event gate_warn "${LOG_ARGS[@]}" "cmd=domain_$_d_status" "gate_mode=warn"
+      exit 0
+    fi
+  fi
   # ── E14/S-1402: orçamento declarado — AND-of-caps, WARN-ONLY, 1 aviso/cap ──
   # steps = gate_pass acumulado (contador próprio; ler o log no hot path
   # estouraria o NFR); minutes = agora - ts do record. cents é declarativo (o

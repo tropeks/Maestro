@@ -22,7 +22,7 @@ reviewed: b13eed1
 version: 1
 workflows:                    # catálogo de fluxos disparáveis
   fix:        {steps: [investigate, implement, review], gate: none}
-  feature:    {steps: [plan, implement, review, qa], gate: plan}      # gate humano no plano
+  feature:    {steps: [plan, implement, review, qa], gate: plan}      # gate humano no plano (E28: hoje `domain`, ver §3 v1.26)
   refactor:   {steps: [plan, implement, review], gate: plan}
   ship:       {steps: [gstack-ship], gate: ship}                      # gate humano no ship
   audit:      {steps: [gstack-cso], gate: none}
@@ -430,6 +430,42 @@ Onde o kill SOBREVIVE à sessão (o record expira em 4h) é a seção `## Fora d
 `.maestro/INTENT.md` (§13). O comando **aponta** para lá e não escreve: o INTENT é
 versionado e o hash do corpo é contrato — escrita automática viraria `--bump` em contador
 de saves, exatamente o que o E22 proibiu.
+
+#### Emenda v1.26 (E28) — `gate: domain`, a seção `domains:` e o bloco `domain` do record
+
+Direção: diretoria por domínio (Capitão, 19/10; fonte única de alçada em
+`tropeks/spock:docs/diretoria/` — MANDATOS, LIMITES, CONTRATO). Plano técnico é do
+especialista e do gerente; autorizar efeito é do diretor do domínio, e só quando o plano
+toca o domínio.
+
+**Routing table (§1).** `gate` é vocabulário fechado: `none|plan|ship|domain` (o doctor
+reprova outro valor). `feature` e `refactor` passam de `plan` a `domain`; `ship` não muda.
+`gate: domain` exige a seção nova `domains:`, só com `security` e `infrastructure`, cada um
+com listas de gatilhos determinísticos: `paths` (glob contra cada `--targets`; `**` =
+qualquer profundidade, padrão sem `/` casa o nome do arquivo, sem caixa), `keywords`
+(início de palavra no plano, sem caixa nem acento), `dockerfile` (só com Dockerfile no
+plano; token MAIÚSCULO casa a palavra exata) e `other` (trecho literal). Leitor único:
+`src/cli.ts` (`maestro decide`).
+
+**Record (§3) — campo `domain`**, só em workflow com `gate: domain`, gravado pelo
+`decide` logo depois de `mode` (o gate lê `status` e `scope` numa janela de 4 KiB):
+
+| campo | tipo | regra |
+|---|---|---|
+| `domain.status` | enum | `clear` (plano não toca domínio, sem pedido) · `pending` · `approved` · `approved_with_conditions` · `needs_evidence` · `revise` · `denied` · `escalate`. Agregado: o pior pedido vence; aprovado só com todos aprovados |
+| `domain.scope` | string | os `--targets` do plano, separados por espaço, ≤1500 chars; ausente em `clear`. É a mutação dependente que o gate suspende |
+| `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null), `intent.version`, `intent.hash` (formato de §13), `domain`, `plan.ref`, `plan.hash` (sha256 do brief+targets+effects+rollback+ordem), `targets[]`, `effects[]`, `rollback_ref` |
+| `domain.decisions[]` | array | decisões espelhadas da Ponte por `maestro conduct --domain-decision`: `decision_id`, `request_id`, `response`, `conditions[]`, `reason`, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until` |
+
+Nenhum placeholder vale como evidência: plano que toca domínio sem `--targets`,
+`--effects`, `--rollback` ou INTENT carimbado é recusado no `decide` (exit 1, nada
+gravado); `approach: pendente` não é plano em `gate: domain`. Timeout nunca aprova: o
+Maestro não sintetiza decisão; pedido sem decisão fica `pending` até a decisão ou até o
+record expirar (TTL de sempre). Re-decide do MESMO plano preserva as decisões (mesmo
+`request_id`); plano novo reabre o pedido. `domain` entra em `RECORD_FIELDS`
+(`bin/maestro`) e em `record_schema_ok` (`lib/core-record.sh`). Log: nenhuma chave nova —
+`conduct cmd=domain_<response>`, `gate_warn|gate_block cmd=domain_<status>`.
+`# classification: confidential` (alvos e efeitos revelam estrutura do projeto).
 
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)
 
