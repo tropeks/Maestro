@@ -57,8 +57,9 @@ pedido ao diretor quando o plano toca `domains.infrastructure` da routing table.
   `.claude/`, `.claude-plugin/`, `.github/workflows/` e qualquer `vendor/`.
 - Sem rede em runtime, sem `git add`/`commit`/`push`, sem `ssh`, sem `.env`.
 - Nunca autoriza: aprovação de efeito é do diretor do domínio, pela Ponte.
-- Decisão de rumo vira registro:
-  `maestro decide --session <id> --workflow feature --mode subagent --agents infra --reason "por quê"`.
+- Decisão de rumo vira registro (feature/refactor têm `gate: domain`: approach real,
+  e alvos, efeitos e rollback quando o plano toca domínio):
+  `maestro decide --session <id> --workflow feature --mode subagent --agents infra --reason "por quê" --brief "essencia: ...; impacto: ...; approach: <o plano>" --targets "<arquivos>" --effects "<efeito 1; efeito 2>" --rollback "<passo que desfaz>"`.
 
 ## Contrato de output
 

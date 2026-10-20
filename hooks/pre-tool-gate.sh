@@ -745,32 +745,69 @@ fi
 
 # ── 5. decision record válido e não expirado (TTL 4h) ──────────────────────
 if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
-  # ── E28: gate domain — pedido ao diretor do domínio sem decisão que libere ──
-  # Só a MUTAÇÃO DEPENDENTE fica suspensa: edição em caminho do `domain.scope`
-  # (os --targets do plano). Fora dele, o record vale como sempre. O decide
-  # grava `domain` logo depois de `mode` com `status` e `scope` primeiro, então a
-  # janela de 4 KiB basta (scope ≤1500 chars). Sem campo, ou status que libera
-  # (clear/approved/approved_with_conditions), nada muda. Timeout não aprova:
-  # este bloco não olha relógio — pendente fica pendente até a decisão ou até o
-  # record expirar (e aí cai no passo 6, sem decisão).
+  # ── E28: gate domain — efeito de domínio só com a decisão do diretor ──────
+  # Duas regras, para TODO record válido (de qualquer workflow):
+  #  (a) alvo do plano (`domain.scope`, os --targets) com pedido aberto: a
+  #      edição espera o status `approved` e a validade (`cleared_until`). Fora
+  #      do scope, o record vale como sempre — só a mutação dependente espera.
+  #  (b) caminho que casa `domains.<d>.paths` (ERE compilada pelo session-start
+  #      no gate-policy.sh): só passa se estiver no scope de um plano cujo pedido
+  #      de <d> foi aprovado via Ponte e não venceu (`domain.cleared`). Plano
+  #      `clear`, alvo omitido ou workflow sem gate domain não cobrem caminho de
+  #      domínio — o gate não confia só no que o gerente declarou.
+  # O decide grava `domain` logo depois de `mode` com status, scope, cleared e
+  # cleared_until primeiro, então a janela de 4 KiB basta (scope ≤1500 chars).
+  # `approved_with_conditions` não libera (o Maestro não verifica condição);
+  # aprovação registrada à mão (`via: manual`) conta como pendente. Timeout não
+  # aprova: relógio só é lido para VENCER uma aprovação, nunca para dar uma.
+  # Ponte com capability (passo 4b) fica fora: a caixa da ordem é do daemon.
   _d_json=""
   IFS= read -r -d '' -n 4096 _d_json < "$MAESTRO_SESSIONS_DIR/$SID.json" 2>/dev/null || true
-  if [[ "$_d_json" =~ \"domain\"[[:space:]]*:[[:space:]]*\{[[:space:]]*\"status\"[[:space:]]*:[[:space:]]*\"(pending|needs_evidence|revise|denied|escalate)\" ]]; then
+  _d_status=""; _d_scope=""; _d_cleared=""; _d_until=0; _d_in=0; _d_doms=""; _d_why=""; _d_cmd=""; _d_warned=""
+  if [[ "$_d_json" =~ \"domain\"[[:space:]]*:[[:space:]]*\{[[:space:]]*\"status\"[[:space:]]*:[[:space:]]*\"([a-z_]+)\" ]]; then
     _d_status="${BASH_REMATCH[1]}"
-    _d_scope=""
     [[ "$_d_json" =~ \"scope\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9._@+/\ -]*)\" ]] && _d_scope="${BASH_REMATCH[1]}"
-    # scope ilegível com status suspensivo = suspende tudo (falha fechada no
-    # pedido aberto; o modo warn continua deixando passar com aviso).
-    if [[ -z "$_d_scope" ]] || _gate_prefix_match "$REL" "$_d_scope"; then
-      if [[ "$GATE_MODE" == "block" ]]; then
-        printf 'maestro: edição bloqueada — este caminho é alvo de um plano que tocou domínio (gate domain) e o pedido ao diretor do domínio está %s. Peça a decisão pela Ponte (director.ask/director.wait) e registre com maestro conduct --domain-decision; plano mudou, decida de novo. Timeout não aprova.\n' "$_d_status" >&2
-        log_event gate_block "${LOG_ARGS[@]}" "cmd=domain_$_d_status" "gate_mode=block"
-        exit 2
+    [[ "$_d_json" =~ \"cleared\"[[:space:]]*:[[:space:]]*\"([a-z\ ]*)\" ]] && _d_cleared="${BASH_REMATCH[1]}"
+    [[ "$_d_json" =~ \"cleared_until\"[[:space:]]*:[[:space:]]*([0-9]{1,12})[,}] ]] && _d_until="${BASH_REMATCH[1]}"
+    if [[ -n "$_d_scope" ]] && _gate_prefix_match "$REL" "$_d_scope"; then _d_in=1; fi
+  fi
+  if [[ -n "$REL" ]]; then
+    _d_rel="${REL,,}"
+    [[ -n "${MAESTRO_GATE_DOMAIN_SECURITY_RE:-}" && "$_d_rel" =~ $MAESTRO_GATE_DOMAIN_SECURITY_RE ]] && _d_doms+="security "
+    [[ -n "${MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE:-}" && "$_d_rel" =~ $MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE ]] && _d_doms+="infrastructure "
+  fi
+  if [[ -n "$_d_doms" || ( -n "$_d_status" && "$_d_status" != clear ) ]]; then
+    _d_now=0
+    printf -v _d_now '%(%s)T' -1 2>/dev/null || _d_now=0
+    [[ "$_d_now" =~ ^[0-9]+$ ]] || _d_now=0
+    # (a) alvo do plano com pedido aberto. scope ilegível com status que não é
+    # clear = suspende tudo (falha fechada no pedido aberto).
+    if [[ -n "$_d_status" && "$_d_status" != clear ]] && { [[ -z "$_d_scope" ]] || (( _d_in )); }; then
+      if [[ "$_d_status" != approved ]]; then
+        _d_why="o pedido ao diretor do domínio está $_d_status"; _d_cmd="domain_$_d_status"
+      elif (( _d_until <= _d_now )); then
+        _d_why="a decisão do diretor do domínio venceu (valid_until)"; _d_cmd="domain_expired"
       fi
-      printf 'maestro: aviso — editando alvo de plano com pedido de domínio %s (gate domain): a decisão vem do diretor do domínio pela Ponte; timeout não aprova.\n' "$_d_status" >&2
-      log_event gate_warn "${LOG_ARGS[@]}" "cmd=domain_$_d_status" "gate_mode=warn"
-      exit 0
     fi
+    # (b) caminho de domínio.
+    if [[ -z "$_d_why" && -n "$_d_doms" ]]; then
+      for _d in $_d_doms; do
+        if (( _d_in == 0 )) || [[ " $_d_cleared " != *" $_d "* ]] || (( _d_until <= _d_now )); then
+          _d_why="o caminho é de domínio ($_d) e nenhum plano com pedido aprovado pelo diretor o cobre"; _d_cmd="domain_path"
+          break
+        fi
+      done
+    fi
+  fi
+  if [[ -n "$_d_why" ]]; then
+    if [[ "$GATE_MODE" == "block" ]]; then
+      printf 'maestro: edição bloqueada (gate domain) — %s. Liste o caminho em --targets de um maestro decide feature|refactor: o decide abre o pedido; a decisão vem pela Ponte (director.ask, director.wait) e o Maestro a registra sozinho. Plano mudou, decida de novo. Timeout não aprova.\n' "$_d_why" >&2
+      log_event gate_block "${LOG_ARGS[@]}" "cmd=$_d_cmd" "gate_mode=block"
+      exit 2
+    fi
+    printf 'maestro: aviso (gate domain) — %s; a decisão vem do diretor do domínio pela Ponte, timeout não aprova.\n' "$_d_why" >&2
+    log_event gate_warn "${LOG_ARGS[@]}" "cmd=$_d_cmd" "gate_mode=warn"
+    _d_warned=1
   fi
   # ── E14/S-1402: orçamento declarado — AND-of-caps, WARN-ONLY, 1 aviso/cap ──
   # steps = gate_pass acumulado (contador próprio; ler o log no hot path
@@ -778,9 +815,7 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
   # hook não enxerga custo) — vive no record para o retro correlacionar.
   # Estouro NUNCA bloqueia: orçamento é sinal de deriva, não trava (pesquisa
   # RAD, Contract 2). Falha de qualquer parte degrada em silêncio.
-  _b_rec="$MAESTRO_SESSIONS_DIR/$SID.json"
-  _b_json=""
-  IFS= read -r -d '' -n 4096 _b_json < "$_b_rec" 2>/dev/null || true
+  _b_json="$_d_json"
   if [[ "$_b_json" == *'"budget"'* ]]; then
     _b_steps=""; _b_min=""
     [[ "$_b_json" =~ \"steps\":([0-9]{1,4}) ]] && _b_steps="${BASH_REMATCH[1]}"
@@ -814,7 +849,8 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
     printf '%s\t%s\n' "$_b_cnt" "$_b_warned" > "$_b_cnt_f.tmp.$$" 2>/dev/null \
       && mv -f "$_b_cnt_f.tmp.$$" "$_b_cnt_f" 2>/dev/null || rm -f "$_b_cnt_f.tmp.$$" 2>/dev/null || :
   fi
-  log_event gate_pass "${LOG_ARGS[@]}"
+  # E28: o aviso do gate domain (modo warn) já é o evento desta edição.
+  [[ -n "$_d_warned" ]] || log_event gate_pass "${LOG_ARGS[@]}"
   exit 0
 fi
 

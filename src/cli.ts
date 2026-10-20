@@ -430,14 +430,14 @@ function projectIntent(): { version: number; hash: string } | null {
   }
   const lines = raw.split("\n");
   let version: number | null = null;
+  let stamped: string | null = null;
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
     const l = lines[i]!;
     if (l === "-->") break;
     const m = /^version: ([0-9]{1,9})$/.exec(l);
-    if (m) {
-      version = Number(m[1]);
-      break;
-    }
+    if (m && version === null) version = Number(m[1]);
+    const h = /^hash: ([0-9a-f]{8})$/.exec(l);
+    if (h && stamped === null) stamped = h[1]!;
   }
   if (version === null || version < 1) return null;
   let off = lines[0]!.length + 1;
@@ -449,7 +449,11 @@ function projectIntent(): { version: number; hash: string } | null {
       break;
     }
   }
-  return { version, hash: sha256Hex(body).slice(0, 8) };
+  const hash = sha256Hex(body).slice(0, 8);
+  // Corpo editado desde o carimbo: a versão não corresponde mais ao texto, e o
+  // pedido citaria uma direção que não é a do disco (maestro intent --bump).
+  if (stamped !== hash) return null;
+  return { version, hash };
 }
 
 interface DomainRequest {
@@ -464,10 +468,18 @@ interface DomainRequest {
   rollback_ref: string;
 }
 
-/** Bloco `domain` do record — `status` e `scope` PRIMEIRO: o gate os lê por regex. */
+/**
+ * Bloco `domain` do record — `status`, `scope`, `cleared` e `cleared_until`
+ * PRIMEIRO: o gate os lê por regex numa janela de 4 KiB. `cleared` = domínios
+ * com aprovação `approved` espelhada da Ponte (via=ponte) e não vencida;
+ * `cleared_until` = a menor validade delas, em epoch (0 = nenhuma). Mesma conta
+ * de hooks/lib/domain-record.sh (DOMAIN_RECOMPUTE_JQ).
+ */
 interface DomainBlock {
   status: string;
   scope?: string;
+  cleared: string;
+  cleared_until: number;
   requests: DomainRequest[];
   decisions?: Array<Record<string, unknown>>;
 }
@@ -813,6 +825,16 @@ function decideDomain(
         "remova essas opções ou use um workflow com gate domain (feature, refactor)",
       );
     }
+    // Trocar de workflow não apaga um pedido que não liberou: a suspensão
+    // sumiria junto com o bloco `domain`.
+    const pst = prev?.domain?.status;
+    const vivo = prev?.expires_at ? Date.parse(prev.expires_at) > Date.now() : false;
+    if (vivo && typeof pst === "string" && pst !== "clear" && pst !== "approved") {
+      throw invalid(
+        `a sessão tem pedido de domínio ${pst}: trocar para '${workflow}' (sem gate domain) apagaria a suspensão`,
+        "espere a decisão pela Ponte, ou decida de novo com gate domain e um plano novo",
+      );
+    }
     return null;
   }
   if (brief === undefined) {
@@ -868,8 +890,10 @@ function decideDomain(
   const hits = classifyPlan(table.domains ?? {}, text, targets);
   if (hits.size === 0) {
     return {
-      block: { status: "clear", requests: [] },
-      text: "gate domain: o plano não toca domínio declarado — segue sem pedido.\n",
+      block: { status: "clear", cleared: "", cleared_until: 0, requests: [] },
+      text:
+        "gate domain: o plano não toca domínio declarado — segue sem pedido.\n" +
+        "  caminho de domínio (domains.*.paths) fora de um plano aprovado continua suspenso no gate.\n",
     };
   }
 
@@ -880,7 +904,7 @@ function decideDomain(
   if (effects.length === 0) missing.push("--effects");
   if (rollback === "") missing.push("--rollback");
   if (project === null) missing.push("projeto (nome do diretório)");
-  if (intent === null) missing.push("INTENT carimbado (maestro intent --check)");
+  if (intent === null) missing.push("INTENT carimbado e sem edição desde o carimbo (maestro intent --check / --bump)");
   const touched = [...hits.keys()];
   if (missing.length > 0) {
     throw invalid(
@@ -905,17 +929,18 @@ function decideDomain(
   }));
 
   // Re-decide do MESMO plano preserva as decisões já espelhadas (mesmo
-  // request_id); plano novo = pedido novo, e decisão velha não vale para ele.
+  // request_id) que não venceram; plano novo = pedido novo, e decisão velha
+  // não vale para ele. Vencida, a decisão não cobre execução nova (CONTRATO).
   const ids = new Set(requests.map((r) => r.request_id));
+  const nowS = Math.floor(Date.now() / 1000);
   const kept = (prev?.domain?.decisions ?? []).filter(
-    (x) => typeof x?.request_id === "string" && ids.has(x.request_id as string),
+    (x) =>
+      typeof x?.request_id === "string" &&
+      ids.has(x.request_id as string) &&
+      typeof x.until_epoch === "number" &&
+      x.until_epoch > nowS,
   );
-  const block: DomainBlock = {
-    status: domainStatus(requests, kept),
-    scope,
-    requests,
-    ...(kept.length ? { decisions: kept } : {}),
-  };
+  const block = domainBlock(requests, kept, scope, nowS);
 
   let out =
     `gate domain: o plano toca ${touched.join(", ")} — pedido ao diretor do domínio registrado (status: ${block.status}).\n` +
@@ -924,27 +949,48 @@ function decideDomain(
     out += `  ${r.domain}: ${hits.get(r.domain)!.join(", ")}\n`;
   }
   out +=
-    "  com a Ponte: director.ask com o pedido abaixo, director.wait em laço; registre a resposta com\n" +
-    `    maestro conduct --session ${session} --domain-decision '<json da decisão>'\n` +
-    "  sem a Ponte: leve o pedido ao humano responsável; nada segue por silêncio.\n";
+    "  com a Ponte: director.ask com as linhas `pedido:` abaixo, director.wait em laço; a resposta\n" +
+    "    do director.wait é registrada no record sozinha (hook do Maestro) e libera os alvos aprovados.\n" +
+    "  sem a Ponte: leve o pedido ao humano responsável; registro manual não libera, nada segue por silêncio.\n";
   for (const r of requests) out += `pedido: ${JSON.stringify(r)}\n`;
   return { block, text: out };
 }
 
-/** Status agregado: o pior vence; aprovado só quando todos os pedidos foram aprovados. */
-function domainStatus(
+/**
+ * Bloco recalculado — a MESMA conta de hooks/lib/domain-record.sh: o pior pedido
+ * vence; aprovação que não veio da Ponte (`via` ≠ ponte) conta como pendente;
+ * `cleared` só com `approved` via Ponte e não vencido.
+ */
+function domainBlock(
   requests: DomainRequest[],
   decisions: Array<Record<string, unknown>>,
-): string {
+  scope: string,
+  nowS: number,
+): DomainBlock {
   const order = ["denied", "revise", "escalate", "needs_evidence", "pending", "approved_with_conditions", "approved"];
   let worst = order.length - 1;
+  const cleared = new Set<string>();
+  let until = 0;
   for (const r of requests) {
     const d = [...decisions].reverse().find((x) => x.request_id === r.request_id);
-    const resp = typeof d?.response === "string" ? d.response : "pending";
+    let resp = typeof d?.response === "string" ? d.response : "pending";
+    if (resp.startsWith("approved") && d?.via !== "ponte") resp = "pending";
     const i = order.indexOf(resp);
     worst = Math.min(worst, i < 0 ? order.indexOf("pending") : i);
+    const ue = typeof d?.until_epoch === "number" ? d.until_epoch : 0;
+    if (resp === "approved" && ue > nowS) {
+      cleared.add(r.domain);
+      until = until === 0 ? ue : Math.min(until, ue);
+    }
   }
-  return order[worst]!;
+  return {
+    status: requests.length === 0 ? "clear" : order[worst]!,
+    scope,
+    cleared: [...cleared].sort().join(" "),
+    cleared_until: until,
+    requests,
+    ...(decisions.length ? { decisions } : {}),
+  };
 }
 
 function cmdDecide(args: Args): number {
@@ -1746,7 +1792,11 @@ const USAGE = `maestro <comando>
          [--depth standard|deep|day-zero] [--profile prototipo|piloto|produto]
                                                  profundidade do plano (E17); profile obrigatório em day-zero
          [--brief "essencia: ...; impacto: ...; approach: ..."]
-                                                 brief regido; exigido quando o workflow tem gate:plan
+                                                 brief regido; exigido com gate plan e gate domain
+                                                 (no gate domain, approach real: pendente é recusa)
+         [--targets a,b] [--effects "e1; e2"] [--rollback "..."] [--order <ref>]
+                                                 gate domain (E28): alvos, efeitos e rollback do plano;
+                                                 exigidos quando o plano toca domínio (pedido ao diretor)
   status [--session <id>]                      decisão corrente, kill-switch, últimos eventos
   log    [--summary] [--limit N]               eventos do routing.jsonl (--summary = painel)
 opções globais: --debug (mostra stack trace)

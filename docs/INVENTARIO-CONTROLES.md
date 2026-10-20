@@ -35,6 +35,7 @@ Ordem 061, autorizada pela v59 item 4 do INTENT do spock ("enxugar"; o INTENT ca
 | hook:pre-bash-guard | bloqueia comando destrutivo e escrita em self_paths por Bash; avisa em modo warn | L=1110 T=1848 2026-09-03..2026-10-04 | t=44ms m=1p/4c | sim — gate_block cmd=accept x6 (2026-09-25..2026-10-02): o executor tentou aceitar a própria ordem | fica — barato (44 ms) e com bloqueios nomeados por classe |
 | hook:pre-agent | registra delegation phase=started por disparo de subagente | L=681 T=681 2026-09-08..2026-10-03 | t=40ms m=0p/1c | sim — é a prova de delegação que o outcome accepted exige (E23a); 681 started no ledger | fica — sem ele a prova de delegação some |
 | hook:pre-director-ask | registra o marcador director_ask que libera o Stop | L=175 T=175 2026-09-19..2026-10-03 | t=53ms m=0p/1c | sim — ordem 029: 175 director_ask no ledger liberam o Stop contra evidência, não contra prosa | fica — é a metade do gate-report |
+| hook:post-director-wait | registra no decision record a decisão de domínio que vem no resultado do director_wait, via=ponte | L=0 T=0 | t=sem fonte m=0p/1c | sem evidência | fica — é o único caminho de runtime que libera o gate domain; nasceu depois desta medição (E28, 2026-10-20), sem disparo medido |
 | hook:user-prompt-submit | registra override_manual e route_fix (só o nome do comando, nunca o prompt) | L=456 T=484 2026-09-07..2026-10-03 | t=47ms m=0p/4c | sem evidência | fica — alimenta a métrica principal (ADR-008) e o retro; nunca bloqueia |
 | hook:post-edit-habits | avisa o smell achado na edição, com o guia | L=1087 T=1562 2026-09-06..2026-10-04 | t=97ms m=2p/7c | sim — ordem 045 pagou a dívida que os sensores apontavam (oversized-function 6, deep-nesting 10; merge 762c316) | fica — o aviso é o que sustenta o ganho dos sensores |
 | hook:session-end | registra session_end com decided e settled | L=226 T=228 2026-09-03..2026-10-04 | t=125ms m=0p/3c | sem evidência | vira opcional — só o retro lê; 125 ms ao fechar a sessão; não bloqueia nem avisa |
@@ -88,6 +89,7 @@ Uma linha por controle da tabela, com a mesma proposta. Nada abaixo foi executad
 - `hook:pre-bash-guard` — fica — barato e com bloqueios nomeados por classe
 - `hook:pre-agent` — fica — é a prova de delegação que o outcome accepted exige
 - `hook:pre-director-ask` — fica — metade do gate-report, 175 liberações
+- `hook:post-director-wait` — fica — único caminho de runtime que libera o gate domain (E28, depois desta medição)
 - `hook:user-prompt-submit` — fica — alimenta a métrica principal e o retro; nunca bloqueia
 - `hook:post-edit-habits` — fica — o aviso sustenta o ganho dos sensores
 - `hook:session-end` — vira opcional — só o retro lê; 125 ms ao fechar; não bloqueia nem avisa

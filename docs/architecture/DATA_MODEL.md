@@ -448,23 +448,45 @@ plano; token MAIÚSCULO casa a palavra exata) e `other` (trecho literal). Leitor
 `src/cli.ts` (`maestro decide`).
 
 **Record (§3) — campo `domain`**, só em workflow com `gate: domain`, gravado pelo
-`decide` logo depois de `mode` (o gate lê `status` e `scope` numa janela de 4 KiB):
+`decide` logo depois de `mode`, com as chaves nesta ordem (o gate lê `status`, `scope`,
+`cleared` e `cleared_until` numa janela de 4 KiB):
 
 | campo | tipo | regra |
 |---|---|---|
 | `domain.status` | enum | `clear` (plano não toca domínio, sem pedido) · `pending` · `approved` · `approved_with_conditions` · `needs_evidence` · `revise` · `denied` · `escalate`. Agregado: o pior pedido vence; aprovado só com todos aprovados |
 | `domain.scope` | string | os `--targets` do plano, separados por espaço, ≤1500 chars; ausente em `clear`. É a mutação dependente que o gate suspende |
-| `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null), `intent.version`, `intent.hash` (formato de §13), `domain`, `plan.ref`, `plan.hash` (sha256 do brief+targets+effects+rollback+ordem), `targets[]`, `effects[]`, `rollback_ref` |
-| `domain.decisions[]` | array | decisões espelhadas da Ponte por `maestro conduct --domain-decision`: `decision_id`, `request_id`, `response`, `conditions[]`, `reason`, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until` |
+| `domain.cleared` | string | domínios cujo pedido tem `approved` espelhado da Ponte (`via: ponte`) e não vencido, separados por espaço (`""` = nenhum). É o que libera caminho de domínio no gate |
+| `domain.cleared_until` | inteiro | menor `valid_until` (epoch) entre essas aprovações; `0` = nenhuma. Vencida, a aprovação não cobre edição nova |
+| `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null = sessão sem ordem), `intent.version`, `intent.hash` (formato de §13; carimbo com hash ≠ corpo é recusa), `domain`, `plan.ref`, `plan.hash`, `targets[]`, `effects[]`, `rollback_ref` |
+| `domain.decisions[]` | array | decisões no contrato (`decision_id`, `request_id`, `response`, `conditions[]`, `reason`, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until`) mais dois campos do espelho: `via` (`ponte` = resultado da tool `director_wait`, gravado pelo hook; `manual` = `conduct --domain-decision`) e `until_epoch` (o `valid_until` em epoch). `label` é derivado de role/domain, nunca lido do cliente |
+
+**`plan.ref` e `plan.hash`.** `plan.ref` = `maestro:sessions/<sessão>#brief`: o plano é o
+`brief` do record da sessão, que o ponte-daemon (mesma forge) lê de
+`$MAESTRO_HOME/sessions/<sessão>.json` para conferir o pedido. `plan.hash` = sha256 (64
+hex) do JSON compacto `{"brief","targets","effects","rollback_ref","order_ref"}`, nessa
+ordem de chaves, com os valores do pedido e o `brief` do record — a Ponte recalcula e
+recusa o pedido que divergir (`hashDoPlanoMaestro`, ponte-daemon). O record vive o TTL de
+sempre (4h); um plano que precise durar mais que isso, ou viver no git, é mudança de
+contrato nos dois repositórios (CONTRATO.md fala em "caminho versionado").
+
+**Status agregado.** O pior pedido vence (`denied` < `revise` < `escalate` <
+`needs_evidence` < `pending` < `approved_with_conditions` < `approved`). Aprovação com
+`via: manual` conta como `pending`. `approved_with_conditions` não libera edição: o Maestro
+não verifica condição (a Ponte também não executa ação com condição em texto); cumpridas
+as condições, a nova decisão vem pela Ponte. A mesma conta está em `src/cli.ts`
+(`domainBlock`) e `hooks/lib/domain-record.sh` (`DOMAIN_RECOMPUTE_JQ`).
 
 Nenhum placeholder vale como evidência: plano que toca domínio sem `--targets`,
 `--effects`, `--rollback` ou INTENT carimbado é recusado no `decide` (exit 1, nada
 gravado); `approach: pendente` não é plano em `gate: domain`. Timeout nunca aprova: o
 Maestro não sintetiza decisão; pedido sem decisão fica `pending` até a decisão ou até o
-record expirar (TTL de sempre). Re-decide do MESMO plano preserva as decisões (mesmo
-`request_id`); plano novo reabre o pedido. `domain` entra em `RECORD_FIELDS`
+record expirar (TTL de sempre). Re-decide do MESMO plano preserva as decisões não
+vencidas (mesmo `request_id`); plano novo reabre o pedido. `domain` entra em `RECORD_FIELDS`
 (`bin/maestro`) e em `record_schema_ok` (`lib/core-record.sh`). Log: nenhuma chave nova —
-`conduct cmd=domain_<response>`, `gate_warn|gate_block cmd=domain_<status>`.
+`conduct cmd=domain_<response> via=auto|manual`, `gate_warn|gate_block
+cmd=domain_<status>|domain_expired|domain_path`. Política do gate (`gate-policy.sh`):
+`MAESTRO_GATE_DOMAIN_SECURITY_RE` e `MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE`, as globs de
+`domains.<d>.paths` compiladas pelo session-start em ERE (mesma semântica do decide).
 `# classification: confidential` (alvos e efeitos revelam estrutura do projeto).
 
 ### 4. Log — `~/.maestro/logs/routing.jsonl` (append-only)

@@ -15,7 +15,7 @@
 # sem fork, sem rede.
 
 # Texto fixo, ASCII, nunca cita o pedido (alvos e efeitos são do projeto).
-MCP_DOMAIN_REASON_JSON='{"decision":"block","reason":"maestro: o plano desta sessao tocou dominio (gate domain) e o pedido ao diretor do dominio esta pendente. Chame a tool MCP director.ask uma vez com o pedido que o maestro decide imprimiu, depois director.wait em laco (ate 5 min por chamada, teto de 30 min). Registre a resposta com maestro conduct --domain-decision. Sem resposta, a edicao dos alvos do plano segue suspensa: timeout nao aprova."}'
+MCP_DOMAIN_REASON_JSON='{"decision":"block","reason":"maestro: o plano desta sessao tocou dominio (gate domain) e o pedido ao diretor do dominio esta pendente. Chame a tool MCP director.ask uma vez com o pedido que o maestro decide imprimiu, depois director.wait em laco (ate 5 min por chamada, teto de 30 min). A resposta do director.wait e registrada sozinha pelo maestro, sem conduct. Sem resposta, a edicao dos alvos do plano segue suspensa: timeout nao aprova."}'
 
 # maestro_domain_read <corpo do record> <settled 0|1>
 #   rc 0 = record de workflow com `gate: domain` (tem o bloco `domain`); rc 1 = não.
@@ -33,7 +33,8 @@ maestro_domain_read() {
   done
   dom_names="${dom_names%, }"
   case "$dom_status" in
-    pending|needs_evidence|revise|denied|escalate) if [[ "$settled" == 0 ]]; then dom_gate="domain"; fi ;;
+    # approved_with_conditions também: não libera a edição (o Maestro não verifica condição).
+    pending|needs_evidence|revise|denied|escalate|approved_with_conditions) if [[ "$settled" == 0 ]]; then dom_gate="domain"; fi ;;
   esac
   return 0
 }

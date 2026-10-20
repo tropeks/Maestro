@@ -23,11 +23,17 @@ from the decision log and tag messages when this file was introduced.
   `systemd`, `cloudflared`, `terraform`, `vm`, `dns`) o `maestro decide` registra o pedido ao diretor do domínio com o contrato
   mínimo (`domain.requests[]` no record: projeto, ordem, INTENT versão+hash, domínio, plano ref+hash, alvos, efeitos, rollback).
   Novas opções do `decide`: `--targets`, `--effects`, `--rollback`, `--order`; `approach: pendente` não vale em `gate: domain` e
-  pedido sem contrato completo é recusado. A decisão vem pela Ponte (`director.ask`/`director.wait`) e é espelhada com
-  `maestro conduct --domain-decision '<json>'` (recusa diretor de outro domínio, aprovação mecânica — timeout nunca aprova —,
-  INTENT diferente, validade vencida e segunda resolução). O `pre-tool-gate` suspende só a mutação dependente (os alvos do plano;
-  `block` = exit 2, `warn` = aviso); o Stop segura a rodada pela Ponte quando o pedido está pendente, e sem Ponte cai no fluxo
-  manual (arquivo de gate + herdr). `gate: ship` não muda. Rollback: `gate: plan` de volta nas duas linhas da tabela.
+  pedido sem contrato completo, ou com INTENT editado desde o carimbo, é recusado. A decisão vem pela Ponte
+  (`director.ask`/`director.wait`) e o hook novo `post-director-wait.sh` (PostToolUse) a espelha no record a partir do
+  resultado da tool (via=ponte). `maestro conduct --domain-decision '<json>'` fica como registro manual: grava via=manual e não
+  libera (identidade de quem decidiu nunca sai de texto do cliente; `label` é derivado). Recusas do contrato nos dois caminhos:
+  diretor de outro domínio, aprovação mecânica — timeout nunca aprova —, INTENT diferente, validade vencida, segunda resolução.
+  O `pre-tool-gate`, em todo record válido, suspende a mutação dependente (alvos do plano sem `approved` válido) e todo caminho
+  de `domains.*.paths` fora de plano aprovado pela Ponte — plano `clear`, alvo omitido ou workflow sem gate domain não cobrem
+  `.env*` nem `compose*.yml` (`block` = exit 2, `warn` = aviso e segue o fluxo). `approved_with_conditions` e aprovação vencida
+  não liberam; trocar de workflow com pedido aberto é recusado. O Stop segura a rodada pela Ponte quando o pedido está
+  pendente, e sem Ponte cai no fluxo manual (arquivo de gate + herdr). `gate: ship` não muda. Rollback: `gate: plan` de volta
+  nas duas linhas da tabela.
   `hooks/`, `bin/` e `src/` estão na denylist de autoproteção: na forge, a aplicação é da mão humana. Teste:
   `tests/hooks/test-gate-domain.sh`. Docs: DATA_MODEL §3 v1.26, API_SPEC (gate domain), EPICS E28.
 - **`evidence --record --label order-N` aceita o fim composto como `bash -c '<texto>'` (ordem 079).** Além da comparação por palavras da 078,

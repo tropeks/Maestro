@@ -695,18 +695,43 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   `domain.requests[]` com `status: pending`, e a saída imprime cada pedido (`pedido: {json}`)
   e o caminho: com a Ponte, `director.ask` + `director.wait`; sem a Ponte, o humano.
   `--targets/--effects/--rollback/--order` fora de `gate: domain` → exit 1.
-- `conduct --domain-decision` (sozinho): espelha a decisão que veio da Ponte, contra o
-  pedido do próprio record. Recusa (exit 1, record intacto): campo fora ou faltando do
-  contrato, `request_id` alheio, `response` fora do enum, `approved_with_conditions` sem
-  condição, diretor (`decided_by.role: director_domain`) de outro domínio, aprovação com
+  Recusa também: INTENT editado desde o carimbo (hash do carimbo ≠ hash do corpo →
+  `maestro intent --bump`) e, com pedido que não liberou (`status` fora de
+  `clear|approved`) num record vivo, trocar para workflow sem `gate: domain` (a suspensão
+  sumiria com o bloco). `--order` é opcional: sem ele, `order_ref: null` (sessão sem
+  ordem), que o ponte-daemon aceita.
+- **Espelho da decisão — `hooks/post-director-wait.sh`** (PostToolUse, matcher
+  `mcp__.*director_wait`; só `mcp__ponte__director_wait` ou `mcp__plugin_*_ponte__director_wait`):
+  lê do `tool_response` as linhas `decisao: {json}` (uma por pedido, ponte-daemon) e grava
+  cada decisão no record com `via: ponte`. O resultado da tool é do servidor MCP, não do
+  modelo: é a única prova de runtime que o Maestro tem de quem decidiu. Mesmas recusas do
+  contrato abaixo (decisão recusada é ignorada, sem erro). Sempre exit 0, nada no stdout;
+  log `conduct cmd=domain_<response> via=auto`.
+- `conduct --domain-decision` (sozinho): registro MANUAL (caminho degradado, sem Ponte),
+  contra o pedido do próprio record, gravado com `via: manual`. **Não libera nada:**
+  aprovação manual conta como `pending` no status. Recusa (exit 1, record intacto): campo
+  fora ou faltando do contrato, `request_id` alheio, `response` fora do enum,
+  `approved_with_conditions` sem condição, diretor (`decided_by.role: director_domain`) de
+  outro domínio, domínio em papel que não é `director_domain`, aprovação com
   `role: mechanical` (timeout nunca aprova), `intent` diferente do pedido, `valid_until`
-  vencido, `decision_id` repetido e segunda resolução de pedido já resolvido (só
-  `needs_evidence`/`escalate` admitem nova decisão). `conduct --approach` em record com
-  `domain` → exit 1 (plano mudou: decida de novo).
-- `pre-tool-gate.sh` (passo 5): com record válido e `domain.status` em
-  `pending|needs_evidence|revise|denied|escalate`, edição em caminho do `domain.scope` é
-  a mutação dependente: `block` → exit 2; `warn` → aviso + `gate_warn cmd=domain_<status>`.
-  Fora do scope, e com `clear|approved|approved_with_conditions`, o record vale como sempre.
+  vencido, `decision_id` repetido e segunda resolução de pedido já resolvido pela Ponte
+  (só `needs_evidence`/`escalate`/`approved_with_conditions` admitem nova decisão).
+  `decided_by.label` nunca é lido do cliente: sai de role/domain (`diretor-seguranca`,
+  `diretor-infra`, `spock`, `capitao`, `mecanico`). `conduct --approach` em record com
+  `domain` → exit 1 (plano mudou: decida de novo). **Autoridade:** o espelho é
+  anti-descuido (ADR-003 v1.1); quem tem o mesmo uid reescreve o record à mão. A trava do
+  efeito é da Ponte.
+- `pre-tool-gate.sh` (passo 5), para todo record válido, de qualquer workflow:
+  (a) edição em caminho do `domain.scope` com `domain.status` diferente de `clear` só passa
+  com `approved` e `domain.cleared_until` no futuro (`approved_with_conditions` não libera:
+  o Maestro não verifica condição); (b) caminho que casa `domains.<d>.paths` (ERE compilada
+  pelo session-start no `gate-policy.sh`, `MAESTRO_GATE_DOMAIN_<D>_RE`) só passa se estiver
+  no scope e `<d>` estiver em `domain.cleared` — plano `clear`, alvo omitido e workflow sem
+  gate domain não cobrem caminho de domínio. `block` → exit 2 + `gate_block
+  cmd=domain_<status>|domain_expired|domain_path`; `warn` → aviso + `gate_warn` com o mesmo
+  `cmd` e segue o fluxo normal (orçamento do E14 conta o passo; sem `gate_pass` extra).
+  Fora disso, o record vale como sempre. Runs com `PONTE_CAPABILITY_ORDEM` (passo 4b) ficam
+  fora: a caixa da ordem é do daemon.
 - `gate-report.sh` (Stop): record com `domain` nunca abre gate plan. Status que não libera
   → `gate=domain` no arquivo do herdr (`gate domain · <projeto> · <domínios> · <status>`).
   Com `pending` e socket da Ponte presente, imprime `{"decision":"block"}` com reason fixa
