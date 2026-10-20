@@ -172,25 +172,16 @@ dec() { # dec <decision_id> <response> <role> <domain|null> [valid_until] [inten
      policy_ref:"MANDATOS.md#security", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }
 cdd() { OUT=$("$BIN" conduct --session dm-env --domain-decision "$1" 2>&1); RC=$?; }
-# wait_hook <sid> <decisão...> — o resultado do director_wait como o servidor MCP o devolve:
-# blocos de texto com o JSON do DirectorWaitOutput: a nota com uma linha `decisao:` por pedido
-# (texto) e o campo `domain_decisions[]` na raiz, que é o único que o hook lê (R13 da v1.28).
+# wait_hook <sid> <decisão...> — o director_wait como o servidor MCP devolve: a nota em texto e
+# `domain_decisions[]` na raiz do DirectorWaitOutput, o único que o hook lê (R13 da v1.28).
 wait_hook() {
   local sid="$1" tool="${TOOL:-mcp__ponte__director_wait}" note=""; shift
   for d in "$@"; do note+="decisao: $d"$'\n'; done
   jq -nc --arg sid "$sid" --arg tool "$tool" --arg note "${note%$'\n'}" '
     {session_id:$sid, hook_event_name:"PostToolUse", tool_name:$tool, tool_input:{decision_id:"01ABC"},
      tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$note,
-       resolvido_em:"2026-10-20T00:00:00Z", domain_decisions:[$ARGS.positional[] | fromjson? | objects]} | tojson)}]}' \
-    --args "$@" | bash "$WAIT" >/dev/null 2>&1
+       resolvido_em:"2026-10-20T00:00:00Z", domain_decisions:[$ARGS.positional[] | fromjson? | objects]} | tojson)}]}' --args "$@" | bash "$WAIT" >/dev/null 2>&1
   WRC=$?
-}
-# wait_hook_so_nota <sid> <nota> — só a `resposta` em texto, sem `domain_decisions[]` (daemon velho ou nota forjada).
-wait_hook_so_nota() {
-  jq -nc --arg sid "$1" --arg note "$2" '
-    {session_id:$sid, hook_event_name:"PostToolUse", tool_name:"mcp__ponte__director_wait", tool_input:{decision_id:"01ABC"},
-     tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:$note} | tojson)}]}' \
-    | bash "$WAIT" >/dev/null 2>&1
 }
 st() { jq -r '.domain.status' "$(REC "$1")"; }
 
