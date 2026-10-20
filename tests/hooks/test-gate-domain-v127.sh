@@ -3,9 +3,11 @@
 # DATA_MODEL domain_request e domain_decision). Par de test-gate-domain.sh. Cobre:
 # rollback como caminho do projeto com âncora opcional que resolve; o reason fora
 # da classificação (o roteador do ponte-daemon não o lê); a lista domain_requests
-# que vai no director.ask; a forma nova da decisão (condições com check_ref, reason
-# até 500, revogação só pelo espelho, campo domain_decisions só na raiz do resultado);
-# e o run headless que espera por director.wait_for. Hermético (mktemp -d).
+# que vai no director.ask; a forma da decisão do CONTRATO v2 (condições {texto,
+# check_ref}, reason até 120 no charset da Ponte, escalate_to/escalation_class,
+# revoked_at com o revoked antigo lido por compatibilidade, revogação só pelo espelho,
+# campo domain_decisions só na raiz do resultado); e o run headless que espera por
+# director.wait_for. Hermético (mktemp -d).
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -91,7 +93,7 @@ VU=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
 dec() { # dec <decision_id> <response> <domain> <request_id>
   jq -nc --arg did "$1" --arg r "$2" --arg d "$3" --arg rid "$4" --arg vu "$VU" --arg ih "$IH" '
     {decision_id:$did, request_id:$rid, response:$r,
-     conditions:(if $r == "approved_with_conditions" then ["sem segredo no log"] else [] end),
+     conditions:(if $r == "approved_with_conditions" then [{texto:"sem segredo no log", check_ref:null}] else [] end),
      reason:"plano verificado", decided_by:{role:"director_domain", domain:$d, label:"x"},
      policy_ref:"MANDATOS.md#v1", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }
@@ -104,25 +106,56 @@ wait_hook() { # wait_hook <sid> <decisão> — como o ponte-daemon devolve: a li
     | bash "$WAIT" >/dev/null 2>&1
 }
 
-echo "-- forma da decisão: conditions {texto, check_ref}, reason até 500, revoked"
+echo "-- forma da decisão (CONTRATO v2): conditions, reason, escalada, revoked_at"
 COND='[{"texto":"segredo so por referencia, conferido no recibo","check_ref":"maestro:evidence/e1"}]'
 cdd "$(dec v1 approved_with_conditions security "$RID" | jq -c --argjson c "$COND" '.conditions = $c')"
 chk "conditions como {texto, check_ref}: aceito" "$RC" "0"
-cdd "$(dec v2 approved_with_conditions security "$RID" | jq -c '.conditions = [{"texto":"x"}]')"
-chk "condição sem check_ref recusada" "$RC" "1"
-cdd "$(dec v2 approved_with_conditions security "$RID" | jq -c '.conditions = [range(9) | "c\(.)"]')"
-chk "mais de 8 condições recusado" "$RC" "1"
-cdd "$(dec v3 approved security "$RID" | jq -c --arg r "$(printf 'r%.0s' {1..200})" '.reason = $r')"
-chk "reason de 200 chars: aceito" "$RC" "0"
-cdd "$(dec v4 approved security "$RID" | jq -c --arg r "$(printf 'r%.0s' {1..501})" '.reason = $r')"
-chk "reason acima de 500 recusado" "$RC" "1"
-cdd "$(dec v5 approved security "$RID" | jq -c '.revoked = false')"
-chk "revoked: false aceito (decisão vigente)" "$RC" "0"
+cdd "$(dec v1b approved_with_conditions security "$RID")"
+chk "check_ref null: aceito" "$RC" "0"
+for c in '[{"texto":"x"}]' '["sem segredo no log"]' '[{"texto":"sem acentuação","check_ref":null}]' \
+         '[{"texto":"a; b","check_ref":null}]' '[{"texto":"x","check_ref":null,"id":"c1"}]' \
+         "$(jq -nc '[range(9) | {texto:"c\(.)", check_ref:null}]')"; do
+  cdd "$(dec v2 approved_with_conditions security "$RID" | jq -c --argjson c "$c" '.conditions = $c')"
+  chk "condição fora da forma recusada: $c" "$RC" "1"
+done
+cdd "$(dec v2 approved security "$RID" | jq -c --argjson c "$COND" '.conditions = $c')"
+chk "conditions fora de approved_with_conditions recusado" "$RC" "1"
+cdd "$(dec e0 escalate security "$RID")"
+chk "escalate sem escalate_to recusado" "$RC" "1"
+cdd "$(dec e1 escalate security "$RID" | jq -c '.escalate_to = "spock"')"
+chk "escalate_to spock sem classe: aceito" "$RC" "0"
+cdd "$(dec e2 escalate security "$RID" | jq -c '.escalate_to = "spock" | .escalation_class = "crash"')"
+chk "escalate_to spock com classe recusado" "$RC" "1"
+cdd "$(dec e3 escalate security "$RID" | jq -c '.escalate_to = "captain"')"
+chk "escalate_to captain sem classe recusado" "$RC" "1"
+cdd "$(dec e4 escalate security "$RID" | jq -c '.escalate_to = "captain" | .escalation_class = "desvio_de_curso"')"
+chk "escalate_to captain com classe: aceito" "$RC" "0"
+cdd "$(dec e5 escalate security "$RID" | jq -c '.escalate_to = "capitao" | .escalation_class = "crash"')"
+chk "escalate_to fora do enum recusado" "$RC" "1"
+cdd "$(dec e6 approved security "$RID" | jq -c '.escalate_to = "spock"')"
+chk "escalate_to fora de escalate recusado" "$RC" "1"
+cdd "$(dec v3 approved security "$RID" | jq -c --arg r "$(printf 'r%.0s' {1..120})" '.reason = $r')"
+chk "reason de 120 chars: aceito" "$RC" "0"
+for r in "$(printf 'r%.0s' {1..121})" "decisão com acento" "a; b" ""; do
+  cdd "$(dec v4 approved security "$RID" | jq -c --arg r "$r" '.reason = $r')"
+  chk "reason fora do charset ou do teto recusado (${#r} chars)" "$RC" "1"
+done
+cdd "$(dec v6 approved security "$RID" | jq -c '.revoked_at = "ontem"')"
+chk "revoked_at que não é timestamp ISO recusado" "$RC" "1"
+cdd "$(dec v6 approved security "$RID" | jq -c '.revoked = "2026-10-20T12:00:00Z"')"
+chk "revoked em texto (forma antiga) recusado" "$RC" "1"
 cdd "$(dec v6 approved security "$RID" | jq -c '.revoked = {"x":1}')"
 chk "revoked fora da forma recusado" "$RC" "1"
-cdd "$(dec v7 approved security "$RID" | jq -c '.revoked = true')"
-chk "revogação manual recusada" "$RC" "1"
-[[ "$OUT" == *"só pela Ponte"* ]] && ok "motivo: revogação só pela Ponte" || bad "saída: $OUT"
+for rv in '.revoked = true' '.revoked_at = "2026-10-20T12:00:00Z"'; do
+  cdd "$(dec v7 approved security "$RID" | jq -c "$rv")"
+  chk "revogação manual recusada ($rv)" "$RC" "1"
+  [[ "$OUT" == *"só pela Ponte"* ]] && ok "motivo: revogação só pela Ponte" || bad "saída: $OUT"
+done
+cdd "$(dec v5 approved security "$RID" | jq -c '.revoked_at = null | .revoked = false')"
+chk "revoked_at null (e revoked false antigo): aceito" "$RC" "0"
+chk "gravado na forma v2: escalada e revoked_at nulos, sem revoked" \
+  "$(jq -c '.domain.decisions[] | select(.decision_id == "v5") | [.escalate_to, .escalation_class, .revoked_at, has("revoked")]' "$(REC dm-rb)")" \
+  '[null,null,null,false]'
 chk "registros manuais não liberam" "$(st dm-rb)" "pending"
 
 echo "-- revogação pelo espelho: a decisão deixa de cobrir"
@@ -139,15 +172,15 @@ wait_hook dm-cmp "$(dec i1 approved infrastructure "$CRID")"
 chk "infra aprovado pela Ponte" "$(st dm-cmp)" "approved"
 edit dm-cmp "deploy/compose.prod.yaml"
 chk "aprovado: alvo → passa" "$GRC" "0"
-wait_hook dm-cmp "$(dec i9 approved infrastructure "$CRID" | jq -c '.revoked = true')"
+wait_hook dm-cmp "$(dec i9 approved infrastructure "$CRID" | jq -c '.revoked_at = "2026-10-20T12:00:00Z"')"
 chk "revogação de decisão desconhecida: ignorada" "$(st dm-cmp)" "approved"
-wait_hook dm-cmp "$(dec i1 denied infrastructure "$CRID" | jq -c '.revoked = true')"
+wait_hook dm-cmp "$(dec i1 denied infrastructure "$CRID" | jq -c '.revoked_at = "2026-10-20T12:00:00Z"')"
 chk "revogação que difere da decisão registrada: ignorada" "$(st dm-cmp)" "approved"
-wait_hook dm-cmp "$(dec i1 approved infrastructure "$CRID" | jq -c '.revoked = "2026-10-20T12:00:00Z"')"
+wait_hook dm-cmp "$(dec i1 approved infrastructure "$CRID" | jq -c '.revoked_at = "2026-10-20T12:00:00Z"')"
 chk "revogada: status volta a pending" "$(st dm-cmp)" "pending"
 chk "revogada: nada liberado" "$(jq -c '[.domain.cleared, .domain.cleared_until]' "$(REC dm-cmp)")" '["",0]'
 chk "revogada no lugar, sem duplicar" \
-  "$(jq -c '[.domain.decisions[] | select(.decision_id == "i1") | .revoked]' "$(REC dm-cmp)")" '["2026-10-20T12:00:00Z"]'
+  "$(jq -c '[.domain.decisions[] | select(.decision_id == "i1") | .revoked_at]' "$(REC dm-cmp)")" '["2026-10-20T12:00:00Z"]'
 edit dm-cmp "deploy/compose.prod.yaml"
 chk "revogada: alvo volta a ficar suspenso → exit 2" "$GRC" "2"
 
@@ -211,11 +244,12 @@ wres dm-forja "$(jq -nc --argjson d "$(dec f3 approved infrastructure "$FRID")" 
   '{status:"respondida", decision_id:"01ABC", resposta:"ok", domain_decisions:[$d]}')"
 chk "domain_decisions na raiz do objeto: espelhado" "$(st dm-forja)" "approved"
 
-echo "-- revogada + nova na mesma resposta: a revogação entra primeiro"
+echo "-- revogada (revoked antigo, compatibilidade) + nova na mesma resposta: a revogação entra primeiro"
 F3=$(dec f3 approved infrastructure "$FRID"); F4=$(dec f4 approved infrastructure "$FRID")
 wres dm-forja "$(jq -nc --argjson n "$F4" --argjson r "$(jq -c '.revoked = true' <<<"$F3")" \
   '[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:"x", domain_decisions:[$n, $r]} | tojson)}]')"
-chk "f3 revogada" "$(jq -c '[.domain.decisions[] | select(.decision_id == "f3") | .revoked]' "$(REC dm-forja)")" '[true]'
+chk "f3 revogada: revoked true vira revoked_at, revoked não se grava" \
+  "$(jq -c '[.domain.decisions[] | select(.decision_id == "f3") | (.revoked_at | type), has("revoked")]' "$(REC dm-forja)")" '["string",false]'
 chk "f4 vale" "$(st dm-forja)" "approved"
 
 echo "-- gate-report (Stop): a reason manda domain_requests e cobre director.wait_for"

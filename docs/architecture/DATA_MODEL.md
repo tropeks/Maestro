@@ -458,16 +458,19 @@ plano; token MAIÚSCULO casa a palavra exata) e `other` (trecho literal). Leitor
 | `domain.cleared` | string | domínios cujo pedido tem `approved` espelhado da Ponte (`via: ponte`) e não vencido, separados por espaço (`""` = nenhum). É o que libera caminho de domínio no gate |
 | `domain.cleared_until` | inteiro | menor `valid_until` (epoch) entre essas aprovações; `0` = nenhuma. Vencida, a aprovação não cobre edição nova |
 | `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null = sessão sem ordem), `intent.version`, `intent.hash` (formato de §13; carimbo com hash ≠ corpo é recusa), `domain`, `plan.ref`, `plan.hash`, `targets[]`, `effects[]`, `rollback_ref` (v1.27: caminho do projeto com âncora opcional, que resolve — API_SPEC, `gate: domain`) |
-| `domain.decisions[]` | array | decisões no contrato (`decision_id`, `request_id`, `response`, `conditions[]` — texto até 120 ou `{texto ≤ 200, check_ref, id?}`, até 8 —, `reason` até 500, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until`, e `revoked` opcional — `true` ou a data — da v1.27) mais dois campos do espelho: `via` (`ponte` = resultado da tool `director_wait`, gravado pelo hook; `manual` = `conduct --domain-decision`) e `until_epoch` (o `valid_until` em epoch). `label` é derivado de role/domain, nunca lido do cliente |
+| `domain.decisions[]` | array | decisões no CONTRATO v2 (`decision_id`, `request_id`, `response`, `conditions[]` — até 8 `{texto, check_ref}`, `texto` no charset do `reason` até 120, `check_ref` até 200 ou `null`, vazia fora de `approved_with_conditions` —, `reason` em `^[A-Za-z0-9 .,:/_-]{1,120}$`, `escalate_to` — `spock`/`captain` só em `escalate` — e `escalation_class` — `desvio_de_curso`/`crash`, obrigatória com `captain` —, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until` e `revoked_at` — timestamp ISO ou `null`, campo único de revogação; o `revoked` booleano antigo é lido por compatibilidade, vira `revoked_at` e não se grava; ausentes, `escalate_to`, `escalation_class` e `revoked_at` são gravados `null`) mais dois campos do espelho: `via` (`ponte` = resultado da tool `director_wait`, gravado pelo hook; `manual` = `conduct --domain-decision`) e `until_epoch` (o `valid_until` em epoch). `label` é derivado de role/domain, nunca lido do cliente |
 
-**`plan.ref` e `plan.hash`.** `plan.ref` = `maestro:sessions/<sessão>#brief`: o plano é o
+**`plan.ref` e `plan.hash`.** O CONTRATO v2 aceita três formas de `plan.ref`
+(`maestro:sessions/<id>#brief`, `<caminho>#<ancora>` no branch da ordem e
+`ponte:decisao/<ULID>#acao_operacional`, da ordem por comando); quem prova o plano é o
+`plan.hash`. O Maestro emite só a primeira: `plan.ref` = `maestro:sessions/<sessão>#brief`: o plano é o
 `brief` do record da sessão, que o ponte-daemon (mesma forge) lê de
 `$MAESTRO_HOME/sessions/<sessão>.json` para conferir o pedido. `plan.hash` = sha256 (64
 hex) do JSON compacto `{"brief","targets","effects","rollback_ref","order_ref"}`, nessa
 ordem de chaves, com os valores do pedido e o `brief` do record — a Ponte recalcula e
 recusa o pedido que divergir (`hashDoPlanoMaestro`, ponte-daemon). O record vive o TTL de
-sempre (4h); um plano que precise durar mais que isso, ou viver no git, é mudança de
-contrato nos dois repositórios (CONTRATO.md fala em "caminho versionado").
+sempre (4h); um plano que precise durar mais que isso, ou viver no git, usa a forma
+`<caminho>#<ancora>`, que o `decide` ainda não emite.
 
 **Status agregado.** O pior pedido vence (`denied` < `revise` < `escalate` <
 `needs_evidence` < `pending` < `approved_with_conditions` < `approved`). Aprovação com

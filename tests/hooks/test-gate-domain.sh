@@ -167,7 +167,7 @@ dec() { # dec <decision_id> <response> <role> <domain|null> [valid_until] [inten
   jq -nc --arg did "$1" --arg rid "${7:-$RID}" --arg r "$2" --arg role "$3" --arg d "$4" \
      --arg vu "${5:-$VU}" --arg ih "${6:-$IH}" '
     {decision_id:$did, request_id:$rid, response:$r,
-     conditions:(if $r == "approved_with_conditions" then ["sem segredo no log"] else [] end),
+     conditions:(if $r == "approved_with_conditions" then [{texto:"sem segredo no log", check_ref:null}] else [] end),
      reason:"plano verificado", decided_by:{role:$role, domain:(if $d == "null" then null else $d end), label:"eu mesmo"},
      policy_ref:"MANDATOS.md#security", intent:{version:7, hash:$ih}, valid_until:$vu}'
 }

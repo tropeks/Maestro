@@ -719,9 +719,10 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   `domain_decisions[]` só vale na raiz do `DirectorWaitOutput` (`status: respondida` com
   `decision_id`): o próprio `tool_response` ou o texto JSON de cada bloco `content[]` de 1º
   nível, nunca um JSON achado dentro de outra string (a `resposta` é texto de quem resolveu).
-  **Revogação (v1.27):** a decisão com `revoked` (`true` ou a data, texto até 64;
-  `false`/`null` = vigente) e o mesmo `decision_id`, pedido e resposta de uma já registrada
-  marca essa decisão no lugar; a última decisão do pedido revogada conta como `pending` e sai
+  **Revogação (CONTRATO v2):** a decisão com `revoked_at` não nulo (timestamp ISO; `null` ou
+  ausente = vigente) e o mesmo `decision_id`, pedido e resposta de uma já registrada grava
+  `revoked_at` nessa decisão, no lugar. O `revoked` booleano antigo só é lido por
+  compatibilidade (`true` = revogada, gravada com `revoked_at` = agora) e nunca é gravado; a última decisão do pedido revogada conta como `pending` e sai
   de `cleared`. Revogação de decisão não registrada é recusada (não cobria nada). Revogações
   são gravadas antes das decisões novas da mesma resposta. A revogação chega ao record no
   **próximo** `director.wait` do gerente; até lá o espelho segue cobrindo, e quem trava o
@@ -736,15 +737,19 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   contra o pedido do próprio record, gravado com `via: manual`. **Não libera nada:**
   aprovação manual conta como `pending` no status. Recusa (exit 1, record intacto): campo
   fora ou faltando do contrato, `request_id` alheio, `response` fora do enum,
-  `conditions[]` fora da forma (até 8 itens, cada um texto até 120 ou
-  `{texto ≤ 200, check_ref, id?}`, v1.27), `reason` acima de 500,
-  `approved_with_conditions` sem condição, diretor (`decided_by.role: director_domain`) de
+  `conditions[]` fora da forma do CONTRATO v2 (até 8 itens `{texto, check_ref}`: `texto` no
+  charset do `reason`, `check_ref` texto até 200 ou `null`; vazia fora de
+  `approved_with_conditions`), `approved_with_conditions` sem condição, `reason` fora de
+  `^[A-Za-z0-9 .,:/_-]{1,120}$` (texto longo só por referência ao `decision_id`), escalada
+  fora da regra (`escalate_to` `spock|captain` só em `escalate`, e nele obrigatório;
+  `escalation_class` `desvio_de_curso|crash` obrigatória com `captain`, `null` fora disso),
+  `revoked_at` que não é timestamp ISO nem `null`, `revoked` que não é booleano, diretor (`decided_by.role: director_domain`) de
   outro domínio, domínio em papel que não é `director_domain`, aprovação com
   `role: mechanical` (timeout nunca aprova), `intent` diferente do pedido, `valid_until`
   vencido, `decision_id` repetido e segunda resolução de pedido já resolvido pela Ponte
   (só `needs_evidence`/`escalate`/`approved_with_conditions`, ou decisão revogada, admitem
-  nova decisão). `revoked` verdadeiro (`true` ou data) é recusado: revogação só pelo espelho
-  (`via: ponte`); texto digitado não desfaz decisão da Ponte.
+  nova decisão). Revogação (`revoked_at` não nulo ou `revoked: true`) é recusada: só pelo
+  espelho (`via: ponte`); texto digitado não desfaz decisão da Ponte.
   `decided_by.label` nunca é lido do cliente: sai de role/domain (`diretor-seguranca`,
   `diretor-infra`, `spock`, `capitao`, `mecanico`). `conduct --approach` em record com
   `domain` → exit 1 (plano mudou: decida de novo). **Autoridade:** o espelho é

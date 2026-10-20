@@ -14,7 +14,9 @@
 # CONTRATO.md), pedido alheio, `response` fora do enum, diretor de outro
 # domínio, aprovação mecânica (timeout nunca aprova), INTENT diferente do
 # pedido, validade vencida, `decision_id` repetido, segunda resolução de
-# pedido já resolvido pela Ponte e revogação (`revoked`), que só vem da Ponte.
+# pedido já resolvido pela Ponte e revogação (`revoked_at`, ou o `revoked` antigo),
+# que só vem da Ponte. Forma da decisão: CONTRATO v2 (escalate_to/escalation_class,
+# conditions {texto, check_ref}, reason até 120 no charset da Ponte).
 # `decided_by.label` é derivado, nunca lido.
 #
 # Sourced por bin/maestro (via _domain_lib_load, I-2) DENTRO do mesmo processo
@@ -41,8 +43,7 @@ cmd_domain_decision() { # <sid> <json> <n_flags> <approach>
     "--domain-decision não é um objeto JSON" "passe a decisão como JSON de uma linha" 1
   # Revogação só pelo espelho (via=ponte): texto digitado não desfaz decisão da Ponte —
   # reabriria o pedido já resolvido e trocaria `denied` por `pending`.
-  if jq -e '(.revoked // false) as $v | $v == true or ($v | type == "string" and length > 0)' \
-       <<<"$ddec" >/dev/null 2>&1; then
+  if jq -e "$DOMAIN_REVOKED_JQ revoked_of" <<<"$ddec" >/dev/null 2>&1; then
     die validation "--domain-decision recusada: revogação só pela Ponte" \
       "a revogação chega pelo resultado do director_wait (espelhado sozinho); o conduct manual não revoga" 1
   fi

@@ -936,6 +936,8 @@ function decideDomain(
     order_ref: orderRef,
     intent: intent!,
     domain: d,
+    // CONTRATO v2 aceita três formas de plan.ref; o Maestro emite só a do brief da sessão
+    // (as outras são `<caminho>#<ancora>` no branch da ordem e a da ordem por comando da Ponte).
     plan: { ref: `maestro:sessions/${session}#brief`, hash: planHash },
     targets,
     effects,
@@ -976,9 +978,14 @@ function decideDomain(
   return { block, text: out };
 }
 
-/** `revoked` da decisão (v1.27): `true` ou texto não vazio (data da revogação) = revogada. */
-function isRevoked(v: unknown): boolean {
-  return v === true || (typeof v === "string" && v.length > 0);
+/**
+ * Revogada (CONTRATO v2): `revoked_at` não nulo. O `revoked` antigo só é lido por
+ * compatibilidade (`true`; texto não vazio nos records gravados antes da v2).
+ * A mesma conta de DOMAIN_REVOKED_JQ (hooks/lib/domain-record.sh).
+ */
+function isRevoked(d: Record<string, unknown>): boolean {
+  const v = d.revoked;
+  return (d.revoked_at ?? null) !== null || v === true || (typeof v === "string" && v.length > 0);
 }
 
 /**
@@ -1080,8 +1087,8 @@ function domainBlock(
     const d = [...decisions].reverse().find((x) => x.request_id === r.request_id);
     let resp = typeof d?.response === "string" ? d.response : "pending";
     if (resp.startsWith("approved") && d?.via !== "ponte") resp = "pending";
-    // Revogada (v1.27, `domain.revoke`): deixa de cobrir na hora; o pedido volta a esperar.
-    if (d !== undefined && isRevoked(d.revoked)) resp = "pending";
+    // Revogada (`revoked_at`, `domain.revoke`): deixa de cobrir na hora; o pedido volta a esperar.
+    if (d !== undefined && isRevoked(d)) resp = "pending";
     const i = order.indexOf(resp);
     worst = Math.min(worst, i < 0 ? order.indexOf("pending") : i);
     const ue = typeof d?.until_epoch === "number" ? d.until_epoch : 0;

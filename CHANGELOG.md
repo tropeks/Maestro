@@ -6,6 +6,17 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Changed (E28, CONTRATO v2 da diretoria)
+- **Decisão de domínio no CONTRATO v2** (`tropeks/spock:docs/diretoria/CONTRATO.md`). O espelho (`post-director-wait.sh`) e o
+  `conduct --domain-decision` aceitam só: `conditions[]` como `{texto, check_ref}` (`texto` no charset do `reason` da Ponte até
+  120, `check_ref` até 200 ou `null`, vazia fora de `approved_with_conditions`); `reason` em `^[A-Za-z0-9 .,:/_-]{1,120}$`;
+  `escalate_to` (`spock|captain`, só e sempre em `escalate`) com `escalation_class` (`desvio_de_curso|crash`, obrigatória com
+  `captain`, `null` fora); `revoked_at` (timestamp ISO ou `null`) como campo único de revogação. O `revoked` booleano antigo,
+  que o ponte-daemon atual ainda manda, é lido por compatibilidade, vira `revoked_at` no record e não se grava mais; records
+  antigos com `revoked` seguem contando como revogados. Saem a condição em texto solto, `id` na condição, `reason` até 500 e
+  `revoked` em texto. `plan.ref`: documentadas as três formas do contrato; o `decide` segue emitindo `maestro:sessions/<id>#brief`.
+  Revogação continua só pelo espelho. Testes: `tests/hooks/test-gate-domain-v127.sh`.
+
 ### Changed (E28, v1.27 da Enterprise)
 - **`gate: domain` segue a v1.27.** `maestro decide` imprime `domain_requests: [json]` e o gate manda o gerente passar a lista
   no campo `domain_requests` do `director.ask` (as linhas `pedido:` seguem na pergunta para a Ponte anterior à v1.27).
