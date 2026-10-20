@@ -763,13 +763,33 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
   # Ponte com capability (passo 4b) fica fora: a caixa da ordem é do daemon.
   _d_json=""
   IFS= read -r -d '' -n 4096 _d_json < "$MAESTRO_SESSIONS_DIR/$SID.json" 2>/dev/null || true
-  _d_status=""; _d_scope=""; _d_cleared=""; _d_until=0; _d_in=0; _d_doms=""; _d_why=""; _d_cmd=""; _d_warned=""
+  _d_status=""; _d_scope=""; _d_cleared=""; _d_until=0; _d_in=0; _d_doms=""; _d_why=""; _d_cmd=""; _d_warned=""; _d_ichg=""
   if [[ "$_d_json" =~ \"domain\"[[:space:]]*:[[:space:]]*\{[[:space:]]*\"status\"[[:space:]]*:[[:space:]]*\"([a-z_]+)\" ]]; then
     _d_status="${BASH_REMATCH[1]}"
     [[ "$_d_json" =~ \"scope\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9._@+/\ -]*)\" ]] && _d_scope="${BASH_REMATCH[1]}"
     [[ "$_d_json" =~ \"cleared\"[[:space:]]*:[[:space:]]*\"([a-z\ ]*)\" ]] && _d_cleared="${BASH_REMATCH[1]}"
     [[ "$_d_json" =~ \"cleared_until\"[[:space:]]*:[[:space:]]*([0-9]{1,12})[,}] ]] && _d_until="${BASH_REMATCH[1]}"
     if [[ -n "$_d_scope" ]] && _gate_prefix_match "$REL" "$_d_scope"; then _d_in=1; fi
+    # CONTRATO v2: INTENT novo do projeto suspende TODAS as decisões do projeto. O
+    # carimbo (version/hash) do .maestro/INTENT.md tem de ser o do pedido (o
+    # `intent` do primeiro requests[]; um decide grava o mesmo em todos). Divergiu,
+    # ou um dos dois está ilegível: conta como `pending` e nada fica liberado.
+    if [[ "$_d_status" != clear ]]; then
+      _d_rin=""; _d_pin=""; _d_ij=""; _d_iv=""; _d_ih=""
+      _d_t="${_d_json#*\"requests\"}"; _d_ij="${_d_t#*\"intent\"}" # a 1ª chave intent depois de requests
+      if [[ "$_d_t" != "$_d_json" && "$_d_ij" != "$_d_t" && "$_d_ij" =~ ^[[:space:]]*:[[:space:]]*\{[[:space:]]*\"version\"[[:space:]]*:[[:space:]]*([0-9]{1,9})[[:space:]]*,[[:space:]]*\"hash\"[[:space:]]*:[[:space:]]*\"([0-9a-f]{8})\" ]]; then
+        _d_rin="$((10#${BASH_REMATCH[1]})):${BASH_REMATCH[2]}"
+      fi
+      _d_ij=""
+      IFS= read -r -d '' -n 1024 _d_ij < "${CLAUDE_PROJECT_DIR:-$PWD}/.maestro/INTENT.md" 2>/dev/null || true
+      _d_t="${_d_ij%%$'\n'-->*}"
+      if [[ "$_d_t" != "$_d_ij" ]]; then # carimbo fechado na janela; vale a 1ª linha de cada chave
+        _d_re=$'(^|\n)version: ([0-9]{1,9})(\n|$)'; [[ "$_d_t" =~ $_d_re ]] && _d_iv="${BASH_REMATCH[2]}"
+        _d_re=$'(^|\n)hash: ([0-9a-f]{8})(\n|$)'; [[ "$_d_t" =~ $_d_re ]] && _d_ih="${BASH_REMATCH[2]}"
+        [[ -n "$_d_iv" && -n "$_d_ih" ]] && (( 10#$_d_iv >= 1 )) && _d_pin="$((10#$_d_iv)):$_d_ih"
+      fi
+      if [[ -z "$_d_rin" || "$_d_rin" != "$_d_pin" ]]; then _d_status=pending; _d_cleared=""; _d_until=0; _d_ichg=1; fi
+    fi
   fi
   if [[ -n "$REL" ]]; then
     _d_rel="${REL,,}"
@@ -777,13 +797,16 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
     [[ -n "${MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE:-}" && "$_d_rel" =~ $MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE ]] && _d_doms+="infrastructure "
   fi
   if [[ -n "$_d_doms" || ( -n "$_d_status" && "$_d_status" != clear ) ]]; then
+    _D_WHY_INTENT="o INTENT do projeto não é mais o do pedido (re-carimbado ou ilegível): INTENT novo suspende as decisões do projeto"
     _d_now=0
     printf -v _d_now '%(%s)T' -1 2>/dev/null || _d_now=0
     [[ "$_d_now" =~ ^[0-9]+$ ]] || _d_now=0
     # (a) alvo do plano com pedido aberto. scope ilegível com status que não é
     # clear = suspende tudo (falha fechada no pedido aberto).
     if [[ -n "$_d_status" && "$_d_status" != clear ]] && { [[ -z "$_d_scope" ]] || (( _d_in )); }; then
-      if [[ "$_d_status" != approved ]]; then
+      if [[ -n "$_d_ichg" ]]; then
+        _d_why="$_D_WHY_INTENT"; _d_cmd="domain_intent"
+      elif [[ "$_d_status" != approved ]]; then
         _d_why="o pedido ao diretor do domínio está $_d_status"; _d_cmd="domain_$_d_status"
       elif (( _d_until <= _d_now )); then
         _d_why="a decisão do diretor do domínio venceu (valid_until)"; _d_cmd="domain_expired"
@@ -794,6 +817,7 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
       for _d in $_d_doms; do
         if (( _d_in == 0 )) || [[ " $_d_cleared " != *" $_d "* ]] || (( _d_until <= _d_now )); then
           _d_why="o caminho é de domínio ($_d) e nenhum plano com pedido aprovado pelo diretor o cobre"; _d_cmd="domain_path"
+          [[ -n "$_d_ichg" ]] && { _d_why="$_D_WHY_INTENT"; _d_cmd="domain_intent"; }
           break
         fi
       done

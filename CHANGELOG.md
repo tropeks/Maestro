@@ -6,6 +6,27 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Changed (E28, CONTRATO v2 da diretoria)
+- **Decisão de domínio no CONTRATO v2** (`tropeks/spock:docs/diretoria/CONTRATO.md`). O espelho (`post-director-wait.sh`) e o
+  `conduct --domain-decision` aceitam só: `conditions[]` como até 3 `{texto, check_ref}` (`texto` no charset do `reason` da Ponte
+  até 120, `check_ref` em `^[A-Za-z0-9._:/#-]{1,120}$` ou `null`, os limites do ponte-daemon; vazia fora de
+  `approved_with_conditions`); `reason` em `^[A-Za-z0-9 .,:/_-]{1,120}$`;
+  `escalate_to` (`spock|captain`, só e sempre em `escalate`) com `escalation_class` (`desvio_de_curso|crash`, obrigatória com
+  `captain`, `null` fora); `revoked_at` (timestamp ISO ou `null`) como campo único de revogação. O `revoked` booleano da rodada 2
+  do ponte-daemon (o daemon atual só manda `revoked_at`) é lido só por compatibilidade, vira `revoked_at` no record e não se
+  grava mais; records antigos com `revoked` seguem contando como revogados. Saem a condição em texto solto, `id` na condição, `reason` até 500 e
+  `revoked` em texto. `plan.ref`: documentadas as três formas do contrato; o `decide` segue emitindo `maestro:sessions/<id>#brief`.
+  Revogação continua só pelo espelho. Testes: `tests/hooks/test-gate-domain-v127.sh`.
+- **INTENT novo suspende as decisões do projeto** (CONTRATO v2). O gate domain lê `version:`/`hash:` do carimbo de
+  `.maestro/INTENT.md` e compara com o `intent` do pedido no record: divergiu, ou um dos dois está ilegível, o record conta como
+  `pending`, nada fica liberado e o bloqueio sai com `cmd=domain_intent` (falha fechada). Antes a aprovação seguia liberando os
+  alvos e os caminhos de domínio depois do re-carimbo, até `valid_until` ou o TTL do record. O `decide` do mesmo plano sob o
+  carimbo novo não preserva mais a decisão dada sob o antigo. Testes: `tests/hooks/test-gate-domain-v127.sh`.
+- **`--rollback` só na forma `<caminho>#<ancora>`** (CONTRATO v2), no alfabeto do `REF_CAMINHO_RE` do ponte-daemon: âncora
+  obrigatória (`[a-z0-9][a-z0-9_-]{0,79}`, aceita `_`), caminho até 160 sem `@`, `+`, `.git` nem `.env*`, título que aparece uma
+  vez só e slug igual ao `slugDoTitulo` do daemon. Antes o `decide` emitia pedido que a Ponte recusava
+  (`pedido_fora_do_contrato:rollback_ref`).
+
 ### Changed (E28, v1.27 da Enterprise)
 - **`gate: domain` segue a v1.27.** `maestro decide` imprime `domain_requests: [json]` e o gate manda o gerente passar a lista
   no campo `domain_requests` do `director.ask` (as linhas `pedido:` seguem na pergunta para a Ponte anterior à v1.27).

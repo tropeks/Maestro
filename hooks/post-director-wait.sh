@@ -49,11 +49,11 @@ IFS= read -r -d '' -t 2 -n 262144 raw 2>/dev/null || :
 # lido da RAIZ do DirectorWaitOutput (`status: respondida` + `decision_id`): o
 # próprio tool_response, ou o texto JSON de cada bloco `content[]` de 1º nível —
 # nunca de um JSON achado dentro de outra string (a `resposta` é texto de quem
-# resolveu). Revogações vêm antes das decisões novas: a nova decisão do mesmo
-# pedido só é aceita depois que a anterior está revogada.
-out=$(jq -r '
+# resolveu). Revogações (`revoked_at`, ou o `revoked` antigo, CONTRATO v2) vêm antes
+# das decisões novas: a nova decisão do mesmo pedido só é aceita depois que a
+# anterior está revogada.
+out=$(jq -r "$DOMAIN_REVOKED_JQ"'
   def s: if type == "string" then . else "" end;
-  def rev: (.revoked // false) as $v | $v == true or ($v | type == "string" and length > 0);
   def blocks: if type == "object" then ., (.content? | arrays | .[] | objects | .text? | strings | fromjson?)
               elif type == "array" then (.[] | objects | .text? | strings | fromjson?)
               else empty end;
@@ -62,7 +62,7 @@ out=$(jq -r '
       | select(.status == "respondida" and (.decision_id | type == "string"))] as $roots
     | [ $roots[] | .domain_decisions? | arrays | .[] | objects ]
     | reduce .[] as $d ([]; if any(.[]; . == $d) then . else . + [$d] end)
-    | sort_by(if rev then 0 else 1 end)
+    | sort_by(if revoked_of then 0 else 1 end)
     | .[] | tojson)
 ' <<<"$raw" 2>/dev/null) || exit 0
 

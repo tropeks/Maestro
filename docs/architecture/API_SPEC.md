@@ -684,7 +684,7 @@ maestro conduct --session <session_id>
 maestro decide --session <id> --workflow <feature|refactor> --mode <...>
                --brief "essencia: ...; impacto: ...; approach: <o plano>"
                [--targets "a/b.ts,deploy/"] [--effects "efeito 1; efeito 2"]
-               [--rollback "<caminho>[#ancora]"] [--order <ref>]
+               [--rollback "<caminho>#<ancora>"] [--order <ref>]
 maestro conduct --session <id> --domain-decision '<json da decisão>'
 ```
 - `decide`: em workflow com `gate: domain`, `--brief` é obrigatório e `approach: pendente`
@@ -692,10 +692,12 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   classificado pelos gatilhos de `domains:` — o mesmo texto que o roteador do ponte-daemon
   reclassifica; `--reason` não entra (não está no pedido nem no `plan.hash`, e classificar
   com ele abria pedido que a Ponte recusa por `dominio_diverge_do_roteamento`).
-  `--rollback` (v1.27, `rollback_ref`): caminho relativo ao projeto
-  (`^[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199}$`, sem segmento vazio, `.` ou `..`) com âncora
-  opcional `#[a-z0-9-]{1,80}`, que resolve: arquivo regular dentro do projeto (realpath) e,
-  com âncora, título Markdown do arquivo (sem acento, minúsculas, espaço → `-`). Texto livre
+  `--rollback` (CONTRATO v2, `rollback_ref`): `<caminho>#<ancora>`, no alfabeto do
+  `REF_CAMINHO_RE` do ponte-daemon: caminho relativo `^[A-Za-z0-9_.][A-Za-z0-9._/-]{0,159}`
+  (sem segmento vazio, `.`, `..`, `.git` ou `.env*`) e âncora obrigatória
+  `#[a-z0-9][a-z0-9_-]{0,79}`, que resolve: arquivo regular dentro do projeto (realpath) e
+  título Markdown do arquivo que aparece uma vez só (linha `#`..`######`; slug sem acento,
+  minúsculas, só `[a-z0-9 _-]`, espaço → `-`, como o `slugDoTitulo` do daemon). Texto livre
   (`git revert`) é recusa (exit 1), como placeholder; também o `rollback_ref` inteiro
   (caminho + âncora) acima de 200 chars e o que o `ehPlaceholder` do daemon acusa (`...`,
   `TODO`/`TBD`/`FIXME`, `placeholder`, `lorem`). O daemon confere de novo no branch da
@@ -719,9 +721,10 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   `domain_decisions[]` só vale na raiz do `DirectorWaitOutput` (`status: respondida` com
   `decision_id`): o próprio `tool_response` ou o texto JSON de cada bloco `content[]` de 1º
   nível, nunca um JSON achado dentro de outra string (a `resposta` é texto de quem resolveu).
-  **Revogação (v1.27):** a decisão com `revoked` (`true` ou a data, texto até 64;
-  `false`/`null` = vigente) e o mesmo `decision_id`, pedido e resposta de uma já registrada
-  marca essa decisão no lugar; a última decisão do pedido revogada conta como `pending` e sai
+  **Revogação (CONTRATO v2):** a decisão com `revoked_at` não nulo (timestamp ISO; `null` ou
+  ausente = vigente) e o mesmo `decision_id`, pedido e resposta de uma já registrada grava
+  `revoked_at` nessa decisão, no lugar. O `revoked` booleano antigo só é lido por
+  compatibilidade (`true` = revogada, gravada com `revoked_at` = agora) e nunca é gravado; a última decisão do pedido revogada conta como `pending` e sai
   de `cleared`. Revogação de decisão não registrada é recusada (não cobria nada). Revogações
   são gravadas antes das decisões novas da mesma resposta. A revogação chega ao record no
   **próximo** `director.wait` do gerente; até lá o espelho segue cobrindo, e quem trava o
@@ -736,15 +739,20 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   contra o pedido do próprio record, gravado com `via: manual`. **Não libera nada:**
   aprovação manual conta como `pending` no status. Recusa (exit 1, record intacto): campo
   fora ou faltando do contrato, `request_id` alheio, `response` fora do enum,
-  `conditions[]` fora da forma (até 8 itens, cada um texto até 120 ou
-  `{texto ≤ 200, check_ref, id?}`, v1.27), `reason` acima de 500,
-  `approved_with_conditions` sem condição, diretor (`decided_by.role: director_domain`) de
+  `conditions[]` fora da forma do CONTRATO v2 (até 3 itens `{texto, check_ref}`: `texto` no
+  charset do `reason`, `check_ref` em `^[A-Za-z0-9._:/#-]{1,120}$` ou `null`, como o
+  `CHECK_REF_RE`/`CONDICOES_MAX` do ponte-daemon; vazia fora de
+  `approved_with_conditions`), `approved_with_conditions` sem condição, `reason` fora de
+  `^[A-Za-z0-9 .,:/_-]{1,120}$` (texto longo só por referência ao `decision_id`), escalada
+  fora da regra (`escalate_to` `spock|captain` só em `escalate`, e nele obrigatório;
+  `escalation_class` `desvio_de_curso|crash` obrigatória com `captain`, `null` fora disso),
+  `revoked_at` que não é timestamp ISO nem `null`, `revoked` que não é booleano, diretor (`decided_by.role: director_domain`) de
   outro domínio, domínio em papel que não é `director_domain`, aprovação com
   `role: mechanical` (timeout nunca aprova), `intent` diferente do pedido, `valid_until`
   vencido, `decision_id` repetido e segunda resolução de pedido já resolvido pela Ponte
   (só `needs_evidence`/`escalate`/`approved_with_conditions`, ou decisão revogada, admitem
-  nova decisão). `revoked` verdadeiro (`true` ou data) é recusado: revogação só pelo espelho
-  (`via: ponte`); texto digitado não desfaz decisão da Ponte.
+  nova decisão). Revogação (`revoked_at` não nulo ou `revoked: true`) é recusada: só pelo
+  espelho (`via: ponte`); texto digitado não desfaz decisão da Ponte.
   `decided_by.label` nunca é lido do cliente: sai de role/domain (`diretor-seguranca`,
   `diretor-infra`, `spock`, `capitao`, `mecanico`). `conduct --approach` em record com
   `domain` → exit 1 (plano mudou: decida de novo). **Autoridade:** o espelho é
@@ -756,8 +764,13 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   o Maestro não verifica condição); (b) caminho que casa `domains.<d>.paths` (ERE compilada
   pelo session-start no `gate-policy.sh`, `MAESTRO_GATE_DOMAIN_<D>_RE`) só passa se estiver
   no scope e `<d>` estiver em `domain.cleared` — plano `clear`, alvo omitido e workflow sem
-  gate domain não cobrem caminho de domínio. `block` → exit 2 + `gate_block
-  cmd=domain_<status>|domain_expired|domain_path`; `warn` → aviso + `gate_warn` com o mesmo
+  gate domain não cobrem caminho de domínio; (c) INTENT novo suspende as decisões do projeto
+  (CONTRATO v2): com `domain.status` diferente de `clear`, o carimbo (`version:`/`hash:`) de
+  `.maestro/INTENT.md` tem de ser o `intent` do pedido (`domain.requests[0].intent`); se
+  diverge, ou se o carimbo ou o pedido estão ilegíveis, o gate trata o record como `pending`
+  sem nada em `cleared` (falha fechada). O `decide` do mesmo plano sob outro carimbo não
+  preserva a decisão dada sob o antigo: o pedido volta a esperar o diretor. `block` → exit 2 +
+  `gate_block cmd=domain_<status>|domain_expired|domain_path|domain_intent`; `warn` → aviso + `gate_warn` com o mesmo
   `cmd` e segue o fluxo normal (orçamento do E14 conta o passo; sem `gate_pass` extra).
   Fora disso, o record vale como sempre. Runs com `PONTE_CAPABILITY_ORDEM` (passo 4b) ficam
   fora: a caixa da ordem é do daemon.

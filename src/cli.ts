@@ -281,9 +281,10 @@ const TARGETS_MAX = 32;
 const SCOPE_MAX = 1500; // `domain.scope` é lido pelo gate (bash) numa janela fixa
 const EFFECTS_MAX = 8;
 const EFFECT_MAX = 120;
-// v1.27 (Enterprise DATA_MODEL `domain_request.rollback_ref`): caminho ASCII relativo ao
-// projeto, com âncora opcional, que o daemon resolve no branch da ordem.
-const RE_ROLLBACK_REF = /^([A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199})(?:#([a-z0-9-]{1,80}))?$/;
+// CONTRATO v2 (`rollback_ref`: `<caminho>#<ancora>` resolvível): caminho ASCII relativo ao
+// projeto com âncora obrigatória, no mesmo alfabeto do `REF_CAMINHO_RE` do daemon
+// (ponte-daemon, domain/diretoria.ts), que o resolve de novo no branch da ordem.
+const RE_ROLLBACK_REF = /^([A-Za-z0-9_.][A-Za-z0-9._/-]{0,159})#([a-z0-9][a-z0-9_-]{0,79})$/;
 // O daemon recusa o `rollback_ref` inteiro (caminho + âncora) acima de 200 chars (ITEM_MAX,
 // CHECK da migração 0045) e o que `ehPlaceholder` acusa (ponte-daemon, domain/diretoria.ts):
 // recusar aqui evita o pedido que a Ponte devolveria.
@@ -936,6 +937,8 @@ function decideDomain(
     order_ref: orderRef,
     intent: intent!,
     domain: d,
+    // CONTRATO v2 aceita três formas de plan.ref; o Maestro emite só a do brief da sessão
+    // (as outras são `<caminho>#<ancora>` no branch da ordem e a da ordem por comando da Ponte).
     plan: { ref: `maestro:sessions/${session}#brief`, hash: planHash },
     targets,
     effects,
@@ -945,15 +948,21 @@ function decideDomain(
   // Re-decide do MESMO plano preserva as decisões já espelhadas (mesmo
   // request_id) que não venceram; plano novo = pedido novo, e decisão velha
   // não vale para ele. Vencida, a decisão não cobre execução nova (CONTRATO).
+  // INTENT novo suspende as decisões do projeto (CONTRATO v2): decisão dada sob
+  // outro carimbo não é preservada, e o pedido volta a esperar o diretor.
   const ids = new Set(requests.map((r) => r.request_id));
   const nowS = Math.floor(Date.now() / 1000);
-  const kept = (prev?.domain?.decisions ?? []).filter(
-    (x) =>
+  const kept = (prev?.domain?.decisions ?? []).filter((x) => {
+    const xi = x?.intent as { version?: unknown; hash?: unknown } | undefined;
+    return (
       typeof x?.request_id === "string" &&
       ids.has(x.request_id as string) &&
       typeof x.until_epoch === "number" &&
-      x.until_epoch > nowS,
-  );
+      x.until_epoch > nowS &&
+      xi?.version === intent!.version &&
+      xi?.hash === intent!.hash
+    );
+  });
   const block = domainBlock(requests, kept, scope, nowS);
 
   let out =
@@ -976,15 +985,20 @@ function decideDomain(
   return { block, text: out };
 }
 
-/** `revoked` da decisão (v1.27): `true` ou texto não vazio (data da revogação) = revogada. */
-function isRevoked(v: unknown): boolean {
-  return v === true || (typeof v === "string" && v.length > 0);
+/**
+ * Revogada (CONTRATO v2): `revoked_at` não nulo. O `revoked` antigo só é lido por
+ * compatibilidade (`true`; texto não vazio nos records gravados antes da v2).
+ * A mesma conta de DOMAIN_REVOKED_JQ (hooks/lib/domain-record.sh).
+ */
+function isRevoked(d: Record<string, unknown>): boolean {
+  const v = d.revoked;
+  return (d.revoked_at ?? null) !== null || v === true || (typeof v === "string" && v.length > 0);
 }
 
 /**
- * `--rollback` (v1.27, `rollback_ref`): caminho relativo ao projeto, com âncora
- * opcional, que resolve — o arquivo existe dentro do projeto e a âncora é um
- * título Markdown dele. Texto livre ("git revert") não é procedimento que o
+ * `--rollback` (CONTRATO v2, `rollback_ref`): `<caminho>#<ancora>` que resolve — o
+ * arquivo existe dentro do projeto e a âncora é um título Markdown dele, uma vez só
+ * (ambíguo não resolve, como no daemon). Texto livre ("git revert") não é procedimento que o
  * mecanismo resolva: é recusa, como placeholder. O daemon confere de novo no
  * branch da ordem, então o arquivo precisa estar versionado.
  */
@@ -992,9 +1006,13 @@ function resolveRollbackRef(raw: string): string {
   const hint =
     'aponte o procedimento de reversão versionado no projeto, ex.: --rollback "docs/planos/160.md#rollback"';
   const m = raw.length > ROLLBACK_REF_MAX ? null : RE_ROLLBACK_REF.exec(raw);
-  if (m === null || m[1]!.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
+  const segs = m === null ? [] : m[1]!.split("/");
+  if (
+    m === null ||
+    segs.some((seg) => seg === "" || seg === "." || seg === ".." || seg === ".git" || seg.toLowerCase().startsWith(".env"))
+  ) {
     throw invalid(
-      `--rollback não é caminho relativo com âncora opcional (caminho[#ancora], ASCII, sem '..', até ${ROLLBACK_REF_MAX} chars)`,
+      `--rollback não é caminho relativo com âncora (caminho#ancora, ASCII, sem '..', .git ou .env, até ${ROLLBACK_REF_MAX} chars)`,
       hint,
     );
   }
@@ -1002,7 +1020,7 @@ function resolveRollbackRef(raw: string): string {
     throw invalid("--rollback parece placeholder ('...', TODO, TBD, FIXME): a Ponte recusa", hint);
   }
   const path = m[1]!;
-  const anchor = m[2];
+  const anchor = m[2]!;
   const dir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
   let real: string;
   let root: string;
@@ -1023,39 +1041,45 @@ function resolveRollbackRef(raw: string): string {
   } catch {
     throw invalid(`--rollback: '${path}' não é arquivo`, hint);
   }
-  if (anchor !== undefined) {
-    if (size > ROLLBACK_FILE_MAX) {
-      throw invalid(`--rollback: '${path}' grande demais para conferir a âncora`, hint);
-    }
-    let body = "";
-    try {
-      body = readFileSync(real, "utf8");
-    } catch {
-      throw invalid(`--rollback: não consegui ler '${path}'`, hint);
-    }
-    if (!markdownAnchors(body).has(anchor)) {
-      throw invalid(`--rollback: a âncora #${anchor} não é título Markdown de '${path}'`, hint);
-    }
+  if (size > ROLLBACK_FILE_MAX) {
+    throw invalid(`--rollback: '${path}' grande demais para conferir a âncora`, hint);
+  }
+  let body = "";
+  try {
+    body = readFileSync(real, "utf8");
+  } catch {
+    throw invalid(`--rollback: não consegui ler '${path}'`, hint);
+  }
+  const vezes = markdownAnchors(body).get(anchor) ?? 0;
+  if (vezes !== 1) {
+    throw invalid(
+      vezes === 0
+        ? `--rollback: a âncora #${anchor} não é título Markdown de '${path}'`
+        : `--rollback: a âncora #${anchor} aparece ${vezes} vezes em '${path}' (ambígua, a Ponte recusa)`,
+      hint,
+    );
   }
   return raw;
 }
 
-/** Âncoras dos títulos Markdown (`# Título` → `titulo`): sem acento, minúsculas, espaço vira '-'. */
-function markdownAnchors(body: string): Set<string> {
-  const out = new Set<string>();
-  let fence = false;
+/**
+ * Âncoras dos títulos Markdown (`# Título` → `titulo`) e quantas vezes cada uma aparece, na conta
+ * do daemon (`secaoDaAncora` e `slugDoTitulo`, ponte-daemon domain/diretoria.ts): título é linha
+ * `#`..`######` no início; slug sem acento, minúsculas, só `[a-z0-9 _-]`, espaço vira '-'.
+ */
+function markdownAnchors(body: string): Map<string, number> {
+  const out = new Map<string, number>();
   for (const line of body.split("\n")) {
-    if (/^ {0,3}(```|~~~)/.test(line)) fence = !fence;
-    if (fence) continue;
-    const h = /^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(line);
+    const h = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
     if (h === null) continue;
     const slug = h[1]!
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/[^a-z0-9 -]/g, "")
+      .trim()
+      .replace(/[^a-z0-9 _-]/g, "")
       .replace(/ /g, "-");
-    if (slug !== "") out.add(slug);
+    if (slug !== "") out.set(slug, (out.get(slug) ?? 0) + 1);
   }
   return out;
 }
@@ -1080,8 +1104,8 @@ function domainBlock(
     const d = [...decisions].reverse().find((x) => x.request_id === r.request_id);
     let resp = typeof d?.response === "string" ? d.response : "pending";
     if (resp.startsWith("approved") && d?.via !== "ponte") resp = "pending";
-    // Revogada (v1.27, `domain.revoke`): deixa de cobrir na hora; o pedido volta a esperar.
-    if (d !== undefined && isRevoked(d.revoked)) resp = "pending";
+    // Revogada (`revoked_at`, `domain.revoke`): deixa de cobrir na hora; o pedido volta a esperar.
+    if (d !== undefined && isRevoked(d)) resp = "pending";
     const i = order.indexOf(resp);
     worst = Math.min(worst, i < 0 ? order.indexOf("pending") : i);
     const ue = typeof d?.until_epoch === "number" ? d.until_epoch : 0;
@@ -1901,7 +1925,7 @@ const USAGE = `maestro <comando>
          [--brief "essencia: ...; impacto: ...; approach: ..."]
                                                  brief regido; exigido com gate plan e gate domain
                                                  (no gate domain, approach real: pendente é recusa)
-         [--targets a,b] [--effects "e1; e2"] [--rollback "caminho[#ancora]"] [--order <ref>]
+         [--targets a,b] [--effects "e1; e2"] [--rollback "caminho#ancora"] [--order <ref>]
                                                  gate domain (E28): alvos, efeitos e rollback do plano;
                                                  exigidos quando o plano toca domínio (pedido ao diretor)
   status [--session <id>]                      decisão corrente, kill-switch, últimos eventos
