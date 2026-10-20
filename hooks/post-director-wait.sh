@@ -4,15 +4,20 @@
 #
 # O gate domain libera a edição dos alvos de um plano só com a decisão do diretor
 # do domínio. Essa decisão chega ao gerente no RESULTADO da tool `director_wait`
-# (linhas `decisao: {json}`, uma por pedido — ponte-daemon, notaDasDecisoes), e o
-# resultado de uma tool MCP é escrito pelo servidor, não pelo modelo. Este hook é
+# (linhas `decisao: {json}`, uma por pedido — ponte-daemon, notaDasDecisoes — ou
+# o campo `domain_decisions[]` da v1.27), e o resultado de uma tool MCP é escrito
+# pelo servidor, não pelo modelo. Este hook é
 # o espelho: lê essas linhas do `tool_response` e grava cada decisão no record da
 # sessão com via=ponte (hooks/lib/domain-record.sh). O `maestro conduct
 # --domain-decision` digitado continua existindo, mas grava via=manual e não
 # libera — identidade de quem decidiu nunca sai de campo de texto do cliente.
 #
-# Só a linha `decisao:` é lida; o resto da resposta (texto do Diretor) não é
-# logado nem guardado. Log: só metadados (cmd=domain_<response>, via=auto).
+# Só a linha `decisao:` e `domain_decisions[]` são lidos; o resto da resposta
+# (texto do Diretor) não é logado nem guardado. Run headless que espera por
+# `director.wait_for` recebe a decisão como texto da retomada, que não é resultado
+# de tool e não vale como prova: o gate manda chamar `director.wait` uma vez ao
+# retomar (decisão já resolvida volta na hora) e o espelho a registra por aqui.
+# Log: só metadados (cmd=domain_<response>, via=auto).
 # Observador: sempre exit 0, nada no stdout. Bash + jq, sem Bun, sem rede.
 
 set -euo pipefail
@@ -37,13 +42,18 @@ IFS= read -r -d '' -t 2 -n 262144 raw 2>/dev/null || :
 
 # Um fork de jq: 1ª linha "tool<TAB>sid"; depois cada decisão em JSON compacto.
 # O resultado MCP pode vir como texto, lista de blocos ou objeto, e a nota pode
-# estar dentro de um JSON serializado em texto — por isso o `fromjson?`.
+# estar dentro de um JSON serializado em texto — por isso o `fromjson?`. Duas
+# formas de decisão, deduplicadas: a linha `decisao: {json}` da nota e o campo
+# `domain_decisions[]` da v1.27 (API_SPEC §5.4.2 da Enterprise).
 out=$(jq -r '
   def s: if type == "string" then . else "" end;
   "\((.tool_name? // "") | s)\t\((.session_id? // "") | s)",
-  ([.tool_response? | .. | strings | ., (fromjson? | .. | strings)]
-    | map(split("\n")[]) | .[]
-    | (capture("^\\s*decisao:\\s*(?<j>\\{.*\\})\\s*$")? | .j | fromjson? | select(type == "object") | tojson))
+  ([.tool_response? | .. | ., (strings | fromjson? | ..)] as $all
+    | [ ($all[] | strings | split("\n")[]
+          | capture("^\\s*decisao:\\s*(?<j>\\{.*\\})\\s*$")? | .j | fromjson? | select(type == "object")),
+        ($all[] | objects | .domain_decisions? | arrays | .[] | objects) ]
+    | reduce .[] as $d ([]; if any(.[]; . == $d) then . else . + [$d] end)
+    | .[] | tojson)
 ' <<<"$raw" 2>/dev/null) || exit 0
 
 head_line="${out%%$'\n'*}"

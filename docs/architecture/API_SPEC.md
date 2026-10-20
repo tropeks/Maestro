@@ -684,16 +684,26 @@ maestro conduct --session <session_id>
 maestro decide --session <id> --workflow <feature|refactor> --mode <...>
                --brief "essencia: ...; impacto: ...; approach: <o plano>"
                [--targets "a/b.ts,deploy/"] [--effects "efeito 1; efeito 2"]
-               [--rollback "<ref>"] [--order <ref>]
+               [--rollback "<caminho>[#ancora]"] [--order <ref>]
 maestro conduct --session <id> --domain-decision '<json da decisão>'
 ```
 - `decide`: em workflow com `gate: domain`, `--brief` é obrigatório e `approach: pendente`
-  é recusado (exit 1). O plano (brief, `--targets`, `--effects`, `--rollback`, `--reason`)
-  é classificado pelos gatilhos de `domains:`. Não tocou: `domain.status: clear`, segue sem
+  é recusado (exit 1). O plano (brief, `--targets`, `--effects`, `--rollback`) é
+  classificado pelos gatilhos de `domains:` — o mesmo texto que o roteador do ponte-daemon
+  reclassifica; `--reason` não entra (não está no pedido nem no `plan.hash`, e classificar
+  com ele abria pedido que a Ponte recusa por `dominio_diverge_do_roteamento`).
+  `--rollback` (v1.27, `rollback_ref`): caminho relativo ao projeto
+  (`^[A-Za-z0-9._@+-][A-Za-z0-9._@+/-]{0,199}$`, sem segmento vazio, `.` ou `..`) com âncora
+  opcional `#[a-z0-9-]{1,80}`, que resolve: arquivo regular dentro do projeto (realpath) e,
+  com âncora, título Markdown do arquivo (sem acento, minúsculas, espaço → `-`). Texto livre
+  (`git revert`) é recusa (exit 1), como placeholder. O daemon confere de novo no branch da
+  ordem: o arquivo precisa estar versionado. Não tocou: `domain.status: clear`, segue sem
   pedido. Tocou: os quatro campos do contrato (alvos, efeitos, rollback, INTENT carimbado)
   são exigidos (faltou → exit 1, nada gravado); um pedido por domínio vai para
-  `domain.requests[]` com `status: pending`, e a saída imprime cada pedido (`pedido: {json}`)
-  e o caminho: com a Ponte, `director.ask` + `director.wait`; sem a Ponte, o humano.
+  `domain.requests[]` com `status: pending`, e a saída imprime cada pedido (`pedido: {json}`),
+  a lista inteira (`domain_requests: [json]`) e o caminho: com a Ponte, `director.ask` com o
+  campo `domain_requests` (v1.27, API_SPEC §5.4.2 da Enterprise; as linhas `pedido:` seguem
+  na pergunta para a Ponte anterior à v1.27) + `director.wait`; sem a Ponte, o humano.
   `--targets/--effects/--rollback/--order` fora de `gate: domain` → exit 1.
   Recusa também: INTENT editado desde o carimbo (hash do carimbo ≠ hash do corpo →
   `maestro intent --bump`) e, com pedido que não liberou (`status` fora de
@@ -702,8 +712,11 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   ordem), que o ponte-daemon aceita.
 - **Espelho da decisão — `hooks/post-director-wait.sh`** (PostToolUse, matcher
   `mcp__.*director_wait`; só `mcp__ponte__director_wait` ou `mcp__plugin_*_ponte__director_wait`):
-  lê do `tool_response` as linhas `decisao: {json}` (uma por pedido, ponte-daemon) e grava
-  cada decisão no record com `via: ponte`. O resultado da tool é do servidor MCP, não do
+  lê do `tool_response` as linhas `decisao: {json}` (uma por pedido, ponte-daemon) e o campo
+  `domain_decisions[]` (v1.27), deduplicados, e grava cada decisão no record com `via: ponte`.
+  Run headless que espera por `director.wait_for` recebe a decisão como texto da retomada
+  (não é resultado de tool, não vale como prova): o gate (Stop) manda chamar `director.wait`
+  uma vez ao retomar, e a decisão já resolvida volta na hora pelo resultado da tool. O resultado da tool é do servidor MCP, não do
   modelo: é a única prova de runtime que o Maestro tem de quem decidiu. Mesmas recusas do
   contrato abaixo (decisão recusada é ignorada, sem erro). Sempre exit 0, nada no stdout;
   log `conduct cmd=domain_<response> via=auto`.
@@ -711,11 +724,18 @@ maestro conduct --session <id> --domain-decision '<json da decisão>'
   contra o pedido do próprio record, gravado com `via: manual`. **Não libera nada:**
   aprovação manual conta como `pending` no status. Recusa (exit 1, record intacto): campo
   fora ou faltando do contrato, `request_id` alheio, `response` fora do enum,
+  `conditions[]` fora da forma (até 8 itens, cada um texto até 120 ou
+  `{texto ≤ 200, check_ref, id?}`, v1.27), `reason` acima de 500,
   `approved_with_conditions` sem condição, diretor (`decided_by.role: director_domain`) de
   outro domínio, domínio em papel que não é `director_domain`, aprovação com
   `role: mechanical` (timeout nunca aprova), `intent` diferente do pedido, `valid_until`
   vencido, `decision_id` repetido e segunda resolução de pedido já resolvido pela Ponte
-  (só `needs_evidence`/`escalate`/`approved_with_conditions` admitem nova decisão).
+  (só `needs_evidence`/`escalate`/`approved_with_conditions`, ou decisão revogada, admitem
+  nova decisão). **Revogação (v1.27):** campo opcional `revoked` (`true` ou a data, texto até
+  64; `false`/`null` = vigente). A revogação de um `decision_id` já registrado, com o mesmo
+  pedido e a mesma resposta, marca a decisão no lugar; a última decisão do pedido revogada
+  conta como `pending` e sai de `cleared` (deixa de cobrir na hora). Revogação de decisão não
+  registrada é recusada (não cobria nada).
   `decided_by.label` nunca é lido do cliente: sai de role/domain (`diretor-seguranca`,
   `diretor-infra`, `spock`, `capitao`, `mecanico`). `conduct --approach` em record com
   `domain` → exit 1 (plano mudou: decida de novo). **Autoridade:** o espelho é

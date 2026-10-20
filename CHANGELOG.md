@@ -6,6 +6,16 @@ from the decision log and tag messages when this file was introduced.
 
 ## [Unreleased]
 
+### Changed (E28, v1.27 da Enterprise)
+- **`gate: domain` segue a v1.27.** `maestro decide` imprime `domain_requests: [json]` e o gate manda o gerente passar a lista
+  no campo `domain_requests` do `director.ask` (as linhas `pedido:` seguem na pergunta para a Ponte anterior à v1.27).
+  `--rollback` passa a ser caminho do projeto com âncora opcional que resolve (arquivo dentro do projeto; âncora = título
+  Markdown); texto livre é recusa. `--reason` sai da classificação de domínio, que fica igual à do roteador do ponte-daemon
+  (brief, efeitos, rollback, alvos). O espelho da decisão aceita `conditions[]` como `{texto, check_ref}`, `reason` até 500,
+  `revoked` (a decisão revogada deixa de cobrir na hora) e o campo `domain_decisions[]` do resultado do `director.wait`; o
+  gate cobre o run headless que espera por `director.wait_for` (chamar `director.wait` uma vez ao retomar).
+  Testes: `tests/hooks/test-gate-domain.sh`.
+
 ### Security
 - **`evidence --record` recusa antes de executar o comando que não é o declarado (ordem 078, fase S0).** `--label order-N` só executa o
   comando entre crases do `fim:` da ordem N **no commit-base** (`fim_commit`, gravado por `maestro order --baseline N`); rótulos de área

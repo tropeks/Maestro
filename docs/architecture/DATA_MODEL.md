@@ -457,8 +457,8 @@ plano; token MAIÚSCULO casa a palavra exata) e `other` (trecho literal). Leitor
 | `domain.scope` | string | os `--targets` do plano, separados por espaço, ≤1500 chars; ausente em `clear`. É a mutação dependente que o gate suspende |
 | `domain.cleared` | string | domínios cujo pedido tem `approved` espelhado da Ponte (`via: ponte`) e não vencido, separados por espaço (`""` = nenhum). É o que libera caminho de domínio no gate |
 | `domain.cleared_until` | inteiro | menor `valid_until` (epoch) entre essas aprovações; `0` = nenhuma. Vencida, a aprovação não cobre edição nova |
-| `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null = sessão sem ordem), `intent.version`, `intent.hash` (formato de §13; carimbo com hash ≠ corpo é recusa), `domain`, `plan.ref`, `plan.hash`, `targets[]`, `effects[]`, `rollback_ref` |
-| `domain.decisions[]` | array | decisões no contrato (`decision_id`, `request_id`, `response`, `conditions[]`, `reason`, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until`) mais dois campos do espelho: `via` (`ponte` = resultado da tool `director_wait`, gravado pelo hook; `manual` = `conduct --domain-decision`) e `until_epoch` (o `valid_until` em epoch). `label` é derivado de role/domain, nunca lido do cliente |
+| `domain.requests[]` | array | um pedido por domínio tocado, contrato mínimo: `request_id`, `project`, `order_ref` (ou null = sessão sem ordem), `intent.version`, `intent.hash` (formato de §13; carimbo com hash ≠ corpo é recusa), `domain`, `plan.ref`, `plan.hash`, `targets[]`, `effects[]`, `rollback_ref` (v1.27: caminho do projeto com âncora opcional, que resolve — API_SPEC, `gate: domain`) |
+| `domain.decisions[]` | array | decisões no contrato (`decision_id`, `request_id`, `response`, `conditions[]` — texto até 120 ou `{texto ≤ 200, check_ref, id?}`, até 8 —, `reason` até 500, `decided_by{role,domain,label}`, `policy_ref`, `intent.version`, `intent.hash`, `valid_until`, e `revoked` opcional — `true` ou a data — da v1.27) mais dois campos do espelho: `via` (`ponte` = resultado da tool `director_wait`, gravado pelo hook; `manual` = `conduct --domain-decision`) e `until_epoch` (o `valid_until` em epoch). `label` é derivado de role/domain, nunca lido do cliente |
 
 **`plan.ref` e `plan.hash`.** `plan.ref` = `maestro:sessions/<sessão>#brief`: o plano é o
 `brief` do record da sessão, que o ponte-daemon (mesma forge) lê de
@@ -471,7 +471,8 @@ contrato nos dois repositórios (CONTRATO.md fala em "caminho versionado").
 
 **Status agregado.** O pior pedido vence (`denied` < `revise` < `escalate` <
 `needs_evidence` < `pending` < `approved_with_conditions` < `approved`). Aprovação com
-`via: manual` conta como `pending`. `approved_with_conditions` não libera edição: o Maestro
+`via: manual` conta como `pending`; a última decisão do pedido revogada também (e não entra
+em `cleared`). `approved_with_conditions` não libera edição: o Maestro
 não verifica condição (a Ponte também não executa ação com condição em texto); cumpridas
 as condições, a nova decisão vem pela Ponte. A mesma conta está em `src/cli.ts`
 (`domainBlock`) e `hooks/lib/domain-record.sh` (`DOMAIN_RECOMPUTE_JQ`).

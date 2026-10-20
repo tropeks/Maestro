@@ -27,6 +27,9 @@ intent_write() { # <corpo> — carimbo v7 com o hash REAL do corpo (regra do cor
   printf '<!-- maestro-intent\nversion: 7\nhash: %s\n-->\n%s' "$h" "$1" > "$P/.maestro/INTENT.md"
 }
 intent_write $'## Problema\np\n'
+# v1.27: --rollback é caminho do projeto com âncora opcional, e resolve.
+mkdir -p "$P/docs"
+printf '# Plano\n\n## Rollback\ngit revert do commit\n\n## Reversão da imagem\ntag anterior\n' > "$P/docs/rollback.md"
 
 fail=0
 ok()  { printf 'ok   %s\n' "$1"; }
@@ -80,7 +83,7 @@ chk "sem --brief: exit 1" "$RC" "1"
 echo "-- plano que toca .env: pedido de segurança"
 decide --session dm-env --workflow feature --mode direct \
   --brief "essencia: chave nova; impacto: integra x; approach: le a chave no boot" \
-  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "git revert do commit" --order 110
+  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "docs/rollback.md#rollback" --order 110
 chk "exit 0" "$RC" "0"
 R="$(REC dm-env)"
 chk "status pending" "$(jq -r '.domain.status' "$R")" "pending"
@@ -114,11 +117,11 @@ chk "pedido de infrastructure" "$(jq -r '[.domain.requests[].domain] | join(",")
 echo "-- gatilho por palavra do plano, sem caminho"
 decide --session dm-kw --workflow feature --mode direct \
   --brief "essencia: api; impacto: x; approach: libera CORS para o app" \
-  --targets "src/api/server.ts" --effects "origem nova aceita" --rollback "git revert"
+  --targets "src/api/server.ts" --effects "origem nova aceita" --rollback "docs/rollback.md"
 chk "cors → security" "$(jq -r '[.domain.requests[].domain] | join(",")' "$(REC dm-kw)")" "security"
 decide --session dm-df --workflow feature --mode direct \
   --brief "essencia: imagem; impacto: x; approach: Dockerfile roda como USER app" \
-  --targets "Dockerfile" --effects "imagem nova" --rollback "tag anterior"
+  --targets "Dockerfile" --effects "imagem nova" --rollback "docs/rollback.md#reversao-da-imagem"
 chk "Dockerfile com USER → security e infra" \
   "$(jq -r '[.domain.requests[].domain] | join(",")' "$(REC dm-df)")" "security,infrastructure"
 decide --session dm-user --workflow feature --mode direct \
@@ -133,16 +136,42 @@ chk "exit 1" "$RC" "1"
 [[ -f "$(REC dm-falta)" ]] && bad "gravou pedido incompleto" || ok "nada gravado"
 mv "$P/.maestro/INTENT.md" "$SB/intent.bak"
 decide --session dm-semintent --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "r"
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md"
 chk "sem INTENT carimbado: exit 1" "$RC" "1"
 mv "$SB/intent.bak" "$P/.maestro/INTENT.md"
 cp "$P/.maestro/INTENT.md" "$SB/intent.bak"
 printf 'linha nova sem bump\n' >> "$P/.maestro/INTENT.md"
 decide --session dm-stale --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "r"
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md"
 chk "INTENT editado desde o carimbo: exit 1" "$RC" "1"
 [[ "$ERR" == *"--bump"* ]] && ok "erro manda dar bump" || bad "erro: $ERR"
 mv "$SB/intent.bak" "$P/.maestro/INTENT.md"
+
+echo "-- --rollback (v1.27): caminho do projeto com âncora opcional, que resolve"
+ln -s /etc "$P/fora"
+for rb in "git revert" "../x.md" "/etc/hostname" "docs/nao-existe.md" "docs/rollback.md#nao-ha" "docs" "fora/hostname" "docs/rollback.md#Rollback"; do
+  decide --session dm-rb --workflow feature --mode direct \
+    --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$rb"
+  chk "--rollback '$rb': exit 1" "$RC" "1"
+  [[ "$ERR" == *"--rollback"* ]] || bad "erro não cita --rollback ($rb): $ERR"
+done
+[[ -f "$(REC dm-rb)" ]] && bad "gravou com rollback que não resolve" || ok "nada gravado com rollback que não resolve"
+decide --session dm-rb --workflow feature --mode direct \
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md#reversao-da-imagem"
+chk "âncora de título com acento resolve: exit 0" "$RC" "0"
+chk "rollback_ref gravado como veio" "$(jq -r '.domain.requests[0].rollback_ref' "$(REC dm-rb)")" "docs/rollback.md#reversao-da-imagem"
+
+echo "-- --reason não classifica (o roteador da Ponte não o lê)"
+decide --session dm-why --workflow feature --mode direct --reason "mexe no fluxo de auth" \
+  --brief "essencia: botao; impacto: x; approach: componente React na tela de perfil" --targets "src/ui/perfil.tsx"
+chk "palavra de domínio só no --reason: exit 0" "$RC" "0"
+chk "palavra de domínio só no --reason: clear" "$(jq -r '.domain.status' "$(REC dm-why)")" "clear"
+
+echo "-- domain_requests (v1.27): a lista que vai no director.ask"
+DRQ=$("$BIN" decide --session dm-rb --workflow feature --mode direct \
+  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" \
+  --rollback "docs/rollback.md#reversao-da-imagem" 2>/dev/null | sed -n 's/^domain_requests: //p')
+chk "linha domain_requests = requests do record" "$(jq -c . <<<"$DRQ" 2>/dev/null)" "$(jq -c '.domain.requests' "$(REC dm-rb)")"
 
 echo "-- tabela malformada: gate domain sem domains, domínio fora do vocabulário"
 sed '/^domains:/,/^# O casamento/{/^# O casamento/!d}' "$REPO/config/routing-table.yaml" > "$SB/sem-domains.yaml"
@@ -205,6 +234,27 @@ cdd "$(dec d1 approved director_domain security | jq -c '.request_id = "dreq-000
 chk "pedido de outro record recusado" "$RC" "1"
 chk "recusas não mexem no status" "$(st dm-env)" "pending"
 
+echo "-- forma da decisão da v1.27: conditions {texto, check_ref}, reason até 500, revoked"
+COND='[{"texto":"segredo so por referencia, conferido no recibo","check_ref":"maestro:evidence/e1"}]'
+cdd "$(dec v1 approved_with_conditions director_domain security | jq -c --argjson c "$COND" '.conditions = $c')"
+chk "conditions como {texto, check_ref}: aceito" "$RC" "0"
+cdd "$(dec v2 approved_with_conditions director_domain security | jq -c '.conditions = [{"texto":"x"}]')"
+chk "condição sem check_ref recusada" "$RC" "1"
+cdd "$(dec v2 approved_with_conditions director_domain security | jq -c '.conditions = [range(9) | "c\(.)"]')"
+chk "mais de 8 condições recusado" "$RC" "1"
+cdd "$(dec v3 approved director_domain security | jq -c --arg r "$(printf 'r%.0s' {1..200})" '.reason = $r')"
+chk "reason de 200 chars: aceito" "$RC" "0"
+cdd "$(dec v4 needs_evidence director_domain security | jq -c --arg r "$(printf 'r%.0s' {1..501})" '.reason = $r')"
+chk "reason acima de 500 recusado" "$RC" "1"
+cdd "$(dec v5 approved director_domain security | jq -c '.revoked = false')"
+chk "revoked: false aceito (decisão vigente)" "$RC" "0"
+cdd "$(dec v6 needs_evidence director_domain security | jq -c '.revoked = {"x":1}')"
+chk "revoked fora da forma recusado" "$RC" "1"
+cdd "$(dec v7 needs_evidence director_domain security | jq -c '.revoked = true')"
+chk "revogação de decisão não registrada recusada" "$RC" "1"
+[[ "$OUT" == *"não registrada"* ]] && ok "motivo: revogação de decisão não registrada" || bad "saída: $OUT"
+chk "aceites manuais não mexem no status" "$(st dm-env)" "pending"
+
 echo "-- conduct digitado não libera (identidade nunca sai de texto do cliente)"
 cdd "$(dec m1 approved director_domain security)"
 chk "aprovação digitada: registrada (exit 0)" "$RC" "0"
@@ -234,17 +284,17 @@ grep -q '"cmd":"domain_approved_with_conditions".*"via":"auto"' "$MAESTRO_HOME/l
 echo "-- re-decide: mesmo plano preserva a decisão; plano novo reabre o pedido"
 "$BIN" decide --session dm-env --workflow feature --mode direct \
   --brief "essencia: chave nova; impacto: integra x; approach: le a chave no boot" \
-  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "git revert do commit" --order 110 >/dev/null 2>&1
+  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "docs/rollback.md#rollback" --order 110 >/dev/null 2>&1
 chk "mesmo plano: status mantido" "$(st dm-env)" "approved_with_conditions"
 # decisão vencida não sobrevive ao re-decide
 jq -c '.domain.decisions |= map(.until_epoch = 1)' "$(REC dm-env)" > "$SB/t" && mv "$SB/t" "$(REC dm-env)"
 "$BIN" decide --session dm-env --workflow feature --mode direct \
   --brief "essencia: chave nova; impacto: integra x; approach: le a chave no boot" \
-  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "git revert do commit" --order 110 >/dev/null 2>&1
+  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "docs/rollback.md#rollback" --order 110 >/dev/null 2>&1
 chk "mesmo plano com decisão vencida: pending de novo" "$(st dm-env)" "pending"
 "$BIN" decide --session dm-env --workflow feature --mode direct \
   --brief "essencia: chave nova; impacto: integra x; approach: le a chave e grava em disco" \
-  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "git revert do commit" >/dev/null 2>&1
+  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
 chk "plano novo: pending" "$(st dm-env)" "pending"
 chk "plano novo: decisão velha não vale" "$(jq '.domain.decisions // [] | length' "$(REC dm-env)")" "0"
 RID=$(jq -r '.domain.requests[0].request_id' "$(REC dm-env)")
@@ -259,7 +309,7 @@ chk "plano novo sem domínio na mesma sessão: exit 0" "$RC" "0"
 chk "status clear" "$(st dm-env)" "clear"
 "$BIN" decide --session dm-env --workflow feature --mode direct \
   --brief "essencia: chave nova; impacto: integra x; approach: le a chave e grava em disco" \
-  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "git revert do commit" >/dev/null 2>&1
+  --targets ".env.example,src/config.ts" --effects "variavel nova no ambiente" --rollback "docs/rollback.md#rollback" >/dev/null 2>&1
 chk "volta ao plano com domínio: pending" "$(st dm-env)" "pending"
 
 echo "-- schema do record (doctor) aceita o bloco domain"
@@ -344,11 +394,30 @@ chk "block: alvo com pedido aprovado → passa" "$GRC" "0"
 edit dm-cmp ".env"
 chk "aprovação de infra não cobre caminho de security → exit 2" "$GRC" "2"
 
+echo "-- revogação (v1.27): a decisão deixa de cobrir na hora"
+wait_hook dm-cmp "$(dec i9 approved director_domain infrastructure "$VU" "$IH" "$CRID" | jq -c '.revoked = true')"
+chk "revogação de decisão desconhecida: ignorada" "$(st dm-cmp)" "approved"
+wait_hook dm-cmp "$(dec i1 approved director_domain infrastructure "$VU" "$IH" "$CRID" | jq -c '.revoked = "2026-10-20T12:00:00Z"')"
+chk "revogada: status volta a pending" "$(st dm-cmp)" "pending"
+chk "revogada: nada liberado" "$(jq -c '[.domain.cleared, .domain.cleared_until]' "$(REC dm-cmp)")" '["",0]'
+chk "revogada no lugar, sem duplicar" "$(jq -c '[.domain.decisions[] | select(.decision_id == "i1") | .revoked]' "$(REC dm-cmp)")" '["2026-10-20T12:00:00Z"]'
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "revogada: alvo volta a ficar suspenso → exit 2" "$GRC" "2"
+# v1.27: a decisão chega no campo domain_decisions[] do resultado do director.wait.
+I2=$(dec i2 approved director_domain infrastructure "$VU" "$IH" "$CRID")
+jq -nc --argjson d "$I2" '{session_id:"dm-cmp", hook_event_name:"PostToolUse", tool_name:"mcp__plugin_maestro_ponte__director_wait",
+  tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:"ok",
+    domain_decisions:[$d]} | tojson)}]}' | bash "$WAIT" >/dev/null 2>&1
+chk "decisão nova depois da revogação, por domain_decisions[]" "$(st dm-cmp)" "approved"
+chk "i2 espelhada uma vez só" "$(jq '[.domain.decisions[] | select(.decision_id == "i2")] | length' "$(REC dm-cmp)")" "1"
+edit dm-cmp "deploy/compose.prod.yaml"
+chk "aprovada de novo: alvo → passa" "$GRC" "0"
+
 echo "-- pre-tool-gate warn: avisa e segue o fluxo normal (orçamento conta)"
 policy warn
 decide --session dm-bud --workflow feature --mode direct --max-steps 5 \
   --brief "essencia: chave; impacto: x; approach: le a chave" \
-  --targets ".env.local" --effects "variavel nova" --rollback "git revert"
+  --targets ".env.local" --effects "variavel nova" --rollback "docs/rollback.md"
 edit dm-bud ".env.local"
 chk "warn: alvo pendente → passa com aviso" "$GRC" "0"
 [[ "$GERR" == *"aviso"* ]] && ok "aviso no stderr" || bad "stderr: $GERR"
@@ -375,6 +444,8 @@ chk "gate=domain no arquivo" "$(gv gate)" "domain"
 stop dm-bud "$SOCK"
 [[ "$SOUT" == *'"decision":"block"'* && "$SOUT" == *"gate domain"* && "$SOUT" == *"timeout nao aprova"* ]] \
   && ok "com Ponte: block com a reason do gate domain" || bad "stdout: $SOUT"
+[[ "$SOUT" == *"domain_requests"* && "$SOUT" == *"director.wait_for"* ]] \
+  && ok "reason manda domain_requests e cobre o run com director.wait_for" || bad "stdout: $SOUT"
 [[ "$SOUT" == *"security"* || "$SOUT" == *".env"* ]] && bad "reason vazou o pedido" || ok "reason não cita o pedido"
 [[ "$SOUT" == *"conduct --domain"* ]] && bad "reason manda digitar a decisão" || ok "reason não manda digitar a decisão"
 stop dm-bud "$SOCK"
