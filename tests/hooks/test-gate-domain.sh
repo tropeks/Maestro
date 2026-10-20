@@ -3,9 +3,8 @@
 #
 # Pacote 03-Maestro.md: plano sem domínio segue sem gate; `.env` pede decisão de
 # segurança; `compose` pede decisão de infra; `gate: ship` não muda. E o contrato:
-# pedido sem placeholder, decisão espelhada do resultado do director_wait (via=ponte;
-# o conduct digitado não libera), gate em alvo do plano e em todo caminho de domínio,
-# Stop segurando a rodada pela Ponte — timeout nunca aprova. Hermético (mktemp -d).
+# pedido sem placeholder, decisão espelhada do director_wait (via=ponte; conduct digitado
+# não libera), gate em alvo e caminho de domínio, Stop pela Ponte — timeout nunca aprova.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -20,16 +19,14 @@ maestro_env_clean_inherit
 SB=$(mktemp -d)
 trap '[[ $$ == $BASHPID ]] && rm -rf "$SB"' EXIT
 export MAESTRO_HOME="$SB/home" MAESTRO_NO_UPDATE_CHECK=1
-P="$SB/proj"; mkdir -p "$P/.maestro" "$MAESTRO_HOME/sessions" "$MAESTRO_HOME/logs"
+P="$SB/proj"; mkdir -p "$P/.maestro" "$P/docs" "$MAESTRO_HOME/sessions" "$MAESTRO_HOME/logs"
 export CLAUDE_PROJECT_DIR="$P"
 intent_write() { # <corpo> — carimbo v7 com o hash REAL do corpo (regra do core-intent.sh)
   local h; h=$(printf '%s' "$1" | sha256sum | head -c 8)
   printf '<!-- maestro-intent\nversion: 7\nhash: %s\n-->\n%s' "$h" "$1" > "$P/.maestro/INTENT.md"
 }
 intent_write $'## Problema\np\n'
-# v1.27: --rollback é caminho do projeto com âncora opcional, e resolve.
-mkdir -p "$P/docs"
-printf '# Plano\n\n## Rollback\ngit revert do commit\n\n## Reversão da imagem\ntag anterior\n' > "$P/docs/rollback.md"
+printf '# Plano\n\n## Rollback\ngit revert\n\n## Reversão da imagem\ntag\n' > "$P/docs/rollback.md" # v1.27: rollback resolve
 
 fail=0
 ok()  { printf 'ok   %s\n' "$1"; }
@@ -147,32 +144,6 @@ chk "INTENT editado desde o carimbo: exit 1" "$RC" "1"
 [[ "$ERR" == *"--bump"* ]] && ok "erro manda dar bump" || bad "erro: $ERR"
 mv "$SB/intent.bak" "$P/.maestro/INTENT.md"
 
-echo "-- --rollback (v1.27): caminho do projeto com âncora opcional, que resolve"
-ln -s /etc "$P/fora"
-for rb in "git revert" "../x.md" "/etc/hostname" "docs/nao-existe.md" "docs/rollback.md#nao-ha" "docs" "fora/hostname" "docs/rollback.md#Rollback"; do
-  decide --session dm-rb --workflow feature --mode direct \
-    --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "$rb"
-  chk "--rollback '$rb': exit 1" "$RC" "1"
-  [[ "$ERR" == *"--rollback"* ]] || bad "erro não cita --rollback ($rb): $ERR"
-done
-[[ -f "$(REC dm-rb)" ]] && bad "gravou com rollback que não resolve" || ok "nada gravado com rollback que não resolve"
-decide --session dm-rb --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" --rollback "docs/rollback.md#reversao-da-imagem"
-chk "âncora de título com acento resolve: exit 0" "$RC" "0"
-chk "rollback_ref gravado como veio" "$(jq -r '.domain.requests[0].rollback_ref' "$(REC dm-rb)")" "docs/rollback.md#reversao-da-imagem"
-
-echo "-- --reason não classifica (o roteador da Ponte não o lê)"
-decide --session dm-why --workflow feature --mode direct --reason "mexe no fluxo de auth" \
-  --brief "essencia: botao; impacto: x; approach: componente React na tela de perfil" --targets "src/ui/perfil.tsx"
-chk "palavra de domínio só no --reason: exit 0" "$RC" "0"
-chk "palavra de domínio só no --reason: clear" "$(jq -r '.domain.status' "$(REC dm-why)")" "clear"
-
-echo "-- domain_requests (v1.27): a lista que vai no director.ask"
-DRQ=$("$BIN" decide --session dm-rb --workflow feature --mode direct \
-  --brief "essencia: x; impacto: y; approach: le .env" --targets ".env" --effects "e" \
-  --rollback "docs/rollback.md#reversao-da-imagem" 2>/dev/null | sed -n 's/^domain_requests: //p')
-chk "linha domain_requests = requests do record" "$(jq -c . <<<"$DRQ" 2>/dev/null)" "$(jq -c '.domain.requests' "$(REC dm-rb)")"
-
 echo "-- tabela malformada: gate domain sem domains, domínio fora do vocabulário"
 sed '/^domains:/,/^# O casamento/{/^# O casamento/!d}' "$REPO/config/routing-table.yaml" > "$SB/sem-domains.yaml"
 MAESTRO_ROUTING_TABLE="$SB/sem-domains.yaml" decide --session dm-cfg --workflow fix --mode direct
@@ -233,27 +204,6 @@ chk "campo faltando recusado" "$RC" "1"
 cdd "$(dec d1 approved director_domain security | jq -c '.request_id = "dreq-0000000000000000"')"
 chk "pedido de outro record recusado" "$RC" "1"
 chk "recusas não mexem no status" "$(st dm-env)" "pending"
-
-echo "-- forma da decisão da v1.27: conditions {texto, check_ref}, reason até 500, revoked"
-COND='[{"texto":"segredo so por referencia, conferido no recibo","check_ref":"maestro:evidence/e1"}]'
-cdd "$(dec v1 approved_with_conditions director_domain security | jq -c --argjson c "$COND" '.conditions = $c')"
-chk "conditions como {texto, check_ref}: aceito" "$RC" "0"
-cdd "$(dec v2 approved_with_conditions director_domain security | jq -c '.conditions = [{"texto":"x"}]')"
-chk "condição sem check_ref recusada" "$RC" "1"
-cdd "$(dec v2 approved_with_conditions director_domain security | jq -c '.conditions = [range(9) | "c\(.)"]')"
-chk "mais de 8 condições recusado" "$RC" "1"
-cdd "$(dec v3 approved director_domain security | jq -c --arg r "$(printf 'r%.0s' {1..200})" '.reason = $r')"
-chk "reason de 200 chars: aceito" "$RC" "0"
-cdd "$(dec v4 needs_evidence director_domain security | jq -c --arg r "$(printf 'r%.0s' {1..501})" '.reason = $r')"
-chk "reason acima de 500 recusado" "$RC" "1"
-cdd "$(dec v5 approved director_domain security | jq -c '.revoked = false')"
-chk "revoked: false aceito (decisão vigente)" "$RC" "0"
-cdd "$(dec v6 needs_evidence director_domain security | jq -c '.revoked = {"x":1}')"
-chk "revoked fora da forma recusado" "$RC" "1"
-cdd "$(dec v7 needs_evidence director_domain security | jq -c '.revoked = true')"
-chk "revogação de decisão não registrada recusada" "$RC" "1"
-[[ "$OUT" == *"não registrada"* ]] && ok "motivo: revogação de decisão não registrada" || bad "saída: $OUT"
-chk "aceites manuais não mexem no status" "$(st dm-env)" "pending"
 
 echo "-- conduct digitado não libera (identidade nunca sai de texto do cliente)"
 cdd "$(dec m1 approved director_domain security)"
@@ -394,25 +344,6 @@ chk "block: alvo com pedido aprovado → passa" "$GRC" "0"
 edit dm-cmp ".env"
 chk "aprovação de infra não cobre caminho de security → exit 2" "$GRC" "2"
 
-echo "-- revogação (v1.27): a decisão deixa de cobrir na hora"
-wait_hook dm-cmp "$(dec i9 approved director_domain infrastructure "$VU" "$IH" "$CRID" | jq -c '.revoked = true')"
-chk "revogação de decisão desconhecida: ignorada" "$(st dm-cmp)" "approved"
-wait_hook dm-cmp "$(dec i1 approved director_domain infrastructure "$VU" "$IH" "$CRID" | jq -c '.revoked = "2026-10-20T12:00:00Z"')"
-chk "revogada: status volta a pending" "$(st dm-cmp)" "pending"
-chk "revogada: nada liberado" "$(jq -c '[.domain.cleared, .domain.cleared_until]' "$(REC dm-cmp)")" '["",0]'
-chk "revogada no lugar, sem duplicar" "$(jq -c '[.domain.decisions[] | select(.decision_id == "i1") | .revoked]' "$(REC dm-cmp)")" '["2026-10-20T12:00:00Z"]'
-edit dm-cmp "deploy/compose.prod.yaml"
-chk "revogada: alvo volta a ficar suspenso → exit 2" "$GRC" "2"
-# v1.27: a decisão chega no campo domain_decisions[] do resultado do director.wait.
-I2=$(dec i2 approved director_domain infrastructure "$VU" "$IH" "$CRID")
-jq -nc --argjson d "$I2" '{session_id:"dm-cmp", hook_event_name:"PostToolUse", tool_name:"mcp__plugin_maestro_ponte__director_wait",
-  tool_response:[{type:"text", text:({status:"respondida", decision_id:"01ABC", resposta:"ok",
-    domain_decisions:[$d]} | tojson)}]}' | bash "$WAIT" >/dev/null 2>&1
-chk "decisão nova depois da revogação, por domain_decisions[]" "$(st dm-cmp)" "approved"
-chk "i2 espelhada uma vez só" "$(jq '[.domain.decisions[] | select(.decision_id == "i2")] | length' "$(REC dm-cmp)")" "1"
-edit dm-cmp "deploy/compose.prod.yaml"
-chk "aprovada de novo: alvo → passa" "$GRC" "0"
-
 echo "-- pre-tool-gate warn: avisa e segue o fluxo normal (orçamento conta)"
 policy warn
 decide --session dm-bud --workflow feature --mode direct --max-steps 5 \
@@ -444,8 +375,6 @@ chk "gate=domain no arquivo" "$(gv gate)" "domain"
 stop dm-bud "$SOCK"
 [[ "$SOUT" == *'"decision":"block"'* && "$SOUT" == *"gate domain"* && "$SOUT" == *"timeout nao aprova"* ]] \
   && ok "com Ponte: block com a reason do gate domain" || bad "stdout: $SOUT"
-[[ "$SOUT" == *"domain_requests"* && "$SOUT" == *"director.wait_for"* ]] \
-  && ok "reason manda domain_requests e cobre o run com director.wait_for" || bad "stdout: $SOUT"
 [[ "$SOUT" == *"security"* || "$SOUT" == *".env"* ]] && bad "reason vazou o pedido" || ok "reason não cita o pedido"
 [[ "$SOUT" == *"conduct --domain"* ]] && bad "reason manda digitar a decisão" || ok "reason não manda digitar a decisão"
 stop dm-bud "$SOCK"

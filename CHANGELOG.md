@@ -14,7 +14,7 @@ from the decision log and tag messages when this file was introduced.
   (brief, efeitos, rollback, alvos). O espelho da decisão aceita `conditions[]` como `{texto, check_ref}`, `reason` até 500,
   `revoked` (a decisão revogada deixa de cobrir na hora) e o campo `domain_decisions[]` do resultado do `director.wait`; o
   gate cobre o run headless que espera por `director.wait_for` (chamar `director.wait` uma vez ao retomar).
-  Testes: `tests/hooks/test-gate-domain.sh`.
+  Testes: `tests/hooks/test-gate-domain-v127.sh` (e `test-gate-domain.sh` com rollback que resolve).
 
 ### Security
 - **`evidence --record` recusa antes de executar o comando que não é o declarado (ordem 078, fase S0).** `--label order-N` só executa o
