@@ -74,6 +74,8 @@ if ! source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null; then
 fi
 # shellcheck source=lib/transcript.sh
 source "$SCRIPT_DIR/lib/transcript.sh" 2>/dev/null || true
+# shellcheck source=lib/domain-gate.sh
+source "$SCRIPT_DIR/lib/domain-gate.sh" 2>/dev/null || true
 maestro_killswitch
 
 # Ordem 020: cópia do stdout real em fd 3, ANTES de qualquer coisa assumir o
@@ -177,7 +179,7 @@ _maestro_mcp_prune_stale() {
     _approved=()
     while IFS= read -r -d '' _stale; do
       _base="${_stale##*/}"
-      if [[ "$_base" =~ ^[A-Za-z0-9_-]+_(plan|ship|aviso)$ ]] && (( ${#_base} <= 70 )); then
+      if [[ "$_base" =~ ^[A-Za-z0-9_-]+_(plan|ship|aviso|domain)$ ]] && (( ${#_base} <= 70 )); then
         _approved+=("$_stale")
       fi
     done < <(find "$MCP_ASKED_DIR" -maxdepth 1 -type f -mmin +40 -print0 2>/dev/null)
@@ -290,6 +292,7 @@ if [[ -f "$rec" && -r "$rec" ]]; then
   # E25/S-2501: `killed` conta como fechado — o gate ship não cobra shipar o que
   # foi descartado.
   settled=0; [[ "$body" =~ \"outcome\"[[:space:]]*:[[:space:]]*\"(accepted|rework|reverted|killed)\" ]] && settled=1
+  if maestro_domain_read "$body" "$settled"; then wf=""; gate="$dom_gate"; fi   # E28: gate domain, nunca plan
   case "$wf" in
     feature|refactor)
       # gate plan: approach ainda pendente no brief regido. `settled` entra aqui
@@ -314,7 +317,7 @@ if [[ -z "$gate" ]]; then
   rm -f -- "$GATE_FILE" 2>/dev/null || :
   # Ordem 020: gate resolvido — limpa os marcadores de "já bloqueei por isto"
   # das duas chaves possíveis (nunca sabemos aqui qual delas foi usada).
-  rm -f -- "$MCP_ASKED_DIR/${sid}_plan" "$MCP_ASKED_DIR/${sid}_ship" 2>/dev/null || :
+  rm -f -- "$MCP_ASKED_DIR/${sid}_plan" "$MCP_ASKED_DIR/${sid}_ship" "$MCP_ASKED_DIR/${sid}_domain" 2>/dev/null || :
 
   # Ordem 025, ARMADILHA 1 (sufixo do marcador sem gate): sem gate não há
   # `${gate}` para nomear a chave — sufixo novo `aviso`, ensinado ao prune
@@ -358,6 +361,7 @@ project="${CLAUDE_PROJECT_DIR:-$PWD}"; project="${project##*/}"
 case "$gate" in
   plan) message="gate plan · $project${essencia:+ · $essencia} — Aprovo o plano? (aprovo | ajusta: …)" ;;
   ship) message="gate ship · $project${essencia:+ · $essencia} — Shipo agora? (shipa | espera)" ;;
+  domain) message="gate domain · $project · ${dom_names:-domínio} · $dom_status${essencia:+ · $essencia} — decisão do diretor do domínio pela Ponte" ;;
 esac
 # uma linha só: quebras viram espaço (o arquivo é chave=valor por linha)
 message="${message//$'\n'/ }"; message="${message//$'\r'/ }"
@@ -384,13 +388,9 @@ if command -v "$bin" >/dev/null 2>&1 || [[ -x "$bin" ]]; then
   fi
 fi
 
-# NÃO-LAÇO: mcp_ask/reentry já calculados lá em cima (Ordem 025 — mesmo
-# cálculo serve os dois caminhos). Rede 1 (stop_hook_active) já aplicada na
-# condição; rede 2 (marcador com TTL por sessão+chave) é _maestro_mcp_ask_gate,
-# aqui com a chave de sempre (plan|ship) — comportamento inalterado desde a
-# 020, só a implementação foi extraída para função e reaproveitada pelo
-# caminho novo sem gate (chave `aviso`, tratado mais acima).
-(( mcp_ask == 1 && reentry == 0 )) && _maestro_mcp_ask_gate "$gate"
+# NÃO-LAÇO (020/025): redes 1 (stop_hook_active) e 2 (_maestro_mcp_ask_gate, TTL por sessão+chave).
+# E28: o gate domain pergunta por FATO do record, não pela linha canônica (lib/domain-gate.sh).
+if [[ "$gate" == "domain" ]]; then maestro_domain_ask; elif (( mcp_ask == 1 && reentry == 0 )); then _maestro_mcp_ask_gate "$gate"; fi
 # 029 (1) vale também com gate pendente: a convenção é de toda rodada.
 if (( mcp_nudge == 1 && reentry == 0 )); then
   log_event gate_block session_id="$sid" gate_mode=parafrase

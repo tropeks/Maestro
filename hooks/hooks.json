@@ -69,6 +69,16 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-edit-habits.sh"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*director_wait",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-director-wait.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionEnd": [

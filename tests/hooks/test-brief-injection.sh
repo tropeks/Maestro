@@ -147,9 +147,9 @@ sed -i 's/^version: 3$/version: três/' "$PROJ/.maestro/INTENT.md"
 run_hook "$PROJ"
 grep -q '^direção: INTENT sem carimbo → maestro intent --check$' <<<"$OUT" \
   && ok "carimbo ilegível: acusa e manda conferir" || bad "linha de direção sem carimbo"
-# O gate plan passa a cobrar a citação da direção no plano.
-grep -q 'plano cita a direção (INTENT vN, seção) — sem direção, diga que não há' <<<"$OUT" \
-  && ok "o gate plan cobra a citação da direção no plano" || bad "gate plan cita a direção"
+# O gate do plano (domain desde o E28; era plan) cobra a citação da direção.
+grep -q 'cita a direção (INTENT vN, seção) — sem direção, diga que não há' <<<"$OUT" \
+  && ok "o gate do plano cobra a citação da direção no plano" || bad "gate do plano cita a direção"
 rm -f "$PROJ/.maestro/INTENT.md"
 
 exit $fail

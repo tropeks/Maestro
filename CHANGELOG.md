@@ -17,12 +17,34 @@ from the decision log and tag messages when this file was introduced.
   lê o yaml do HEAD; sem isso o run commitaria um yaml próprio). Ordem sem `fim_commit` não é comparada.
 
 ### Changed
+- **`feature` e `refactor` passam de `gate: plan` a `gate: domain` (E28, diretoria por domínio).** O plano técnico segue sem
+  humano; só quando toca um domínio declarado na seção nova `domains:` da routing table (`security`: `.env*`, `auth`, `secrets`,
+  `cors`, `permissions`, Dockerfile com `USER`/`--privileged`, porta pública/`0.0.0.0`; `infrastructure`: `docker`, `compose`,
+  `systemd`, `cloudflared`, `terraform`, `vm`, `dns`) o `maestro decide` registra o pedido ao diretor do domínio com o contrato
+  mínimo (`domain.requests[]` no record: projeto, ordem, INTENT versão+hash, domínio, plano ref+hash, alvos, efeitos, rollback).
+  Novas opções do `decide`: `--targets`, `--effects`, `--rollback`, `--order`; `approach: pendente` não vale em `gate: domain` e
+  pedido sem contrato completo, ou com INTENT editado desde o carimbo, é recusado. A decisão vem pela Ponte
+  (`director.ask`/`director.wait`) e o hook novo `post-director-wait.sh` (PostToolUse) a espelha no record a partir do
+  resultado da tool (via=ponte). `maestro conduct --domain-decision '<json>'` fica como registro manual: grava via=manual e não
+  libera (identidade de quem decidiu nunca sai de texto do cliente; `label` é derivado). Recusas do contrato nos dois caminhos:
+  diretor de outro domínio, aprovação mecânica — timeout nunca aprova —, INTENT diferente, validade vencida, segunda resolução.
+  O `pre-tool-gate`, em todo record válido, suspende a mutação dependente (alvos do plano sem `approved` válido) e todo caminho
+  de `domains.*.paths` fora de plano aprovado pela Ponte — plano `clear`, alvo omitido ou workflow sem gate domain não cobrem
+  `.env*` nem `compose*.yml` (`block` = exit 2, `warn` = aviso e segue o fluxo). `approved_with_conditions` e aprovação vencida
+  não liberam; trocar de workflow com pedido aberto é recusado. O Stop segura a rodada pela Ponte quando o pedido está
+  pendente, e sem Ponte cai no fluxo manual (arquivo de gate + herdr). `gate: ship` não muda. Rollback: `gate: plan` de volta
+  nas duas linhas da tabela.
+  `hooks/`, `bin/` e `src/` estão na denylist de autoproteção: na forge, a aplicação é da mão humana. Teste:
+  `tests/hooks/test-gate-domain.sh`. Docs: DATA_MODEL §3 v1.26, API_SPEC (gate domain), EPICS E28.
 - **`evidence --record --label order-N` aceita o fim composto como `bash -c '<texto>'` (ordem 079).** Além da comparação por palavras da 078,
   vale `bash` `-c` + **um** argumento igual (espaços normalizados, byte a byte) a um comando entre crases do `fim:` do commit-base; assim
   `` `cd web && npm test` `` deixa de ser recusado sempre. `sh`, outras flags, prefixo de ambiente, segundo argumento, `\n`, prefixo/parte
   do declarado e rótulo de área seguem recusados. Testes: `tests/cli/test-evidence-fim-composto{,-adversarial}.sh`.
 
 ### Added
+- **`agents/infra.md` — especialista de infraestrutura (E28).** Desenha a mudança (alvos, efeitos, rollback, verificação) e não
+  autoriza nem aplica; fecha o limite do ROUTING_EVAL R8 (não havia agente de infra). `agents/seguranca.md` passa a dizer que
+  desenha e não autoriza: autorizar é do diretor do domínio, pela Ponte.
 - **`order --accept` dispensa os recibos de código quando o diff é só de `docs_only_paths` (ordem 081).** Nova chave `docs_only_paths`
   (lista de globs) no `.maestro.yaml`, lida do **merge-base** com `origin/HEAD` (nunca do tip). Se todo caminho de
   `git diff --name-only --no-renames <merge-base> <branch>` casa (glob do git), as áreas de código (`suite`, …) não são cobradas, no

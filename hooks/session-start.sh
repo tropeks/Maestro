@@ -141,7 +141,7 @@ read_session_id() {
 # ---------------------------------------------------------------------------
 GATE_MODE=""; ALLOW_EXT=""; ALLOW_PATHS=""; DENY_PATHS=""; DENY_SELF=""
 HEURISTICS=""; ROUTES=""; WORKFLOWS=""; BINDINGS=""
-GATE_PLAN_WFS=""; GATE_SHIP_WFS=""
+GATE_PLAN_WFS=""; GATE_SHIP_WFS=""; GATE_DOMAIN_WFS=""
 
 yaml_inline_list() { # yaml_inline_list "[a, b, c]" <regex-de-token>
   local s="${1:-}" re="${2:-}" out="" tok
@@ -193,9 +193,53 @@ collect_gates() {
     case "$g" in
       plan) GATE_PLAN_WFS+="$name, " ;;
       ship) GATE_SHIP_WFS+="$name, " ;;
+      domain) GATE_DOMAIN_WFS+="$name, " ;;   # E28: diretoria por domínio
     esac
   done <<<"$WORKFLOWS"
-  GATE_PLAN_WFS="${GATE_PLAN_WFS%, }"; GATE_SHIP_WFS="${GATE_SHIP_WFS%, }"
+  GATE_PLAN_WFS="${GATE_PLAN_WFS%, }"; GATE_SHIP_WFS="${GATE_SHIP_WFS%, }"; GATE_DOMAIN_WFS="${GATE_DOMAIN_WFS%, }"
+  return 0
+}
+
+# E28 — `domains.<d>.paths` viram UMA ERE por domínio no gate-policy.sh, para o
+# pre-tool-gate casar o caminho editado sem ler YAML no hot path. Mesma semântica
+# do `globToRegExp` do decide (src/cli.ts), para os dois nunca divergirem: `**/` =
+# zero ou mais diretórios, `/**` final = o diretório e tudo abaixo, `*` e `?` não
+# atravessam `/`, padrão sem `/` casa o nome do arquivo, sem diferença de caixa
+# (a ERE sai em minúsculas e o gate compara com o caminho em minúsculas). Token
+# fora de [A-Za-z0-9._*?/-] é descartado com aviso — nada vira regex sem regex.
+DOM_RE_SECURITY=""; DOM_RE_INFRASTRUCTURE=""
+glob_to_ere() { # <glob> → publica em $_ere (substituição, sem laço por caractere)
+  local g="${1,,}" pre=""
+  [[ "$g" == */* ]] || pre="(.*/)?"
+  g="${g//./\\.}"
+  [[ "$g" == */\*\* ]] && g="${g%/\*\*}"$'\x03'
+  g="${g//\*\*\//$'\x01'}"
+  g="${g//\*\*/$'\x02'}"
+  g="${g//\*/[^/]*}"
+  g="${g//\?/[^/]}"
+  g="${g//$'\x01'/(.*/)?}"
+  g="${g//$'\x02'/.*}"
+  g="${g//$'\x03'/(/.*)?}"
+  _ere="$pre$g"
+}
+dom_paths_add() { # "<domínio><TAB>[globs]" — sem subshell (2 forks custavam ~5ms por sessão)
+  local d="${1%%$'\t'*}" s="${1#*$'\t'}" tok re="" _ere=""
+  local - IFS=','
+  set -f   # glob da tabela é dado, nunca expansão de arquivo (`local -` restaura)
+  s="${s#*[}"; s="${s%%]*}"
+  for tok in $s; do
+    tok="${tok#"${tok%%[![:space:]]*}"}"; tok="${tok%"${tok##*[![:space:]]}"}"
+    tok="${tok%\"}"; tok="${tok#\"}"; tok="${tok%\'}"; tok="${tok#\'}"
+    [[ -n "$tok" ]] || continue
+    [[ "$tok" =~ ^[A-Za-z0-9._*?/-]{1,64}$ ]] || { warn "glob de domains descartado (não passou na validação)"; continue; }
+    glob_to_ere "$tok"
+    re+="${re:+|}$_ere"
+  done
+  [[ -n "$re" ]] || return 0
+  case "$d" in
+    security)       DOM_RE_SECURITY="^($re)\$" ;;
+    infrastructure) DOM_RE_INFRASTRUCTURE="^($re)\$" ;;
+  esac
   return 0
 }
 
@@ -209,7 +253,15 @@ _rt_awk() { # awk do routing table: emite KEY<TAB>valor por seção (arg 1 = arq
       inroutes = ($0 ~ /^routes:[ \t]*(#.*)?$/)               ? 1 : 0
       inwf     = ($0 ~ /^workflows:[ \t]*(#.*)?$/)            ? 1 : 0
       inbind   = ($0 ~ /^bindings:[ \t]*(#.*)?$/)             ? 1 : 0
-      sub_ = ""
+      indom    = ($0 ~ /^domains:[ \t]*(#.*)?$/)              ? 1 : 0
+      sub_ = ""; dom = ""
+      next
+    }
+    # E28: só os `paths` de cada domínio — o gate casa o caminho editado contra eles.
+    indom == 1 {
+      if ($0 ~ /^  (security|infrastructure):[ \t]*(#.*)?$/) { dom = $0; sub(/:.*/, "", dom); gsub(/[ \t]/, "", dom) }
+      else if ($0 ~ /^  [^ \t#]/) { dom = "" }
+      else if ($0 ~ /^    paths:/ && dom != "") { print "DOMPATHS\t" dom "\t" clean(substr($0, 11)) }
       next
     }
     inbind == 1 && /^[ \t]+[a-z][A-Za-z0-9_-]*:/ {
@@ -261,6 +313,7 @@ parse_routing_table() {
       ROUTE)       ROUTES+="- $val"$'\n' ;;
       WORKFLOW)    WORKFLOWS+="- $val"$'\n' ;;
       BIND)        bind_add "$val" ;;
+      DOMPATHS)    dom_paths_add "$val" ;;
     esac
   done < <(_rt_awk "$ROUTING_TABLE")
   return 0
@@ -528,6 +581,11 @@ write_gate_policy() {
     fi
     _ofz="${_ofz//[^A-Za-z0-9._\/ -]/}"
     printf 'MAESTRO_GATE_ORDER_FROZEN="%s"\n' "$_ofz"
+    # E28 — gatilhos de caminho dos domínios (ERE, aspas SIMPLES: o gate sourceia
+    # este arquivo e `$`/`(` não podem expandir). glob_to_ere só emite
+    # [a-z0-9._/()|?*^$\[\]-], nunca aspa simples.
+    printf "MAESTRO_GATE_DOMAIN_SECURITY_RE='%s'\n"       "$DOM_RE_SECURITY"
+    printf "MAESTRO_GATE_DOMAIN_INFRASTRUCTURE_RE='%s'\n" "$DOM_RE_INFRASTRUCTURE"
     printf 'MAESTRO_PLUGIN_ROOT="%s"\n'      "$REPO_DIR"
   } >"$tmp" 2>/dev/null || {
     rm -f "$tmp" 2>/dev/null || :
@@ -657,10 +715,17 @@ build_and_emit() {
   # S-501 — gate humano. Duas linhas no máximo: quem aprova está no telefone,
   # então a instrução precisa caber num olhar e a pergunta ser de uma palavra.
   sec_gate=""
-  if [[ -n "$GATE_PLAN_WFS$GATE_SHIP_WFS" ]]; then
+  if [[ -n "$GATE_PLAN_WFS$GATE_SHIP_WFS$GATE_DOMAIN_WFS" ]]; then
     sec_gate=$'\n'"## Gates humanos — PARE, pergunte e espere resposta explícita."$'\n'
     [[ -n "$GATE_PLAN_WFS" ]] && sec_gate+="- gate plan ($GATE_PLAN_WFS): entre em plan mode, plano em ≤10 linhas, pergunte \"Aprovo o plano? (aprovo | ajusta: …)\" — nenhuma edição de código antes do aprovo; o plano cita a direção (INTENT vN, seção) — sem direção, diga que não há."$'\n'
-    sec_gate+="- pedido de aprovação REGIDO: essencia (o que é) · impacto (o que representa) · approach (como) — partitura técnica só sob demanda; registre com maestro decide --brief \"essencia: ...; impacto: ...; approach: ...\" (pendente vale; atualize com maestro conduct --approach)."$'\n'
+    # E28 — gate domain: o plano não espera humano; o pedido ao diretor do
+    # domínio nasce no decide, por regra (domains: da routing table), e o decide
+    # diz o que fazer. Mais curto que o bullet do plan: paga a linha do `infra`
+    # no roster sem subir o RATCHET.
+    [[ -n "$GATE_DOMAIN_WFS" ]] && sec_gate+="- gate domain ($GATE_DOMAIN_WFS): plano segue sem humano; approach (pendente não vale) cita a direção (INTENT vN, seção) — sem direção, diga que não há. Alvos em --targets; tocou domínio: o decide abre o pedido ao diretor; timeout não aprova."$'\n'
+    # `pendente vale` só existe no gate plan: no gate domain o decide recusa
+    # approach pendente e o conduct recusa --approach (E28).
+    sec_gate+="- pedido de aprovação REGIDO: essencia (o que é) · impacto (o que representa) · approach (como) — partitura técnica só sob demanda; registre com maestro decide --brief \"essencia: ...; impacto: ...; approach: ...\"${GATE_PLAN_WFS:+ (gate plan: pendente vale; atualize com maestro conduct --approach)}."$'\n'
     [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
     # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
     # catastrófico/quase irreversível; RAD privado verificado flui sem pergunta.

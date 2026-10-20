@@ -121,8 +121,9 @@ if [[ -f "$POL" ]]; then
   head -1 "$POL" | grep -qF '# gerado por maestro session-start — nao editar' \
     && ok "cabeçalho no formato do contrato" || bad "cabeçalho no formato do contrato"
   n=$(grep -c '^MAESTRO_' "$POL")
-  # 7ª variável: MAESTRO_GATE_ORDER_FROZEN (E15/S-1504)
-  [[ "$n" -eq 7 ]] && ok "exatamente 7 variáveis" || bad "exatamente 7 variáveis (achou $n)"
+  # 7ª variável: MAESTRO_GATE_ORDER_FROZEN (E15/S-1504); 8ª e 9ª:
+  # MAESTRO_GATE_DOMAIN_{SECURITY,INFRASTRUCTURE}_RE (E28, domains.*.paths)
+  [[ "$n" -eq 9 ]] && ok "exatamente 9 variáveis" || bad "exatamente 9 variáveis (achou $n)"
   # sourceável pelo GATE, sem efeito colateral
   # E24/006: este bloco PROMETIA comparar com config/routing-table.yaml e
   # comparava com um LITERAL — uma cópia congelada do arquivo. Nunca verificou a
@@ -353,7 +354,7 @@ run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGE
   || bad "heurísticas+roster cortados: respeita o teto ($OUTBYTES > $B_C)"
 [[ "$OUT" != *"$HEUR_HDR"* && "$OUT" != *"$ROSTER_HDR"* ]] \
   && ok "heurísticas e roster cederam" || bad "heurísticas e roster cederam"
-[[ "$OUT" == *"$GATE_HDR"* && "$OUT" == *"Aprovo o plano?"* && "$OUT" == *"Shipo agora?"* ]] \
+[[ "$OUT" == *"$GATE_HDR"* && "$OUT" == *"gate domain ("* && "$OUT" == *"Shipo agora?"* ]] \
   && ok "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)" \
   || bad "gates humanos sobrevivem ao corte de heurísticas+roster (S-501)"
 [[ "$OUT" == *"$BIND_HDR"* && "$OUT" == *"- implement → agent:dev-pleno"* ]] \

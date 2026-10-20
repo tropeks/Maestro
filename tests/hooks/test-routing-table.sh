@@ -275,13 +275,14 @@ for pair in "investigate → skill:systematic-debugging" "plan → native:plan-m
             "qa → skill:gstack-qa + agent:qa" "ship → skill:gstack-ship" "audit → skill:gstack-cso"; do
   [[ "$OUT" == *"- $pair"* ]] && ok "injeção: binding '$pair'" || bad "injeção: binding '$pair'"
 done
-[[ "$OUT" == *"## Gates humanos"* && "$OUT" == *"gate plan (feature, refactor)"* \
-   && "$OUT" == *"gate ship (ship)"* ]] \
-  && ok "injeção: gates humanos derivados do YAML (plan: feature+refactor · ship: ship)" \
-  || bad "injeção: gates humanos derivados do YAML"
-[[ "$OUT" == *"plan mode"* && "$OUT" == *"Aprovo o plano?"* && "$OUT" == *"Shipo agora?"* ]] \
-  && ok "injeção: pergunta objetiva de aprovação (plan mode + shipo)" \
-  || bad "injeção: pergunta objetiva de aprovação"
+# E28: feature/refactor passaram de `gate: plan` a `gate: domain`.
+[[ "$OUT" == *"## Gates humanos"* && "$OUT" == *"gate domain (feature, refactor)"* \
+   && "$OUT" == *"gate ship (ship)"* && "$OUT" != *"gate plan ("* ]] \
+  && ok "injeção: gates derivados do YAML (domain: feature+refactor · ship: ship)" \
+  || bad "injeção: gates derivados do YAML"
+[[ "$OUT" == *"timeout não aprova"* && "$OUT" == *"Shipo agora?"* ]] \
+  && ok "injeção: gate domain sem humano no plano + pergunta objetiva do ship" \
+  || bad "injeção: gate domain + pergunta do ship"
 [[ $OUTBYTES -le 8000 ]] && ok "injeção: $OUTBYTES B dentro do teto de 8000" \
   || bad "injeção: estourou o teto ($OUTBYTES B)"
 echo "     (orçamento: $OUTBYTES B de 8000 — folga de $(( 8000 - OUTBYTES )) B)"
