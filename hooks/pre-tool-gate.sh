@@ -360,18 +360,20 @@ _gate_roster_frontmatter_ok() {
 # ---------------------------------------------------------------------------
 # Política compilada (CONTRATO §2), escrita pelo session-start a partir de
 # config/routing-table.yaml — fonte de verdade única.
-# Ausente/ilegível/insourceável → degrada com exit 0.
+# Ausente/ilegível/insourceável → só a autoproteção vale (DENY_SELF embutida,
+# abaixo); o resto do gate degrada com exit 0 logo depois da denylist (3).
 # ---------------------------------------------------------------------------
 _maestro_refresh_paths 2>/dev/null || true
 POLICY_FILE="${MAESTRO_GATE_POLICY:-$MAESTRO_HOME/gate-policy.sh}"
+_gate_sem_politica=""
 if [[ ! -f "$POLICY_FILE" || ! -r "$POLICY_FILE" ]]; then
-  _gate_debug "politica ausente, degradando"
-  exit 0
+  _gate_debug "politica ausente, so a autoprotecao vale"
+  _gate_sem_politica=1
 fi
 # shellcheck source=/dev/null
-if ! source "$POLICY_FILE" 2>/dev/null; then
-  _gate_debug "politica insourceavel, degradando"
-  exit 0
+if [[ -z "$_gate_sem_politica" ]] && ! source "$POLICY_FILE" 2>/dev/null; then
+  _gate_debug "politica insourceavel, so a autoprotecao vale"
+  _gate_sem_politica=1
 fi
 
 # Defaults só para o caso de política PARCIAL (variável ausente, não vazia:
@@ -384,7 +386,18 @@ ALLOW_PATHS="${MAESTRO_GATE_ALLOW_PATHS-}"
 # Defaults conservadores para o caso de a policy não ter sido compilada ainda.
 # paths = universais (qualquer projeto); self = só ancorados no plugin root.
 DENY_PATHS="${MAESTRO_GATE_DENY_PATHS-.claude/ .github/workflows/}"
+# Sem política, a denylist do PROJETO não vale: ela casa trabalho de qualquer
+# repo, e componente quebrado degrada, nunca bloqueia trabalho.
+[[ -n "$_gate_sem_politica" ]] && DENY_PATHS=""
 ORDER_FROZEN="${MAESTRO_GATE_ORDER_FROZEN-}"
+# Efeito de `:-` na DENY_SELF abaixo (adendo do radar #03): vazia vira ausente, e
+# vazia, ausente ou sem política vale a lista embutida, a mesma do
+# hooks/lib/self-paths.sh do pre-bash-guard. Não fere "degrada, nunca bloqueia":
+# ela só casa caminho do próprio plugin (raiz ou worktree), que a política
+# compilada já barra sempre (ADR-003 v1.1); sem isto, apagar ou esvaziar a
+# política desarmava a autoproteção no Edit/Write. É `unset` aqui, e não `:-` na
+# linha, para não mudar o contexto que o patch 072 (docs/patches/) ainda edita.
+[[ -n "${MAESTRO_GATE_DENY_SELF-}" ]] || unset MAESTRO_GATE_DENY_SELF
 # ordem 041: config/accept-proof.pub é a ÂNCORA DE CONFIANÇA do aceite por
 # identidade (Ed25519) — trocá-la deixa de ser edição comum. NÃO impede um
 # executor com o MESMO uid do Diretor (nesta forge, é sempre o mesmo): eleva
@@ -692,6 +705,8 @@ EOF
   log_event gate_block "${LOG_ARGS[@]}" "gate_mode=$GATE_MODE"
   exit 2
 fi
+# Sem política, a autoproteção acima foi a única checagem: o resto degrada.
+[[ -n "$_gate_sem_politica" ]] && exit 0
 
 # ── 3c. frozen zones de work orders (E15/S-1504, padrão BMAD) ──────────────
 # Zona congelada por ordem NÃO-aceita: em fluxo AUTÔNOMO (subagent/multi)

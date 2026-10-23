@@ -347,6 +347,16 @@ GATE_HDR='## Gates humanos — PARE, pergunte e espere resposta explícita.'
 [[ "$(cat "$FULL")" == *"pedido de aprovação REGIDO"* ]] \
   && ok "gate de aprovação traz o bullet REGIDO (essencia/impacto/approach)" \
   || bad "gate de aprovação traz o bullet REGIDO (essencia/impacto/approach)"
+# S-708 revista (adendo do radar #03, item 5): a diretriz aponta para a matriz
+# "Quem decide" do INTENT do sistema e não carrega alçada própria, que envelhece.
+# A linha é comparada inteira: restringir o deploy a produção volta a liberar
+# staging sem ordem (INTENT v67, "Quem decide", linha 4: "em todos os ambientes"),
+# pôr merge no que flui sem pergunta dá ao gerente alçada da linha 3 (do Spock) e
+# tirar o risco catastrófico solta os gates acima.
+DIRETRIZ='- Diretriz Spock: os gates valem para risco catastrófico/quase irreversível; quem decide o quê é a matriz "Quem decide" do INTENT do sistema em vigor (~/dev/spock/.maestro/INTENT.md). Em RAD privado com a onda VERIFICADA (testes/evidência), commit, push em branch e PR/draft fluem sem pergunta — registre a decisão e siga; deploy, rollback e release, em qualquer ambiente, só com ordem do Capitão.'
+[[ "$(grep -cxF -- "$DIRETRIZ" "$FULL")" == 1 && "$(cat "$FULL")" != *"deploy de teste"* ]] \
+  && ok "diretriz Spock aponta para a matriz do INTENT, deploy só com ordem" \
+  || bad "diretriz Spock aponta para a matriz do INTENT, deploy só com ordem"
 B_C=$(( S_FULL - S_STYLE - S_ETHOS - S_HEUR - S_ROSTER + 10 ))
 H7c=$(new_home); P7c=$(new_proj)
 run "$H7c" "$P7c" "$IN" MAESTRO_AGENTS_DIR="$ROSTER_DIR" MAESTRO_INJECTION_BUDGET="$B_C"

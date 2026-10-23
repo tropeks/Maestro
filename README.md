@@ -71,7 +71,6 @@ and SessionStart injects a ~300-byte pointer with an honest freshness verdict:
 ```
 ## Projeto
 brief: FRESH (2h, HEAD 73394c8) → read ~/.maestro/briefs/… BEFORE sweeping the repo
-memória: recall supermemory with containerTag sm_project_Maestro
 ```
 
 A stale brief says so — "STALE (3 commits behind) → the brief gives context; git

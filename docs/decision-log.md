@@ -999,3 +999,47 @@ aceite não mudam. Teste: `tests/cli/test-order-050-validacao.sh`, bloco (8), ve
 
 Fica de fora o outro caminho da D17 (branch ausente, `_order_evidence_frozen_tree`): ele lê ordem já mergeada e
 mexer nele muda o estado de histórico aceito.
+
+## 2026-10-23 — A injeção para de carregar alçada velha; a autoproteção do gate sobrevive sem política
+
+Patch do adendo do radar #03 (`spock/docs/RADAR-03-ADENDO-2026-10-23.md`, item 5 e "Ajustes miúdos"). Entra pelo
+botão `aplicar_patch_maestro`, depois do merge. Três mudanças:
+
+- **A diretriz Spock (S-708) aponta para a matriz em vez de copiá-la.** A linha dizia a todo gerente que "commit,
+  push em branch, PR/draft e deploy de teste fluem sem pergunta". Desde a v67 do INTENT do sistema
+  (`spock/.maestro/INTENT.md`, "Quem decide", linha 4), deploy, rollback e release em qualquer ambiente partem de
+  ordem do Capitão. A linha passa a apontar para a matriz "Quem decide" do INTENT em vigor, sem versão no texto, e
+  guarda o que segue valendo: gate para risco catastrófico; commit, push em branch e PR/draft fluem com a onda
+  verificada; deploy só com ordem do Capitão. A cópia também punha auth/secrets como catastrófico, e a matriz põe
+  segredo de máquina na linha 3. O qualificador "Em RAD privado" fica: tirá-lo ampliaria o que a linha diz que
+  flui (repo público incluso), e esta mudança só estreita. Saem os exemplos de risco catastrófico, que a matriz
+  (linhas 1 e 2) já lista e que, copiados, envelhecem como envelheceu o deploy de teste. O caminho citado é o canônico (`~/dev/spock/.maestro/INTENT.md`), que resolve de qualquer repo. Divergência com o
+  adendo: o item 5, "Como medir", pede que a injeção cite a versão vigente (vN); a ordem pediu o texto sem versão,
+  e vale a ordem, porque versão fixa no hook envelhece a cada emenda do INTENT e só muda pelo botão. Essa medida do
+  adendo fica sem atender. Teste: `tests/hooks/test-session-start.sh`, que compara a linha inteira (restringir o
+  deploy a produção, pôr merge no que flui ou tirar o risco catastrófico falha).
+- **Sai a linha `memória:` do Supermemory (B15).** A auditoria de 05/10 (`spock/docs/auditoria-maestro-2026-10-05.md`,
+  B15 e §6.2) mediu 0 buscas e pediu o corte. A chave `memory_container:` do `.maestro.yaml` segue aceita, mas o
+  profile deixa de lê-la (chave que ele não conhece é ignorada) e o `P_MEMCT`, que ficaria morto, sai junto. O exemplo
+  da seção `## Projeto` nos dois READMEs perde a linha. As réplicas de 18/08 nos globais e no Supermemory ficam como
+  estão (não conferido). Teste: `tests/hooks/test-brief-injection.sh`.
+- **A DENY_SELF do `pre-tool-gate` ganha fallback.** Política ausente ou insourceável saía com exit 0 antes da
+  denylist, e `MAESTRO_GATE_DENY_SELF=""` esvaziava a lista: nos dois casos a autoproteção do ADR-003 sumia no
+  Edit/Write, enquanto o `pre-bash-guard` já caía na lista embutida (`hooks/lib/self-paths.sh`). Agora vazia, ausente
+  ou sem política, vale a lista embutida (efeito de `:-`), e sem política só a autoproteção vale. A denylist do
+  projeto, a zona congelada e o decision record seguem degradando com exit 0. Não bloqueia trabalho comum: a lista só
+  casa caminho do próprio plugin (raiz ou worktree), que a política compilada já barra sempre. O efeito vem de um
+  `unset` da variável vazia logo antes da linha da DENY_SELF, e não de `:-` na própria linha: o patch 072
+  (`docs/patches/072-guard-remocao-e-mods-self-paths.patch`, gate `903-CONFIRMADO`) edita essa linha e deixaria de
+  aplicar. Pelo mesmo motivo o `SELF_FALLBACK` do session-start segue sem `config/accept-proof.pub` (divergência
+  anterior a este patch, inofensiva enquanto o YAML compila a lista inteira): o patch 072 edita essa linha também.
+  Teste: `tests/hooks/test-gate.sh`, bloco "degradação", que também fixa a lista embutida por paridade, item a item,
+  com a `SP_FALLBACK` e o `self_paths` do YAML (o patch 072 mantém as três iguais). O terceiro estado de
+  `tests/hooks/test-order-006-lib-denylist.sh` passava por engano: a cópia sabotada do session-start, solta fora de
+  `hooks/`, não achava o `common.sh` e não gravava política, e o rc=0 vinha do gate sem política. A cópia passa a
+  morar num `hooks/` com o `lib/` do repo, e o teste confere que a política foi compilada.
+
+`gate.mode` em `config/routing-table.yaml` não muda: promover ou registrar a sombra é decisão do Capitão (item 6 do
+adendo). Ficam para emenda os docs que ainda descrevem o texto antigo: EPICS S-708 e S-802, DATA_MODEL §2
+(`memory_container`), a emenda E8 do API_SPEC e `docs/MAESTRO_DESIGN_AND_DEVELOPMENT_FLOW.md` ("deploy de teste").
+A chave `memory_container:` do `.maestro.yaml` deste repo, agora inerte, sai com a emenda do DATA_MODEL §2.

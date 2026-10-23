@@ -85,7 +85,13 @@ RC_G=$?
 # terceiro estado: sabota SELF_FALLBACK numa CÓPIA (tira lib/) e mostra que a
 # MESMA edição deixa de ser bloqueada — o teste tem dente.
 # ---------------------------------------------------------------------------
-SAB="$T/session-start-sabotado.sh"
+# A cópia mora num hooks/ com o lib/ do repo: solta em $T ela não achava o
+# common.sh e saía sem gravar política, e o rc=0 vinha do gate degradando sem
+# política, não da sabotagem (desde o adendo do radar #03 o gate mantém a
+# autoproteção embutida sem política). A raiz gravada volta a ser o $REPO, para
+# que só a lista mude entre os dois estados.
+mkdir -p "$T/sab/hooks"; ln -s "$REPO/hooks/lib" "$T/sab/hooks/lib"
+SAB="$T/sab/hooks/session-start.sh"
 cp "$SS" "$SAB"
 sed -i 's#^SELF_FALLBACK=.*#SELF_FALLBACK="agents/ bin/ src/ hooks/ config/routing-table.yaml .claude-plugin/"#' "$SAB"
 if grep -qE '^SELF_FALLBACK=.*[[:space:]]lib/[[:space:]]' "$SAB"; then
@@ -93,6 +99,13 @@ if grep -qE '^SELF_FALLBACK=.*[[:space:]]lib/[[:space:]]' "$SAB"; then
 else
   H2="$T/home2"; mkdir -p "$H2"
   compile_policy "$SAB" "$H2"
+  if grep -q '^MAESTRO_GATE_DENY_SELF="agents/' "$H2/gate-policy.sh" 2>/dev/null \
+     && ! grep -q '^MAESTRO_GATE_DENY_SELF=.*lib/' "$H2/gate-policy.sh"; then
+    ok "sabotado: a cópia compilou a política, sem lib/ na DENY_SELF"
+  else
+    bad "sabotado: a cópia não compilou a política (o terceiro estado não seria medido)"
+  fi
+  sed -i "s#^MAESTRO_PLUGIN_ROOT=.*#MAESTRO_PLUGIN_ROOT=\"$REPO\"#" "$H2/gate-policy.sh" 2>/dev/null
   write_record "lib-deny-1" "$H2"
   OUT_SAB=$(printf '%s' "$PAYLOAD" | MAESTRO_HOME="$H2" CLAUDE_PROJECT_DIR="$REPO" bash "$GATE" 2>&1 >/dev/null)
   RC_SAB=$?

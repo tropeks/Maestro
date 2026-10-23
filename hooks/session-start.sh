@@ -323,7 +323,7 @@ parse_routing_table() {
 # 3. Profile do projeto — $CLAUDE_PROJECT_DIR/.maestro.yaml (DATA_MODEL §2).
 # Opcional: ausência não é erro, só significa "defaults globais".
 # ---------------------------------------------------------------------------
-P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_MEMCT=""; P_DOCS=""
+P_PROJECT=""; P_LANGS=""; P_EXPERTS=""; P_PIPELINE=""; P_NOTES=""; P_DOCS=""
 # E25/S-2502 — tier do preâmbulo. Default `full`: a chave ausente tem de produzir
 # exatamente a injeção de sempre. P_PREAMBLE_BAD guarda o valor recusado (para a
 # linha do cabeçalho) e vale como flag de "o .maestro.yaml está errado aqui".
@@ -344,7 +344,6 @@ parse_profile() {
       EXPERTS)  [[ "$val" =~ ^\[[[:space:]]*\]$ ]] && P_EXPERTS_EMPTY=1
                 P_EXPERTS=$(yaml_inline_list "$val" '^[a-z0-9-]{1,40}$') ;;
       NOTES)    P_NOTES="$val" ;;
-      MEMCT)    [[ "$val" =~ ^[A-Za-z0-9._-]{1,64}$ ]] && P_MEMCT="$val" ;;
       DOCS)     P_DOCS=$(yaml_inline_list "$val" '^[A-Za-z0-9._/-]{1,80}$') ;;
       PREAMBLE) case "$val" in
                   # Limpa a acusação: com a chave repetida, vale o último valor —
@@ -364,7 +363,6 @@ parse_profile() {
     /^pipeline:/  { print "PIPELINE\t" clean(substr($0, 10)); next }
     /^languages:/ { print "LANGS\t"    clean(substr($0, 11)); next }
     /^experts:/   { print "EXPERTS\t"  clean(substr($0, 9));  next }
-    /^memory_container:/ { print "MEMCT\t" clean(substr($0, 18)); next }
     /^docs:/      { print "DOCS\t"     clean(substr($0, 6));  next }
     /^preamble:/  { print "PREAMBLE\t" clean(substr($0, 10)); next }
     /^notes:/     { v = substr($0, 7); gsub(/\t/, " ", v); gsub(/^[ \t]+|[ \t]+$/, "", v); gsub(/^"|"$/, "", v); print "NOTES\t" v; next }
@@ -727,9 +725,12 @@ build_and_emit() {
     # approach pendente e o conduct recusa --approach (E28).
     sec_gate+="- pedido de aprovação REGIDO: essencia (o que é) · impacto (o que representa) · approach (como) — partitura técnica só sob demanda; registre com maestro decide --brief \"essencia: ...; impacto: ...; approach: ...\"${GATE_PLAN_WFS:+ (gate plan: pendente vale; atualize com maestro conduct --approach)}."$'\n'
     [[ -n "$GATE_SHIP_WFS" ]] && sec_gate+="- gate ship ($GATE_SHIP_WFS): liste em ≤5 linhas o que vai sair e pergunte \"Shipo agora? (shipa | espera)\" — sem resposta, não shipa."$'\n'
-    # S-708 — diretriz Spock (Capitão, 2026-08-18): os gates acima são para risco
-    # catastrófico/quase irreversível; RAD privado verificado flui sem pergunta.
-    sec_gate+="- Diretriz Spock: os gates valem para risco catastrófico/quase irreversível (produção real com usuários/dados, billing, auth/secrets, migração destrutiva, apagar dados/volumes, force push, decisão jurídica/produto externa). Em RAD privado com a onda VERIFICADA (testes/evidência), commit, push em branch, PR/draft e deploy de teste fluem sem pergunta — registre a decisão e siga."$'\n'
+    # S-708 — diretriz Spock (Capitão, 2026-08-18), revista em 23/10 (adendo do
+    # radar #03, item 5): a alçada copiada aqui envelheceu (dizia que deploy de
+    # teste flui; desde a v67 do INTENT, deploy em qualquer ambiente parte de ordem
+    # do Capitão). A linha aponta para a matriz "Quem decide" em vez de copiá-la, e
+    # sem versão, para não envelhecer de novo.
+    sec_gate+="- Diretriz Spock: os gates valem para risco catastrófico/quase irreversível; quem decide o quê é a matriz \"Quem decide\" do INTENT do sistema em vigor (~/dev/spock/.maestro/INTENT.md). Em RAD privado com a onda VERIFICADA (testes/evidência), commit, push em branch e PR/draft fluem sem pergunta — registre a decisão e siga; deploy, rollback e release, em qualquer ambiente, só com ordem do Capitão."$'\n'
     # Ordem 029 — a linha canônica do gatilho da 025 passa a ser ENSINADA.
     # Causa raiz medida: `[spock] aguardando:` vivia no INTENT, nas ordens 020/025,
     # nos testes e nos evals — e NUNCA na injeção. O gerente era cobrado por uma
@@ -917,7 +918,6 @@ build_and_emit() {
   elif (( _pcmute == 0 )); then
     sec_project+="papercuts: 0 → consertou falha estranha de FERRAMENTA? maestro papercut --add"$'\n'
   fi
-  [[ -n "$P_MEMCT" ]] && sec_project+="memória: recall no supermemory com containerTag $P_MEMCT antes de assumir contexto passado"$'\n'
   sec_project+="Ao fechar trabalho, atualize o brief: maestro brief --write --session $SESSION_ID (em curso · decisões abertas · próximo passo)"$'\n' 
 
   sec_routes=""
