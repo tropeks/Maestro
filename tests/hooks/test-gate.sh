@@ -209,6 +209,21 @@ echo "-- degradação: nada disso pode bloquear"
 mv "$MAESTRO_HOME/gate-policy.sh" "$TMP/policy.bak"
 run deny-hooks-lib.json
 check "política ausente → exit 0 (degrada)" "$RC" "0"
+# Adendo do radar #03: política ausente NÃO desarma a autoproteção. A DENY_SELF
+# embutida vale na raiz derivada do próprio gate; o resto segue degradando.
+reset_log
+run_payload "$(jq -nc --arg p "$REPO/hooks/lib/common.sh" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política ausente → escrita em hooks/ do plugin ainda bloqueia" "$RC" "2"
+check "política ausente → o bloqueio da autoproteção é registrado" "$(last_event)" "gate_block"
+reset_log
+run_payload "$(jq -nc --arg p "$REPO/tests/hooks/x.sh" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política ausente → plugin fora da DENY_SELF degrada (exit 0)" "$RC" "0"
+check "política ausente → degradação não gera evento no log" "$(log_lines)" "0"
+run_payload "$(jq -nc --arg p "$PROJ/.github/workflows/ci.yml" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política ausente → denylist do projeto não vale (exit 0)" "$RC" "0"
 # política ilegível
 : > "$MAESTRO_HOME/gate-policy.sh"; chmod 000 "$MAESTRO_HOME/gate-policy.sh"
 run deny-hooks-lib.json
@@ -218,6 +233,29 @@ chmod 644 "$MAESTRO_HOME/gate-policy.sh"
 printf 'MAESTRO_GATE_MODE="warn\nif then fi(\n' > "$MAESTRO_HOME/gate-policy.sh"
 run edit-go.json
 check "política com sintaxe quebrada → exit 0 (degrada)" "$RC" "0"
+run_payload "$(jq -nc --arg p "$REPO/bin/maestro" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política com sintaxe quebrada → bin/ do plugin ainda bloqueia" "$RC" "2"
+# Insourceável é "sem política" também: o default de DENY_PATHS não vale.
+reset_log
+run_payload "$(jq -nc --arg p "$PROJ/.github/workflows/ci.yml" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política com sintaxe quebrada → denylist do projeto não vale (exit 0)" "$RC" "0"
+check "política com sintaxe quebrada → degradação não gera evento no log" "$(log_lines)" "0"
+# DENY_SELF vazia (`:-`): esvaziar a lista não desarma a autoproteção
+printf 'MAESTRO_GATE_MODE="warn"\nMAESTRO_GATE_DENY_SELF=""\n' > "$MAESTRO_HOME/gate-policy.sh"
+run_payload "$(jq -nc --arg p "$REPO/hooks/lib/common.sh" \
+  '{session_id:"sess-abc123",tool_name:"Edit",tool_input:{file_path:$p}}')"
+check "política com DENY_SELF vazia → autoproteção do plugin ainda bloqueia" "$RC" "2"
+# Sem política vale a lista embutida, e só hooks/, bin/ e lib/ têm caso próprio:
+# ela é fixada por paridade, item a item, com a SP_FALLBACK do pre-bash-guard e
+# com o self_paths da routing table (o patch 072 acrescenta mods/ às três).
+DS_GATE=$(sed -n 's/^DENY_SELF="[$]{MAESTRO_GATE_DENY_SELF:\{0,1\}-\(.*\)}"$/\1/p' "$GATE")
+DS_SP=$(sed -n 's/^SP_FALLBACK="\(.*\)"$/\1/p' "$REPO/hooks/lib/self-paths.sh")
+DS_RT=$(sed -n 's/^    self_paths: \[\(.*\)\]$/\1/p' "$REPO/config/routing-table.yaml"); DS_RT="${DS_RT//, / }"
+[[ -n "$DS_GATE" ]] && ok "DENY_SELF embutida do gate encontrada" || bad "DENY_SELF embutida do gate não encontrada"
+check "DENY_SELF embutida do gate == SP_FALLBACK do pre-bash-guard" "$DS_GATE" "$DS_SP"
+check "DENY_SELF embutida do gate == self_paths da routing table" "$DS_GATE" "$DS_RT"
 # política parcial: denylist ausente NÃO desarma a autoproteção
 printf 'MAESTRO_GATE_MODE="warn"\n' > "$MAESTRO_HOME/gate-policy.sh"
 # Sem MAESTRO_PLUGIN_ROOT na política, o gate deriva a raiz da própria localização:

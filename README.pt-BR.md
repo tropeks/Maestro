@@ -72,7 +72,6 @@ honesto de freshness:
 ```
 ## Projeto
 brief: FRESCO (2h, HEAD 73394c8) → leia ~/.maestro/briefs/… ANTES de varrer o repo
-memória: recall no supermemory com containerTag sm_project_Maestro
 ```
 
 Brief velho diz que é velho — "STALE (3 commits atrás) → o brief dá o contexto;

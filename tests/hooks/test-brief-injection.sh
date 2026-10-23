@@ -73,16 +73,16 @@ grep -q 'o git dá a verdade' <<<"$OUT" \
   && ok "STALE aponta a fonte de verdade" || bad "STALE aponta a fonte de verdade"
 
 # ---------------------------------------------------------------------------
-echo "-- memory_container do .maestro.yaml (S-802)"
+echo "-- memory_container do .maestro.yaml não vira linha (B15, auditoria de 05/10)"
 # ---------------------------------------------------------------------------
+# A linha `memória:` do S-802 saiu: o recall registrou 0 buscas. A chave segue
+# aceita no profile, só não é mais injetada.
 printf 'version: 1\nproject: fixture\nmemory_container: sm_project_Fixture\n' > "$PROJ/.maestro.yaml"
 run_hook "$PROJ"
-grep -q 'memória: recall no supermemory com containerTag sm_project_Fixture' <<<"$OUT" \
-  && ok "container do projeto vira instrução determinística" \
-  || bad "container do projeto vira instrução determinística"
-printf 'version: 1\nmemory_container: "tag inválida!"\n' > "$PROJ/.maestro.yaml"
-run_hook "$PROJ"
-grep -q 'memória:' <<<"$OUT" && bad "container malformado é omitido" || ok "container malformado é omitido"
+grep -q '^## Projeto$' <<<"$OUT" && ok "com memory_container, a seção Projeto segue presente" \
+                                 || bad "com memory_container, a seção Projeto segue presente"
+grep -q 'memória:' <<<"$OUT" && bad "memory_container não vira linha de recall (B15)" \
+                             || ok "memory_container não vira linha de recall (B15)"
 rm -f "$PROJ/.maestro.yaml"
 
 # ---------------------------------------------------------------------------
