@@ -7,7 +7,8 @@
 #   2. política em warn + escrita por Bash em self_paths → exit 0, gate_warn cmd=self_path_write;
 #   3. política em block → exit 2 + gate_block nos dois casos (nada mudou);
 #   4. política ausente e política ilegível → exit 2 nos dois casos (falha fechada no guarda);
-#   5. routing-table.yaml traz gate.mode: warn (a sombra) e o comentário do rollback.
+#   5. routing-table.yaml traz gate.mode: block (fase 1 encerrada, decisão 01M5NMF64W) e o rollback declarado.
+# Os casos 1-2 seguem provando o caminho `warn` por fixture (política explícita), não pela tabela real.
 set -u
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -78,10 +79,13 @@ check "política ilegível: exit 2" "$RC" "2"
 run "$TMP/nao-existe.sh" "$REPO" "$SELFW"
 check "política ausente, self_path: exit 2" "$RC" "2"
 
-echo "-- 5: routing-table.yaml traz a sombra e o rollback"
-grep -qE '^  mode: warn( |$)' "$REPO/config/routing-table.yaml" \
-  && ok "routing-table.yaml: gate.mode: warn" || bad "routing-table.yaml: gate.mode não é warn"
-grep -q 'ROLLBACK = esta linha de volta a block' "$REPO/config/routing-table.yaml" \
-  && ok "routing-table.yaml: rollback escrito ao lado do modo" || bad "routing-table.yaml: sem o rollback ao lado do modo"
+echo "-- 5: fase 1 encerrada — routing-table.yaml em block, com a decisão e o rollback citados na linha 3"
+grep -qE '^  mode: block( |$)' "$REPO/config/routing-table.yaml" \
+  && ok "routing-table.yaml: gate.mode: block" || bad "routing-table.yaml: gate.mode não é block"
+L3=$(sed -n 3p "$REPO/config/routing-table.yaml")
+[[ "$L3" == *"FASE 1 ENCERRADA"* && "$L3" == *"01M5NMF64W"* ]] \
+  && ok "routing-table.yaml linha 3: cita o encerramento e a decisão 01M5NMF64W" || bad "routing-table.yaml linha 3: sem o encerramento/decisão ($L3)"
+[[ "$(sed -n 4p "$REPO/config/routing-table.yaml")" == *"rollback declarado = block"* ]] \
+  && ok "routing-table.yaml: rollback declarado = block ao lado do modo" || bad "routing-table.yaml: sem o rollback declarado ao lado do modo"
 
 exit $fail

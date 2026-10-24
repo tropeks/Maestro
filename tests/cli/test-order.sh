@@ -167,23 +167,22 @@ declare_order "$P" 2 true   # commita .maestro/ (a ordem 002) e grava o baseline
 OUT=$(printf '{"session_id":"o1"}' | CLAUDE_PROJECT_DIR="$P" bash "$SS" 2>/dev/null)
 grep -q 'ordens: 1 pendente(s)' <<<"$OUT" && ok "injeção conta só as NÃO-aceitas" || bad "injeção conta pendentes"
 grep -q 'ORDER_FROZEN="core/auth/"' "$MAESTRO_HOME/gate-policy.sh" && ok "política compila a zona" || bad "política compila"
-probe() { printf '{"session_id":"%s","tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$1" "$2" | CLAUDE_PROJECT_DIR="$P" bash "$GATE" >/dev/null 2>&1; echo "$?"; }
+probe() { printf '{"session_id":"%s","tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$1" "$2" | env ${3:+MAESTRO_GATE_POLICY="$3"} CLAUDE_PROJECT_DIR="$P" bash "$GATE" >/dev/null 2>&1; echo "$?"; }
 "$BIN" decide --session o1 --workflow fix --mode direct >/dev/null
-chk "direct na zona → avisa e passa" "$(probe o1 "$P/core/auth/jwt.py")" "0"
-"$BIN" decide --session o2 --workflow custom --mode multi --agents dev-pleno,qa >/dev/null
-chk "multi na zona → BLOQUEIA" "$(probe o2 "$P/core/auth/jwt.py")" "2"
+# Política real em block (decisão 01M5NMF64W): core/auth/ casa o domínio security, o gate domain recusa mesmo com `direct`.
+chk "direct na zona (política real: block) → recusa" "$(probe o1 "$P/core/auth/jwt.py")" "2"
+# O caminho da sombra segue testado: só uma política com warn explícito (fixture) avisa e passa.
+sed 's/^MAESTRO_GATE_MODE=.*/MAESTRO_GATE_MODE="warn"/' "$MAESTRO_HOME/gate-policy.sh" > "$tmp/policy-warn.sh"; grep -q '^MAESTRO_GATE_MODE="warn"' "$tmp/policy-warn.sh" && ok "fixture: política com gate.mode warn" || bad "fixture warn"
+chk "direct na zona (política warn explícita) → avisa e passa" "$(probe o1 "$P/core/auth/jwt.py" "$tmp/policy-warn.sh")" "0"
+"$BIN" decide --session o2 --workflow custom --mode multi --agents dev-pleno,qa >/dev/null; chk "multi na zona → BLOQUEIA" "$(probe o2 "$P/core/auth/jwt.py")" "2"
 chk "multi fora da zona → passa" "$(probe o2 "$P/src/app.py")" "0"
 grep -q '"cmd":"frozen_zone"' "$MAESTRO_HOME/logs/routing.jsonl" && ok "frozen_zone auditado" || bad "auditado"
-git -C "$P" checkout -qb order/002-segunda
-"$BIN" evidence --record --label order-2 --project "$P" -- true >/dev/null
-"$BIN" order --accept 2 --project "$P" >/dev/null
-printf '{"session_id":"o3"}' | CLAUDE_PROJECT_DIR="$P" bash "$SS" >/dev/null 2>&1
-grep -q 'ORDER_FROZEN=""' "$MAESTRO_HOME/gate-policy.sh" && ok "aceite descongela na recompilação" || bad "descongela"
-chk "multi pós-aceite → passa" "$(probe o2 "$P/core/auth/jwt.py")" "0"
-
+git -C "$P" checkout -qb order/002-segunda; "$BIN" evidence --record --label order-2 --project "$P" -- true >/dev/null; "$BIN" order --accept 2 --project "$P" >/dev/null
+printf '{"session_id":"o3"}' | CLAUDE_PROJECT_DIR="$P" bash "$SS" >/dev/null 2>&1; grep -q 'ORDER_FROZEN=""' "$MAESTRO_HOME/gate-policy.sh" && ok "aceite descongela na recompilação" || bad "descongela"
+chk "multi pós-aceite → recusa pelo domínio (block), não pela zona" "$(probe o2 "$P/core/auth/jwt.py")" "2"
+[[ "$(tail -1 "$MAESTRO_HOME/logs/routing.jsonl" | jq -r '.cmd')" == "domain_path" ]] && ok "pós-aceite: o bloqueio é domain_path (zona descongelada)" || bad "pós-aceite: último evento não é domain_path"
 echo "-- E23b: verificação obrigatória por área no aceite (S-2302)"
-# Projeto isolado: o fluxo principal acima NÃO declara `verifications:` e é a
-# prova de que ordem sem área tocada segue exatamente na regra do order-N.
+# Projeto isolado: o fluxo principal acima NÃO declara `verifications:` (prova de que ordem sem área tocada segue na regra do order-N).
 PV="$tmp/ordem-verif"; mkdir -p "$PV/src/auth" "$PV/docs"
 git -C "$PV" init -qb main
 cat > "$PV/.maestro.yaml" <<'YAML'
