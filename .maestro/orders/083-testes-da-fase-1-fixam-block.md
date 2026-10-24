@@ -52,3 +52,7 @@ A suíte inteira no host (`bash tests/run-all.sh`, recibo order-83, exit 1) tem 
 - fim: `wc -l tests/cli/test-order.sh` ≤ 400; `bash tests/cli/test-order.sh` rc 0; `bash tests/cli/test-habits-cli.sh` rc 0. A suíte inteira roda o Diretor no host.
 - teto: 1 · 20 min · 40 turnos
 - relatório: pela Ponte, com o antes e o depois do `wc -l` e os rc dos dois testes.
+accepted_at: 2026-10-24T01:42:32-03:00
+accepted_session: desconhecido
+accepted_tree: bbbafa2e953ccc13d92e172c7b7a5cfd8ee9c782
+accepted_intent: 6
