@@ -44,3 +44,11 @@ Cartão R1 do Capitão, item 6 (decisão Ponte 01M5NMF64W, 23/10/2026): a fase 1
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 083` (você não fecha a própria ordem).
+
+## Adendo do Diretor (rodada 2, 24/10)
+A suíte inteira no host (`bash tests/run-all.sh`, recibo order-83, exit 1) tem **1 FAIL**, causado por esta ordem: `tests/cli/test-habits-cli.sh`, "veredito é 'dentro da catraca'". O motivo é `AVISO catraca: slop acima do baseline — oversized-file: 14 > baseline 13`: o `tests/cli/test-order.sh` passou de 400 para **409 linhas** com o conserto da rodada 1. Os outros 5 arquivos e os 8 casos estão aceitos como relatados.
+
+- fatia: só `tests/cli/test-order.sh` volta a ter no máximo 400 linhas, **sem perder caso**. Os casos novos (recusa em block, fixture warn, `domain_path` pós-aceite) ficam. Junte linhas sem apagar asserção. **Não** mexa na régua, na baseline nem em `test-habits-cli.sh`.
+- fim: `wc -l tests/cli/test-order.sh` ≤ 400; `bash tests/cli/test-order.sh` rc 0; `bash tests/cli/test-habits-cli.sh` rc 0. A suíte inteira roda o Diretor no host.
+- teto: 1 · 20 min · 40 turnos
+- relatório: pela Ponte, com o antes e o depois do `wc -l` e os rc dos dois testes.
