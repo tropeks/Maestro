@@ -1,7 +1,7 @@
 version: 2   # v2 = bloco `bindings` (S-401). Emenda v1.3 do DATA_MODEL §1.
 gate:
-  mode: warn            # FASE 1, SOMBRA de 7 dias (INTENT v62, 2026-10-06): block→warn, e o pre-bash-guard
-                        # só registra. Painel: docs/fase1/PAINEL-7-DIAS.md. ROLLBACK = esta linha de volta a block.
+  mode: block           # FASE 1 ENCERRADA (Capitão, cartão R1 de 2026-10-23, decisão 01M5NMF64W): o painel reprovou
+                        # (espontâneas 72% -> 13%); rollback declarado = block. Sombra de 07/10 a 14/10 e o painel em docs/fase1/.
                         # Antes: block, promovido warn→block em 2026-08-29 COM dados: retro de 14d
                         # (133 decisões, override 13% < 20%) + live E2E provando que warn
                         # deixa sessão one-shot editar sem decide. Critério de estabilidade:
