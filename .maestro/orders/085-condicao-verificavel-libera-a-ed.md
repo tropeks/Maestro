@@ -51,3 +51,7 @@ Rode `bash tests/run-all.sh` inteiro no tip e commite com `git -c user.name=gere
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 085` (você não fecha a própria ordem).
+accepted_at: 2026-10-26T17:44:16-03:00
+accepted_session: desconhecido
+accepted_tree: a3f48fe64602a5a2bda240350fb9c3ce817024d9
+accepted_intent: 6
