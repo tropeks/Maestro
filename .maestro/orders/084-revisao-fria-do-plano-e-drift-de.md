@@ -64,7 +64,7 @@ ordem: o desvio acumulado de um épico contra o seu design doc não é medido po
 
 ## Turno
 - fatia: `lib/core-order-cold.sh`, `docs/contracts/revisao-fria.md`, os cinco testes, a emenda E29 no EPICS e o patch de roteamento em `docs/patches/`
-- fim: `bash -c 'for t in bundle entry drift off rounds; do bash tests/cli/test-order-cold-$t.sh || exit 1; done; bash tests/run-all.sh'` sai 0 no tip do branch (os seis critérios com oráculo); patch pronto em `docs/patches/`, não aplicado; o relatório diz o que o Capitão aplica pelo botão
+- fim: `bash tests/cli/test-order-cold-bundle.sh && bash tests/cli/test-order-cold-entry.sh && bash tests/cli/test-order-cold-drift.sh && bash tests/cli/test-order-cold-off.sh && bash tests/cli/test-order-cold-rounds.sh && bash tests/run-all.sh` exit 0; patch pronto, não aplicado; relatório diz o que o Capitão aplica pelo botão.
 - teto: 3
 - orçamento: 90 min · 150 turnos
 - risco: baixo
