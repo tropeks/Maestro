@@ -22,9 +22,11 @@
 #   domain.cleared_until  menor validade (epoch) entre essas aprovações; 0 = nenhuma
 #   decisions[].via       ponte | manual
 #   decisions[].until_epoch  valid_until da decisão em epoch
-# O status agregado é o pior pedido; aprovação manual e `approved_with_conditions`
-# não liberam (o Maestro não verifica condição; a Ponte também não executa ação
-# com condição em texto). Decisão revogada (`revoked_at`) também não: a última
+# O status agregado é o pior pedido; aprovação manual não libera. CONTRATO v3:
+# `approved_with_conditions` via ponte libera a EDIÇÃO quando toda condição traz
+# `check_ref` (conta como `approved`; cada condição vira critério do aceite da ordem,
+# `maestro order --accept --condicoes-conferidas`); com algum `check_ref: null` segue
+# pendente (a Ponte também não executa ação com condição em texto). Decisão revogada (`revoked_at`) também não: a última
 # decisão do pedido revogada conta como `pending`.
 #
 # Forma da decisão aceita (CONTRATO v2, tropeks/spock:docs/diretoria/CONTRATO.md):
@@ -56,7 +58,10 @@ DOMAIN_REVOKED_JQ='def revoked_of: (.revoked_at? // null) != null
 # shellcheck disable=SC2016  # programa jq, não expansão de shell
 DOMAIN_RECOMPUTE_JQ="$DOMAIN_REVOKED_JQ"'
   def last_of($ds; $id): [$ds[] | select(.request_id == $id)] | last;
-  def clears($d): $d != null and $d.response == "approved" and $d.via == "ponte"
+  def libera($d): $d.response == "approved"
+    or ($d.response == "approved_with_conditions" and (($d.conditions // []) | length) > 0
+        and all(($d.conditions // [])[]; .check_ref != null));
+  def clears($d): $d != null and libera($d) and $d.via == "ponte"
     and ($d | revoked_of | not) and (($d.until_epoch // 0) > $now);
   .domain as $b
   | ($b.decisions // []) as $ds
@@ -64,6 +69,7 @@ DOMAIN_RECOMPUTE_JQ="$DOMAIN_REVOKED_JQ"'
   | [$b.requests[] | last_of($ds; .request_id) as $d
       | if $d == null or ($d | revoked_of) then "pending"
         elif ($d.response | startswith("approved")) and $d.via != "ponte" then "pending"
+        elif libera($d) then "approved"
         else $d.response end] as $eff
   | [$b.requests[] | last_of($ds; .request_id) as $d | select(clears($d))
       | {domain, until: $d.until_epoch}] as $ok

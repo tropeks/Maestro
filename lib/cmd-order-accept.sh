@@ -199,8 +199,38 @@ _order_accept_session_resolve() { # <proj> <oid> <ptree> <sid> → stdout "sess�
   printf '%s\t%s' "${sid:-desconhecido}" "$kv"
 }
 
-_order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> — aceita/reaceita o PRÓPRIO trabalho
-  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" st ptree _mv ts
+# ------------------------------------------ ordem 085: condição verificável (CONTRATO v3)
+#
+# `approved_with_conditions` via Ponte com todo `check_ref` não nulo libera a edição
+# (hooks/lib/domain-record.sh); em troca, cada condição é critério obrigatório do
+# aceite. O record da sessão (--session) guarda as decisões; valem as vivas (não
+# revogadas) de pedido desta ordem (order_ref) ou sem order_ref. Sem a flag, recusa
+# e lista; com ela, devolve em stdout a linha `accepted_conditions:` (só texto e
+# check_ref) para o carimbo. Sem condição liberada: stdout vazio, nada muda.
+_order_accept_condicoes() { # <oid> <sid> <conferidas 0|1> → stdout: linha do carimbo ("" se nada a conferir)
+  local oid="$1" sid="$2" conf="$3" rec lista
+  [[ -n "$sid" && "$sid" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || return 0
+  rec="${MAESTRO_SESSIONS_DIR:-${MAESTRO_HOME:-$HOME/.maestro}/sessions}/$sid.json"
+  [[ -f "$rec" ]] || return 0
+  lista=$(jq -c --arg oid "$((10#$oid))" '
+    (.domain.requests // []) as $rs | (.domain.decisions // []) as $ds
+    | [$rs[] | select(((.order_ref // "") | tostring) as $o
+          | $o == "" or (($o | capture("(?<n>[0-9]+)")? // {n: ""}).n | if . == "" then false else (tonumber | tostring) == $oid end))
+        | .request_id as $id | [$ds[] | select(.request_id == $id)] | last
+        | select(. != null and .via == "ponte" and .response == "approved_with_conditions"
+                 and ((.revoked_at? // null) == null) and ((.revoked? // false) != true)
+                 and (.conditions | length) > 0 and all(.conditions[]; .check_ref != null))
+        | .conditions[] | {texto, check_ref}]' "$rec" 2>/dev/null) || return 0
+  [[ -n "$lista" && "$lista" != "[]" ]] || return 0
+  if (( conf != 1 )); then
+    die validation "ordem $oid: o domínio foi liberado por condição — cada uma é critério do aceite: $(jq -r '.[] | "\n  - \(.texto) [check_ref: \(.check_ref)]"' <<<"$lista")" \
+      "confira cada condição com recibo e rode de novo: maestro order --accept $oid --condicoes-conferidas" 1
+  fi
+  printf 'accepted_conditions: %s' "$lista"
+}
+
+_order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> [conferidas] — aceita/reaceita o PRÓPRIO trabalho
+  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" conferidas="${7:-0}" st ptree _mv ts cond_line
   st=$(_order_status "$proj" "$wproj" "$of")
   _evd_yaml_gate "$proj" "$oid"   # ordem 078: yaml de comandos mudou depois do baseline → recusa
   if [[ "$st" == "aceita" ]]; then
@@ -239,6 +269,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> �
     "$([[ "$st" == reprovada ]] && echo "reparo: corrija, prove no novo tip e peça maestro order --validate $oid de novo" || echo "maestro order --validate $oid e espere o recibo validation-$((10#$oid)) verde")" 1
   _order_intent_gate "$proj" "$of" "$oid" "$reviewed"   # E22 — SEMPRE contra o INTENT do DONO (R3)
   _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
+  cond_line=$(_order_accept_condicoes "$oid" "$sid" "$conferidas") || exit $?   # ordem 085: recusa antes de gravar qualquer coisa
   ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
   ts=$(date -Iseconds)
   local resolved sess kv kv_args=()
@@ -248,6 +279,7 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> �
   [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
   printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
     "$ts" "$sess" "${ptree:-desconhecida}" >> "$of"
+  [[ -z "$cond_line" ]] || printf '%s\n' "$cond_line" >> "$of"
   _order_state_write "$proj" "$of" aceita \
     "accepted_at=$ts" "accepted_session=$sess" "accepted_tree=${ptree:-desconhecida}" "${kv_args[@]}" \
     || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
