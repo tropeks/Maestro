@@ -25,6 +25,15 @@ author_session: desconhecido
 ## Critérios de aceite
 - [oráculo: `bash tests/run-all.sh`] suíte do Maestro verde, com os testes novos.
 
+## Adendo da rodada 2 (Diretor, 26/10): o recibo no host reprovou
+
+O código da rodada 1 está commitado (`ordem 085: condicao verificavel libera...`). O `bash tests/run-all.sh` no host saiu `rc=1` por dois motivos, nenhum de lógica:
+
+1. **Patch da 084 não aplica mais:** o teste da 084 aplica `docs/patches/084-revisao-fria-roteamento.patch` numa cópia, e o patch toca `lib/cmd-order.sh` e `lib/cmd-order-accept.sh`, que esta ordem mudou ("fixture: patch 084 não aplicou na cópia"). Regere o patch da 084 sobre os arquivos atuais, sem mudar o que ele faz, e confira que o teste da 084 volta a passar.
+2. **Catraca do `habits`:** "oversized-function: 7 > baseline 6". A função que cresceu é a do aceite. Quebre em função menor, sem subir o baseline.
+
+Rode `bash tests/run-all.sh` inteiro no tip e commite com `git -c user.name=gerente-maestro -c user.email=gerente@vulcan.dev.br commit`.
+
 ## Turno
 - fatia: as decisões 1 a 3
 - fim: `bash tests/run-all.sh` sai 0 no tip do branch, com o recibo `order-85` gravado
