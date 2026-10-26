@@ -772,7 +772,8 @@ if [[ -n "$SID" ]] && maestro_record_valid "$SID"; then
   #      domínio — o gate não confia só no que o gerente declarou.
   # O decide grava `domain` logo depois de `mode` com status, scope, cleared e
   # cleared_until primeiro, então a janela de 4 KiB basta (scope ≤1500 chars).
-  # `approved_with_conditions` não libera (o Maestro não verifica condição);
+  # `approved_with_conditions` com todo check_ref não nulo já chega aqui como
+  # `approved` (CONTRATO v3, domain-record.sh); com check_ref nulo segue pendente;
   # aprovação registrada à mão (`via: manual`) conta como pendente. Timeout não
   # aprova: relógio só é lido para VENCER uma aprovação, nunca para dar uma.
   # Ponte com capability (passo 4b) fica fora: a caixa da ordem é do daemon.

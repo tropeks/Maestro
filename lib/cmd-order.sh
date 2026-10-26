@@ -338,7 +338,7 @@ _order_resolve_stamped() { # <odir> <oid:NNN> → caminho da ordem CARIMBADA; di
 cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única fronteira que fala com o CLI)
   case "${1:-}" in --turno-check|--turno-livre) _order_turno_cmd "$@"; return $? ;; --baseline) _order_baseline_cmd "$@"; return $? ;; esac   # ordem 046; 078: --baseline N grava o fim_commit
   local action="" proj="${CLAUDE_PROJECT_DIR:-$PWD}" title="" branch="" frozen="" oid="" sid="" odoc=""
-  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp=""
+  local b_steps="" b_min="" b_cents="" intent_reviewed=0 absorbed_by="" json_out=0 wp="" cond_conf=0
   while (( $# )); do
     case "$1" in
       --create)  action="create" ;;
@@ -353,13 +353,13 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --budget-cents) b_cents="${2:-}"; shift ;;
       --doc)     odoc="${2:-}"; shift ;;
       --work-project) wp="${2:-}"; shift ;;   # ordem 036 (DATA_MODEL §9 v1.22), só com --create
-      --intent-reviewed) intent_reviewed=1 ;;   # E22
+      --intent-reviewed) intent_reviewed=1 ;; --condicoes-conferidas) cond_conf=1 ;;   # E22; ordem 085: o Diretor conferiu cada condição do domínio
       --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12, usa-se COM --accept
       --json) json_out=1 ;;   # ordem 014/issue #18, só com --status: fonte única p/ o supervisor ler
       --session) sid="${2:-}"; shift ;;
       --project) proj="${2:-}"; shift ;;
       *) die validation "flag desconhecida '$1'" \
-           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed] | --validate N" 1 ;;
+           "maestro order --create --title t [--branch b] [--frozen \"a/ b/\"] [--work-project p] | --list | --status N [--json] | --accept N [--absorbed-by M|main] [--intent-reviewed] [--condicoes-conferidas] | --validate N" 1 ;;
     esac
     shift
   done
@@ -392,6 +392,6 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
     accept)
       _order_accept_lib_load
       if [[ -n "$absorbed_by" ]]; then _order_accept_absorb "$proj" "$wproj" "$odir" "$of" "$oid" "$sid" "$absorbed_by"
-      else _order_accept_own "$proj" "$wproj" "$of" "$oid" "$sid" "$intent_reviewed"; fi ;;
+      else _order_accept_own "$proj" "$wproj" "$of" "$oid" "$sid" "$intent_reviewed" "$cond_conf"; fi ;;
   esac
 }
