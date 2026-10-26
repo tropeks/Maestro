@@ -230,7 +230,7 @@ _order_accept_condicoes() { # <oid> <sid> <conferidas 0|1> → stdout: linha do 
 }
 
 _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> [conferidas] — aceita/reaceita o PRÓPRIO trabalho
-  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" conferidas="${7:-0}" st ptree _mv ts cond_line
+  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" reviewed="$6" conferidas="${7:-0}" st ptree _mv ts cond_line   # ts: só o ramo de reaceite
   st=$(_order_status "$proj" "$wproj" "$of")
   _evd_yaml_gate "$proj" "$oid"   # ordem 078: yaml de comandos mudou depois do baseline → recusa
   if [[ "$st" == "aceita" ]]; then
@@ -271,20 +271,23 @@ _order_accept_own() { # <proj> <wproj> <arquivo> <id> <sid> <intent_reviewed> [c
   _order_verif_gate "$wproj" "$of" "$oid"   # E23b — SEMPRE contra o WPROJ (R1/R2); S-1803: grava a árvore que a prova cobriu
   cond_line=$(_order_accept_condicoes "$oid" "$sid" "$conferidas") || exit $?   # ordem 085: recusa antes de gravar qualquer coisa
   ptree=$(_order_proof_tree "$proj" "$wproj" "$of")
+  _order_accept_stamp "$proj" "$wproj" "$of" "$oid" "$sid" "${ptree:-desconhecida}" "$cond_line"
+  printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
+}
+
+_order_accept_stamp() { # <proj> <wproj> <arquivo> <id> <sid> <ptree> <cond_line> — grava o carimbo do aceite novo
+  local proj="$1" wproj="$2" of="$3" oid="$4" sid="$5" ptree="$6" cond_line="$7" ts resolved sess kv kv_args=()
   ts=$(date -Iseconds)
-  local resolved sess kv kv_args=()
-  resolved=$(_order_accept_session_resolve "$proj" "$oid" "${ptree:-desconhecida}" "$sid")
+  resolved=$(_order_accept_session_resolve "$proj" "$oid" "$ptree" "$sid")
   sess="${resolved%%$'\t'*}"; kv="${resolved#*$'\t'}"
   kv+=$(_order_docsonly_kv "$wproj" "$of")   # ordem 081: marca aditiva da dispensa dos recibos de código
   [[ -n "$kv" ]] && read -ra kv_args <<<"$kv"
-  printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' \
-    "$ts" "$sess" "${ptree:-desconhecida}" >> "$of"
+  printf 'accepted_at: %s\naccepted_session: %s\naccepted_tree: %s\n' "$ts" "$sess" "$ptree" >> "$of"
   [[ -z "$cond_line" ]] || printf '%s\n' "$cond_line" >> "$of"
   _order_state_write "$proj" "$of" aceita \
-    "accepted_at=$ts" "accepted_session=$sess" "accepted_tree=${ptree:-desconhecida}" "${kv_args[@]}" \
+    "accepted_at=$ts" "accepted_session=$sess" "accepted_tree=$ptree" "${kv_args[@]}" \
     || die env "ordem $oid: carimbo gravado no arquivo mas falhou no registro fora da árvore (~/.maestro/order-state) — rode --accept de novo" "" 2
   _order_stamp_intent "$proj" "$of"
   log_event order_accept ${sid:+session_id="$sid"} n="$((10#$oid))"
   log_event delegation phase=accepted ${sid:+session_id="$sid"} n="$((10#$oid))"
-  printf 'ordem %s ACEITA — merge/integração fica a seu critério (o aceite não mescla nada)\n' "$oid"
 }

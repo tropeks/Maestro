@@ -353,8 +353,7 @@ cmd_order() { # S-1501/S-1502 — parseia flags e despacha para a ação (única
       --budget-cents) b_cents="${2:-}"; shift ;;
       --doc)     odoc="${2:-}"; shift ;;
       --work-project) wp="${2:-}"; shift ;;   # ordem 036 (DATA_MODEL §9 v1.22), só com --create
-      --intent-reviewed) intent_reviewed=1 ;;   # E22
-      --condicoes-conferidas) cond_conf=1 ;;   # ordem 085: o Diretor conferiu cada condição do domínio
+      --intent-reviewed) intent_reviewed=1 ;; --condicoes-conferidas) cond_conf=1 ;;   # E22; ordem 085: o Diretor conferiu cada condição do domínio
       --absorbed-by) absorbed_by="${2:-}"; shift ;;   # issue #12, usa-se COM --accept
       --json) json_out=1 ;;   # ordem 014/issue #18, só com --status: fonte única p/ o supervisor ler
       --session) sid="${2:-}"; shift ;;
