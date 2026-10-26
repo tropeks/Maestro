@@ -89,3 +89,7 @@ ordem: o desvio acumulado de um épico contra o seu design doc não é medido po
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 084` (você não fecha a própria ordem).
+accepted_at: 2026-10-25T23:50:41-03:00
+accepted_session: desconhecido
+accepted_tree: eff115c70a7d07158ddce163fe32fd815e181d59
+accepted_intent: 6
