@@ -959,6 +959,32 @@ anti-descuido (ADR-003 v1.1): a trava do efeito é da Ponte.
 
 **Dependências:** E17 (brief regido), E21 (gate no herdr), E22 (INTENT carimbado).
 
+### E29 — Revisão fria do plano e recibo de drift de épico (P1, M) — ordem 084, autorizada pelo Capitão em 26/10
+
+Origem: o gerente especifica e desenvolve a mesma ordem, o `--entry-check` (059) confere
+forma e não mérito, e o aceite é ordem a ordem — o desvio acumulado de um épico contra o seu
+design doc não é medido por ninguém. Autoriza: INTENT do posto, v58 Etapa 1 e v56 estação
+"revisar". Classes de risco: segredo, dinheiro, motor que escreve em cliente, permissão.
+
+**S-2901 — campos do Turno:** `- risco: alto|baixo` (ausente = baixo) e
+`- fecha_epico: <design doc>`, ambos opcionais; o esqueleto do `--create` (flag da 059) traz
+`- risco: baixo`. **S-2902 — pacote:** `maestro order --cold-bundle N [--drift]` imprime só a
+ordem (sem adendos e relatórios), INTENT, brief, design doc e o roteiro; com `--drift`, o
+`git diff --stat` e as ordens aceitas desde a primeira que cita o doc. **S-2903 — roteiro:**
+`docs/contracts/revisao-fria.md`, saída P1/P2/P3 e veredito `aprova|devolve`.
+**S-2904 — recibo:** `--cold-record N --verdict … --findings <arquivo> [--drift]` grava
+`plan-review-N`/`drift-N` fora da árvore com sha256 da ordem, veredito e contagens; nunca o
+texto dos achados. **S-2905 — travas** atrás de `MAESTRO_COLD_REVIEW_REQUIRE` (env > yaml
+`cold_review_require:` > desligado): (f) no `--entry-check`, `risco: alto`; (g) no `--accept`,
+`fecha_epico:`. Desligada, byte a byte como hoje. **S-2906 — limite:** no máximo 2 `devolve`
+por ordem; a terceira revisão sai 1, "escala ao Diretor".
+
+**Fora do épico:** rodar o revisor (despachante), mudar `agents/revisor.md`, ponte-daemon,
+ligar a flag em projeto. O roteamento do CLI (`bin/`, `hooks/`, `lib/cmd-*`) sai como patch em
+`docs/patches/084-revisao-fria-roteamento.patch`.
+
+**Dependências:** 059 (entrada), 060 (veredito único de prova), E22 (INTENT).
+
 ---
 
 ## Grafo de dependências
