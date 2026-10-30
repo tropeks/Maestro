@@ -1,0 +1,74 @@
+diff --git a/config/accept-proof.pub b/config/accept-proof.pub
+index cb1538e..204a19a 100644
+--- a/config/accept-proof.pub
++++ b/config/accept-proof.pub
+@@ -1,9 +1,7 @@
+-# CHAVE DE TESTE do vetor canônico (docs-ops/045/VETOR-CANONICO-prova-de-aceite.md,
+-# ponte-daemon) — publicada de propósito para os dois lados (daemon emite,
+-# Maestro verifica) fecharem o contrato ANTES de a chave de PRODUÇÃO existir.
+-# NUNCA é a chave real do Diretor. Quando a produção existir, esta linha e a
+-# chave abaixo são substituídas NO MESMO commit que liga MAESTRO_ACCEPT_
+-# REQUIRE_PROOF em qualquer projeto (default continua desligado até lá).
++# CHAVE DE PRODUÇÃO do ponte-daemon (ponte-daemon accept-proof pubkey, 17/10/2026).
++# Impressão digital sha256 do SPKI: 9d59f0c7f5eced24f6e89fb6f526a194158336235348251e3014887b92685251
++# Instalada pelo Capitão. A chave de teste do vetor canônico saiu daqui no mesmo commit.
++# Ligar a exigência é por projeto (accept_require_proof: true no .maestro.yaml do dono).
+ -----BEGIN PUBLIC KEY-----
+-MCowBQYDK2VwAyEARkaNyPRegAbbFAVQ54YlisOh02okQUqFL6xLg3vXecc=
++MCowBQYDK2VwAyEA6Z4IYAf9iDO2cDbR0nLNUwnIQe4j1pDnUX1dp7f5YRQ=
+ -----END PUBLIC KEY-----
+diff --git a/tests/cli/test-order-041-accept-proof.sh b/tests/cli/test-order-041-accept-proof.sh
+index e66cbde..933b480 100755
+--- a/tests/cli/test-order-041-accept-proof.sh
++++ b/tests/cli/test-order-041-accept-proof.sh
+@@ -68,12 +68,12 @@ echo "-- ordem 041: vetor canônico (docs-ops/045, ponte-daemon)"
+ export REPO_DIR="$REPO"
+ # shellcheck source=lib/core-order-accept-proof.sh
+ source "$CAP"
+-VEC_PUB="$REPO/config/accept-proof.pub"
++VEC_PUB="$REPO/tests/fixtures/accept-proof-vetor-canonico.pub"  # a chave de TESTE do vetor; config/ tem a de produção
+ VEC_SIG='JuDNEgEZFI0rC1kMNaVCkmdeqPgfayNeOWJScypUNx6SQCgj4VraPLNK8WRSrDqcy976Vlc1b5MGmdEbzPeTBw'
+ VEC_TREE='7b87b9612db81a54a2aa99d947cd35bf9c65f6a2'
+ 
+ if [[ ! -f "$VEC_PUB" ]]; then
+-  bad "(A0) config/accept-proof.pub ausente — o vetor não pode nem começar a ser testado"
++  bad "(A0) tests/fixtures/accept-proof-vetor-canonico.pub ausente — o vetor não pode nem começar a ser testado"
+ else
+   if _order_accept_proof_verify "$VEC_PUB" "ponte-daemon" "042" "$VEC_TREE" "spock" "$VEC_SIG"; then
+     ok "(A1) vetor EXATO (projeto=ponte-daemon id=042 sujeito=spock) → verifica (rc=0)"
+@@ -131,6 +131,12 @@ fi
+ # do vetor) — é o caminho real que a DERIVAÇÃO usa (fecha a porta dos fundos).
+ # =============================================================================
+ echo "-- ordem 041: PASSA — vetor canônico via --status --json (derivação real)"
++# A derivação lê a âncora de config/, que agora é a de PRODUÇÃO: a parte B põe ali a chave
++# do vetor e devolve a de produção no fim da parte (e no EXIT, se o teste cair no meio).
++PROD_PUB="$REPO/config/accept-proof.pub"; cp "$PROD_PUB" "$tmp/prod-pub-backup.pem"
++restore_prod_pub() { cp "$tmp/prod-pub-backup.pem" "$PROD_PUB"; }
++trap 'restore_prod_pub; rm -rf "$tmp"' EXIT
++cp "$VEC_PUB" "$PROD_PUB"
+ VP="$tmp/vecproj/ponte-daemon"; mkdir -p "$VP"
+ git_init_main "$VP"; echo a > "$VP/f.txt"; git_id "$VP" add f.txt; git_id "$VP" commit -qm base
+ "$BIN" order --create --title "vetor" --project "$VP" --session criador <<'BODY' >/dev/null
+@@ -165,6 +171,7 @@ VST2=$(MAESTRO_ACCEPT_REQUIRE_PROOF=1 "$BIN" order --status 042 --project "$VP"
+   && ok "(B2) sujeito trocado no registro (captain) → deixa de derivar 'aceita' (estado=$VST2)" \
+   || bad "(B2) sujeito trocado deveria invalidar a derivação"
+ sed -i 's/^accept_proof_subject=captain$/accept_proof_subject=spock/' "$VSF"
++restore_prod_pub
+ 
+ # =============================================================================
+ # PARTE C — write path (--accept) com par de chaves PRÓPRIO, gerado aqui no
+diff --git a/tests/fixtures/accept-proof-vetor-canonico.pub b/tests/fixtures/accept-proof-vetor-canonico.pub
+new file mode 100644
+index 0000000..cb1538e
+--- /dev/null
++++ b/tests/fixtures/accept-proof-vetor-canonico.pub
+@@ -0,0 +1,9 @@
++# CHAVE DE TESTE do vetor canônico (docs-ops/045/VETOR-CANONICO-prova-de-aceite.md,
++# ponte-daemon) — publicada de propósito para os dois lados (daemon emite,
++# Maestro verifica) fecharem o contrato ANTES de a chave de PRODUÇÃO existir.
++# NUNCA é a chave real do Diretor. Quando a produção existir, esta linha e a
++# chave abaixo são substituídas NO MESMO commit que liga MAESTRO_ACCEPT_
++# REQUIRE_PROOF em qualquer projeto (default continua desligado até lá).
++-----BEGIN PUBLIC KEY-----
++MCowBQYDK2VwAyEARkaNyPRegAbbFAVQ54YlisOh02okQUqFL6xLg3vXecc=
++-----END PUBLIC KEY-----

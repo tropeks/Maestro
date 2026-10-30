@@ -1,0 +1,276 @@
+diff --git a/bin/maestro b/bin/maestro
+index d4c6ea4..7971015 100755
+--- a/bin/maestro
++++ b/bin/maestro
+@@ -2309,6 +2309,20 @@ _telemetry_lib_load() { # carrega lib/cmd-telemetry.sh — uma vez, degradando p
+   die env "lib/cmd-telemetry.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
+ }
+ 
++# ------------------------------------------------------------- agente (ordem 066)
++#
++# `maestro agente` é o lançador único por perfil (núcleo agnóstico + adaptador do provedor).
++# Mesmo molde dos carregadores acima: módulo ausente derruba SÓ este comando (I-2).
++
++_agente_lib_load() { # carrega lib/cmd-agente.sh — uma vez, degradando por comando (I-2)
++  declare -f cmd_agente >/dev/null 2>&1 && return 0
++  if [[ -f "$REPO_DIR/lib/cmd-agente.sh" ]]; then
++    # shellcheck source=lib/cmd-agente.sh
++    source "$REPO_DIR/lib/cmd-agente.sh" && return 0
++  fi
++  die env "lib/cmd-agente.sh não encontrado em $REPO_DIR" "reinstale o plugin (maestro doctor)" 2
++}
++
+ # ------------------------------------------------------------- papercuts (ordem 026)
+ #
+ # `maestro papercut` é a metade CLI de hooks/lib/papercuts.sh. O módulo mora em
+@@ -2370,6 +2384,7 @@ case "$cmd" in
+   conform) shift; _conform_lib_load; cmd_conform "$@" ;;
+   upgrade) shift; cmd_upgrade "$@" ;;
+   telemetry) shift; _telemetry_lib_load; cmd_telemetry "$@" ;;
++  agente) shift; _agente_lib_load; cmd_agente "$@" ;;        # ordem 066
+   intent) shift; _intent_lib_load; cmd_intent "$@" ;;        # E22
+   verify) shift; _verif_lib_load; cmd_verify "$@" ;;   # E23b
+   delegation) shift; _delegation_lib_load; cmd_delegation "$@" ;; # E23a
+diff --git a/lib/agente-adaptador-claude-code.sh b/lib/agente-adaptador-claude-code.sh
+new file mode 100644
+index 0000000..44a3269
+--- /dev/null
++++ b/lib/agente-adaptador-claude-code.sh
+@@ -0,0 +1,76 @@
++#!/usr/bin/env bash
++# maestro lib/agente-adaptador-claude-code.sh — ordem 066: o ÚNICO adaptador implementado.
++#
++# Traduz as capacidades de um perfil (entregues pelo núcleo em AGENTE_CAP[]) em flags e
++# variáveis de ambiente do Claude Code. Só este arquivo conhece o provedor. Tudo inline:
++# nenhum arquivo é escrito na área do usuário (AGENTE_ARQUIVOS fica vazio).
++#
++# Mecanismo (medido no Claude Code 2.1.289 — ENGINEERING_SPEC, "matriz do mecanismo"):
++#   pesquisa: --safe-mode (desliga plugins, hooks e MCP) + --setting-sources project (não lê o
++#             escopo user, onde moram MCPs e plugins) + --strict-mcp-config com config vazia
++#             + --settings inline com a negação de leitura de segredos. Sem login novo: o
++#             CLAUDE_CONFIG_DIR próprio foi descartado por perder a autenticação.
++#   diretor : Ponte declarada por --mcp-config (independente do plugin Maestro) +
++#             --strict-mcp-config + --setting-sources project,local.
++#   dev, gerente: sem restrição de carga — o que o envelope/pane já faz, "como hoje".
++
++_cc_json_str() { # <texto> — escapa para string JSON (barra invertida e aspas)
++  local s="$1"
++  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
++  printf '%s' "$s"
++}
++
++_cc_regra_leitura() { # <padrão do segredo> → Read(...) no dialeto de permissões do provedor
++  case "$1" in
++    '~/'*) printf 'Read(%s)' "$1" ;;
++    *)     printf 'Read(**/%s)' "$1" ;;
++  esac
++}
++
++agente_adaptador_montar() { # <perfil>
++  local perfil="$1" p r json='' sep=''
++  AGENTE_CMD=(claude)
++  AGENTE_ENV=("MAESTRO_AGENTE_PERFIL=$perfil")
++  AGENTE_ARQUIVOS=()
++  AGENTE_NOTAS=()
++
++  case "$perfil" in
++    dev|gerente)
++      : # sem flag de isolamento: o envelope do runner (dev) e a pane (gerente) seguem como hoje
++      ;;
++    diretor)
++      AGENTE_CMD+=(
++        --strict-mcp-config
++        '--mcp-config={"mcpServers":{"ponte":{"command":"ponte-daemon","args":["mcp"],"env":{"PONTE_MCP_SOCKET":"${PONTE_MCP_SOCKET:-${HOME}/.ponte/mcp.sock}"}}}}'
++        --setting-sources project,local
++        '--settings={"enabledPlugins":{"maestro@maestro":false}}'
++      )
++      AGENTE_NOTAS+=(
++        'limite: diretor — a conexão real da Ponte via --mcp-config não foi medida (o mcp list ignora a flag; sessão exige modelo)'
++        'limite: diretor — plugins sincronizados do claude.ai podem carregar fora de --setting-sources; "nenhum além da Ponte" não verificado'
++      )
++      ;;
++    pesquisa)
++      for p in "${AGENTE_SEGREDOS_PADROES[@]}"; do
++        r=$(_cc_regra_leitura "$p")
++        json+="$sep\"$(_cc_json_str "$r")\""; sep=','
++        AGENTE_NOTAS+=("deny: $r")
++      done
++      AGENTE_CMD+=(
++        --safe-mode
++        --setting-sources project
++        --strict-mcp-config
++        '--mcp-config={"mcpServers":{}}'
++        "--settings={\"permissions\":{\"deny\":[$json]}}"
++      )
++      AGENTE_ENV+=("CLAUDE_CODE_SAFE_MODE=1")
++      AGENTE_NOTAS+=(
++        'limite: leitura por Bash, python ou node (cat, open) abre o arquivo sem passar pela ferramenta Read; a negação de Read não cobre isso'
++        'limite: o enforcement da regra de negação pelo provedor não foi provado offline (exige sessão com modelo); está provada a configuração gerada'
++        'limite: --safe-mode e --setting-sources foram medidos pelo mcp list/plugin list; a sessão real (claude -p) e a autenticação preservada não foram verificadas'
++      )
++      ;;
++    *) return 1 ;;
++  esac
++  return 0
++}
+diff --git a/lib/cmd-agente.sh b/lib/cmd-agente.sh
+new file mode 100644
+index 0000000..89752ec
+--- /dev/null
++++ b/lib/cmd-agente.sh
+@@ -0,0 +1,155 @@
++#!/usr/bin/env bash
++# maestro lib/cmd-agente.sh — ordem 066: lançador único de agente por PERFIL.
++#
++#   maestro agente --perfil <nome> [--adaptador <nome>] [--dry-run] -- <args do provedor>
++#
++# NÚCLEO agnóstico de provedor (E24: núcleo + adaptadores). Lê a declaração dos perfis
++# (config/perfis-agente.yaml: capacidades, nunca flag), resolve o perfil e entrega a um
++# ADAPTADOR (lib/agente-adaptador-<nome>.sh) que traduz capacidades em comando e ambiente.
++# Este arquivo NÃO conhece nenhum provedor: o contrato do adaptador é o que o isola.
++#
++# Contrato do adaptador (API_SPEC §agente): o arquivo define
++#   agente_adaptador_montar <perfil>
++# lendo AGENTE_CAP[<capacidade>] e AGENTE_SEGREDOS_PADROES[] (entregues pelo núcleo) e
++# preenchendo AGENTE_CMD[] (argv do provedor SEM os args do usuário), AGENTE_ENV[] (K=V),
++# AGENTE_ARQUIVOS[] (arquivos de configuração gerados) e AGENTE_NOTAS[] (linhas
++# informativas — regras e limites — impressas no --dry-run). Retorno != 0 = falha fechada.
++#
++# Falha FECHADA no perfil: sem --perfil, perfil desconhecido/vazio ou capacidade fora do
++# vocabulário => erro que lista os perfis válidos e NADA é lançado. Não existe perfil padrão.
++# Logs: só metadados (perfil, adaptador, rc); nunca argumento do provedor nem caminho.
++#
++# Sourced por bin/maestro (_agente_lib_load) no mesmo processo: die() e REPO_DIR no escopo.
++
++_AGENTE_CAPS=(maestro ponte mcp plugins guardas segredos)
++
++_agente_usage() {
++  cat <<'EOF'
++uso: maestro agente --perfil <perfil> [--adaptador <nome>] [--dry-run] -- <args do provedor>
++
++  --perfil      obrigatório; não há perfil padrão (falha fechada)
++  --adaptador   adaptador do provedor (padrão: o declarado em config/perfis-agente.yaml)
++  --dry-run     imprime o que seria executado (comando, ambiente, arquivos) sem lançar nada
++EOF
++}
++
++_agente_decl() { printf '%s\n' "${MAESTRO_PERFIS_AGENTE:-$REPO_DIR/config/perfis-agente.yaml}"; }
++
++_agente_perfis_validos() { # nomes dos perfis declarados, um por linha
++  awk '/^perfis:/ {em=1; next} em && /^[^ #]/ {em=0} em && /^  [a-z][a-z0-9-]*:[[:space:]]*$/ {sub(/^  /, ""); sub(/:.*/, ""); print}' "$(_agente_decl)"
++}
++
++_agente_adaptador_padrao() {
++  awk '/^adaptador_padrao:/ {sub(/^adaptador_padrao:[[:space:]]*/, ""); print; exit}' "$(_agente_decl)"
++}
++
++_agente_ler_perfil() { # <perfil> — preenche AGENTE_CAP[] e AGENTE_SEGREDOS_PADROES[]; != 0 se incompleto
++  local perfil="$1" decl linha chave val c
++  decl=$(_agente_decl)
++  [[ -f "$decl" ]] || return 1
++  AGENTE_CAP=()
++  while IFS=$'\t' read -r chave val; do
++    [[ -n "$chave" ]] && AGENTE_CAP["$chave"]="$val"
++  done < <(awk -v p="$perfil" '
++    /^perfis:/ {em=1; next}
++    em && /^[^ #]/ {em=0}
++    em && $0 ~ "^  " p ":[[:space:]]*$" {dentro=1; next}
++    em && /^  [a-z]/ {dentro=0}
++    em && dentro && /^    [a-z]+:/ {k=$1; sub(/:$/, "", k); v=$0; sub(/^    [a-z]+:[[:space:]]*/, "", v); print k "\t" v}
++  ' "$decl")
++  for c in "${_AGENTE_CAPS[@]}"; do
++    [[ -n "${AGENTE_CAP[$c]:-}" ]] || return 1
++  done
++  _agente_cap_valida maestro  "sim nao"                      || return 1
++  _agente_cap_valida ponte    "envelope sim nao"             || return 1
++  _agente_cap_valida mcp      "envelope herdados nenhum"     || return 1
++  _agente_cap_valida plugins  "envelope herdados nenhum"     || return 1
++  _agente_cap_valida guardas  "metodo nenhuma"               || return 1
++  _agente_cap_valida segredos "herda nega"                   || return 1
++  AGENTE_SEGREDOS_PADROES=()
++  while IFS= read -r linha; do
++    linha="${linha%\"}"; linha="${linha#\"}"
++    [[ -n "$linha" ]] && AGENTE_SEGREDOS_PADROES+=("$linha")
++  done < <(awk '/^segredos_padroes:/ {em=1; next} em && /^[^ #-]/ {em=0} em && /^  - / {sub(/^  - /, ""); print}' "$decl")
++  return 0
++}
++
++_agente_cap_valida() { # <capacidade> "<valores aceitos>"
++  local v="${AGENTE_CAP[$1]:-}" ok
++  for ok in $2; do [[ "$v" == "$ok" ]] && return 0; done
++  return 1
++}
++
++_agente_erro_perfil() { # <motivo> — erro de validação que lista os perfis válidos
++  local validos
++  validos=$(_agente_perfis_validos | tr '\n' ' ')
++  die validation "$1; perfis válidos: ${validos% }" "maestro agente --perfil <perfil> -- <args do provedor>" 1
++}
++
++_agente_log() { # <perfil> <adaptador> <rc> — só metadados, melhor esforço
++  local dir="${MAESTRO_HOME:-}/logs"
++  [[ -n "${MAESTRO_HOME:-}" ]] || return 0
++  mkdir -p "$dir" 2>/dev/null || return 0
++  printf '%s perfil=%s adaptador=%s rc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" \
++    >> "$dir/agente.log" 2>/dev/null || true
++}
++
++cmd_agente() {
++  local perfil='' adaptador='' dry=0 tem_perfil=0 arg
++  while [[ $# -gt 0 ]]; do
++    arg="$1"
++    case "$arg" in
++      --perfil)
++        [[ $# -ge 2 ]] || _agente_erro_perfil "--perfil sem valor"
++        perfil="$2"; tem_perfil=1; shift 2 ;;
++      --adaptador)
++        [[ $# -ge 2 ]] || die validation "--adaptador sem valor" "maestro agente --help" 1
++        adaptador="$2"; shift 2 ;;
++      --dry-run) dry=1; shift ;;
++      -h|--help) _agente_usage; return 0 ;;
++      --) shift; break ;;
++      *) die validation "argumento desconhecido '$arg' (args do provedor vão depois de --)" "maestro agente --help" 1 ;;
++    esac
++  done
++
++  # --- falha fechada no perfil: nada além daqui roda sem um perfil declarado
++  [[ $tem_perfil -eq 1 && -n "$perfil" ]] || _agente_erro_perfil "falta --perfil (não existe perfil padrão)"
++  _agente_perfis_validos | grep -qxF -- "$perfil" || _agente_erro_perfil "perfil desconhecido '$perfil'"
++  declare -gA AGENTE_CAP=()
++  declare -ga AGENTE_SEGREDOS_PADROES=()
++  _agente_ler_perfil "$perfil" || die validation "declaração do perfil '$perfil' incompleta ou fora do vocabulário" "revise config/perfis-agente.yaml" 1
++
++  # --- adaptador
++  [[ -n "$adaptador" ]] || adaptador=$(_agente_adaptador_padrao)
++  [[ "$adaptador" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die validation "adaptador inválido" "maestro agente --help" 1
++  local arq="${MAESTRO_AGENTE_ADAPTADOR_DIR:-$REPO_DIR/lib}/agente-adaptador-$adaptador.sh"
++  [[ -f "$arq" ]] || die env "adaptador '$adaptador' não encontrado" "reinstale o plugin (maestro doctor)" 2
++  # shellcheck disable=SC1090
++  source "$arq" || die env "adaptador '$adaptador' não carregou" "reinstale o plugin (maestro doctor)" 2
++  declare -f agente_adaptador_montar >/dev/null 2>&1 || die env "adaptador '$adaptador' não define agente_adaptador_montar" "contrato do adaptador: API_SPEC (agente)" 2
++
++  declare -ga AGENTE_CMD=() AGENTE_ENV=() AGENTE_ARQUIVOS=() AGENTE_NOTAS=()
++  agente_adaptador_montar "$perfil" || die env "adaptador '$adaptador' recusou o perfil '$perfil'" "maestro agente --dry-run --perfil $perfil" 2
++  [[ ${#AGENTE_CMD[@]} -gt 0 ]] || die env "adaptador '$adaptador' não devolveu comando" "contrato do adaptador: API_SPEC (agente)" 2
++  [[ -n "${MAESTRO_AGENTE_BIN:-}" ]] && AGENTE_CMD[0]="$MAESTRO_AGENTE_BIN"
++  local cmd=("${AGENTE_CMD[@]}" "$@")
++
++  if [[ $dry -eq 1 ]]; then
++    local c n parts=()
++    printf 'agente (dry-run): nada foi lançado\n'
++    printf 'perfil: %s\nadaptador: %s\n' "$perfil" "$adaptador"
++    for c in "${_AGENTE_CAPS[@]}"; do parts+=("$c=${AGENTE_CAP[$c]}"); done
++    printf 'capacidades: %s\n' "${parts[*]}"
++    printf 'comando:'; printf ' %q' "${cmd[@]}"; printf '\n'
++    for n in "${AGENTE_ENV[@]}"; do printf 'ambiente: %s\n' "$n"; done
++    if [[ ${#AGENTE_ARQUIVOS[@]} -eq 0 ]]; then printf 'arquivos: nenhum\n'
++    else for n in "${AGENTE_ARQUIVOS[@]}"; do printf 'arquivos: %s\n' "$n"; done; fi
++    for n in "${AGENTE_NOTAS[@]}"; do printf '%s\n' "$n"; done
++    return 0
++  fi
++
++  local rc=0
++  env "${AGENTE_ENV[@]}" "${cmd[@]}" || rc=$?
++  _agente_log "$perfil" "$adaptador" "$rc"
++  return "$rc"
++}
