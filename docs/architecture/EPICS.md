@@ -985,6 +985,32 @@ ligar a flag em projeto. O roteamento do CLI (`bin/`, `hooks/`, `lib/cmd-*`) sai
 
 **Dependências:** 059 (entrada), 060 (veredito único de prova), E22 (INTENT).
 
+### E30 — O retro lê os sinais da fábrica (P1, S) — aprovado pelo Capitão em 30/10 ("ta aceito irmão, escreve")
+
+Origem: o radar #04 e a avaliação "banco em vez de arquivos" (Project "Desenvolvimento
+conjunto", 30/10). O `retro` só enxerga o log de roteamento e os recibos deste host; ordem
+recusada, achado de revisão, CI vermelha, retomada e custo moram no `ponte.db` e no GitHub. A
+Ponte junta esses sinais no índice derivado da S-820 (Enterprise, emenda v1.45, D45-01) e
+publica um export só de colunas fechadas, `fabrica-sinais.tsv`, com o `escritor` de cada linha
+(`daemon|github|git|agente`). O `retro` passa a lê-lo, sem depender dele.
+
+**S-3001 — leitor opcional:** caminho em `MAESTRO_FABRICA_SINAIS` (env > yaml
+`fabrica_sinais:` > desligado). Lido com `awk`, sem `sqlite3`, sem rede e sem chamar o
+`ponte-daemon`. O `retro` ganha a seção `sinais da fábrica (janela N dias)`: contagem por tipo
+e por `escritor`, e o custo somado em centavos inteiros. **S-3002 — degrada sempre:** arquivo
+ausente, ilegível, `versao_schema` desconhecida ou `gerado_em` com mais de 48 h dão uma linha
+`sinais: indisponível (<motivo>)`, e o resto do `retro` sai byte a byte como hoje (teste com e
+sem o arquivo). **S-3003 — só mostra:** a promoção warn→block, a taxa de override e as
+propostas do `/maestro:retro` não leem a seção; linha `escritor=agente` aparece separada e
+nunca soma com `daemon` ou `github`.
+
+**Fora do épico:** escrever no export; ler o `fabrica-indice.db` ou o `ponte.db`; contar evento
+de autonomia (é do orçamento de risco do desenho `tropeks/spock#65`, quando carimbado). O
+roteamento do CLI (`bin/`, `lib/cmd-retro.sh`) sai como patch em
+`docs/patches/`, como no E29.
+
+**Dependências:** S-820 da Ponte (formato do export, API_SPEC da Ponte §7 A45-01); E10 (retro).
+
 ---
 
 ## Grafo de dependências
