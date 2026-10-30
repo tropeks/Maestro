@@ -404,6 +404,12 @@ maestro-decide --session <session_id>          # OBRIGATÓRIO — valor injetado
   smells, desfechos, workflows sem uso) + critério codificado de promoção warn→block.
   Consumidor: `/maestro:retro`, que propõe e (com consentimento) aplica diffs, com
   suíte + eval-on-diff como exame antes do commit.
+  **Emenda E30/S-3001 (2026-10-30):** com `MAESTRO_FABRICA_SINAIS` (ou `fabrica_sinais:`)
+  apontando o export `fabrica-sinais.tsv` da Ponte, o relatório ganha a seção `sinais da
+  fábrica`: contagem por tipo (`ordem_recusada`, `achado_revisao`, `ci_vermelha`,
+  `retomada`, `custo`) e por `escritor`, custo em centavos inteiros. Ausente, ilegível, de
+  versão desconhecida ou com mais de 48 h: `sinais: indisponível (<motivo>)` e o resto
+  igual. Nenhum critério do retro lê a seção. Exit não muda.
   **Emenda E18/S-1801 (2026-09-01):** a linha de decisões sai como `override
   roteável: M · não-roteável: K`; a taxa, o sinal ≥20% e a promoção warn→block
   usam só M (comandos que casam com alvo `skill:` de binding ou nome de workflow,
