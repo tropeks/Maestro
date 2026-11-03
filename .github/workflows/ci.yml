@@ -216,22 +216,21 @@ jobs:
 
   auditoria:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0   # compara os lockfiles do head com os do primeiro pai
           persist-credentials: false
-      # Barra vulnerabilidade conhecida NOVA (o que a base já tinha é dívida, só no relatório). Lê pnpm-lock,
-      # package-lock, uv.lock, poetry.lock e requirements*.txt; sem nenhum, fica verde e diz isso.
-      # O script mora em .github/actions/ para ser T3 (o PR não afrouxa o portão que o julga).
-      - name: vulnerabilidade nova nas dependências
+      # O Maestro não tem dependência de pacote (bash + bun sem package.json). Lockfile que aparecer reprova até
+      # o repo ganhar o auditor da fábrica (tropeks/vulcan .github/actions/portoes/auditoria.py). Inline e não
+      # copiado porque a catraca de hábitos (maestro habits --all) mede o repo inteiro.
+      - name: nenhuma dependência de pacote
         run: |
-          corepack enable && corepack prepare pnpm@9 --activate
-          python3 -m venv "$RUNNER_TEMP/aud" && "$RUNNER_TEMP/aud/bin/pip" install --quiet 'pip-audit==2.10.1'
-          "$RUNNER_TEMP/aud/bin/python" .github/actions/portoes/auditoria.py
+          achados=$(git ls-files | grep -E '(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|uv\.lock|poetry\.lock|requirements[^/]*\.txt)$' || true)
+          if [ -n "$achados" ]; then echo "lockfile sem auditor neste repo: $achados" >&2; exit 1; fi
+          echo "sem lockfile nem requirements: nada a auditar"
 
   zizmor:
     runs-on: ubuntu-latest
