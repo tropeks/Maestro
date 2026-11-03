@@ -33,8 +33,12 @@ jobs:
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # Instala explicitamente em vez de presumir a imagem do runner.
       - name: Instalar shellcheck e jq
@@ -89,10 +93,15 @@ jobs:
             /tmp/sc.json
 
   suite:
-    name: suíte + doctor
+    # O nome do check é `testes`: é o portão do integrador (tropeks/vulcan integrador/trilhas.py). Não renomeie.
+    name: testes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # jq é contrato duro dos hooks (API_SPEC §1); flock vem do util-linux e é o
       # que impede perda de linha no log sob contenção (decision-log #7).
@@ -108,9 +117,10 @@ jobs:
           flock --version
 
       - name: Instalar Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
+          no-cache: true   # workflow também roda em tag v*: sem cache, sem envenenamento (zizmor cache-poisoning)
 
       - name: Conferir o ambiente
         run: |
@@ -166,8 +176,9 @@ jobs:
     steps:
       # fetch-depth: 0 — a tag aponta para $GITHUB_SHA e o push precisa do
       # histórico completo; clone raso faria o remoto recusar o objeto.
-      - uses: actions/checkout@v4
-        with:
+      # O job empurra a tag `stable` com a credencial do checkout e não sobe artefato nenhum.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:  # zizmor: ignore[artipacked]
           fetch-depth: 0
 
       - name: mover stable para o commit verde
@@ -183,3 +194,56 @@ jobs:
           git tag -f stable "$GITHUB_SHA"
           git push -f origin refs/tags/stable
           printf 'stable -> %s (%s)\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # Portões do integrador (tropeks/vulcan integrador/trilhas.py): `testes` é o job
+  # `suite` acima; os três abaixo têm o nome fixo. `diff-cover` não entra (trilhas.yml):
+  # o Maestro é bash e a CLI em TS roda por fora da suíte, sem cobertura por linha.
+  segredos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read   # a action lista os commits do PR para varrer só o diff
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  auditoria:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0   # compara os lockfiles do head com os do primeiro pai
+          persist-credentials: false
+      # Barra vulnerabilidade conhecida NOVA (o que a base já tinha é dívida, só no relatório). Lê pnpm-lock,
+      # package-lock, uv.lock, poetry.lock e requirements*.txt; sem nenhum, fica verde e diz isso.
+      # O script mora em .github/actions/ para ser T3 (o PR não afrouxa o portão que o julga).
+      - name: vulnerabilidade nova nas dependências
+        run: |
+          corepack enable && corepack prepare pnpm@9 --activate
+          python3 -m venv "$RUNNER_TEMP/aud" && "$RUNNER_TEMP/aud/bin/pip" install --quiet 'pip-audit==2.10.1'
+          "$RUNNER_TEMP/aud/bin/python" .github/actions/portoes/auditoria.py
+
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: zizmor nos workflows
+        env:
+          GH_TOKEN: ${{ github.token }}   # libera as auditorias online (action com CVE, commit impostor)
+        run: |
+          pipx run --spec 'zizmor==1.32.0' zizmor --format plain .github/workflows
