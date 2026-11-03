@@ -1,0 +1,11 @@
+# Régua do repo Maestro para o integrador (tropeks/vulcan integrador/trilhas.py). Lida do sha da BASE; mudar este
+# arquivo é T3. Por cima dela vale o piso fixo (workflows, actions e este arquivo são T3; manifesto e lint, T2).
+# Igual ao padrão, menos o diff-cover: o Maestro é bash puro mais uma CLI em TS exercida por fora
+# (tests/cli/test-cli.sh), sem relatório de cobertura por linha. Quando houver (kcov, bun --coverage), volta.
+versao: 1
+padrao: T1
+portoes:            # nomes dos checks de .github/workflows/ci.yml (zizmor vale pela R13 quando o PR toca workflow)
+  - testes
+  - segredos
+  - auditoria
+dependencias_permitidas: []
