@@ -10,6 +10,11 @@
 #     do routing-table.yaml via Bun.YAML e valida hooks.json/plugin.json.
 #
 # Nada aqui depende de rede em runtime do plugin; a rede é só do runner.
+#
+# Onde roda: a variável do repo VULCAN_RUNS_ON; vazia, o runner da lab (label `lab`, contêiner efêmero
+# lab-maestro-N, imagem tropeks/vulcan:lab/runner/Dockerfile). O runner hospedado do GitHub parou por cobrança.
+# A lab não tem shellcheck, sqlite3, xz, pipx nem python3-venv, e o job não usa sudo: cada ferramenta vem
+# para o $RUNNER_TEMP do job em versão exata, com sha256 conferido por `sha256sum -c` antes de usar.
 
 name: CI
 
@@ -29,10 +34,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  JQ_VERSAO: "1.7.1"
+  JQ_SHA256: 5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
+
 jobs:
   shellcheck:
     name: shellcheck
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     permissions:
       contents: read
     steps:
@@ -40,14 +49,26 @@ jobs:
         with:
           persist-credentials: false
 
-      # Instala explicitamente em vez de presumir a imagem do runner.
+      # Instala explicitamente em vez de presumir a imagem do runner. Sem apt nem sudo (a lab não dá sudo ao
+      # job): binário fixado, sha256 conferido. A lab não tem `xz`, por isso o .tar.xz abre pelo lzma do python3.
       - name: Instalar shellcheck e jq
+        env:
+          SHELLCHECK_VERSAO: "0.10.0"
+          SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends shellcheck jq
-          shellcheck --version
-          jq --version
+          bin="$RUNNER_TEMP/ferramentas"; mkdir -p "$bin"
+          curl -fsSL -o "$RUNNER_TEMP/sc.tar.xz" "https://github.com/koalaman/shellcheck/releases/download/v$SHELLCHECK_VERSAO/shellcheck-v$SHELLCHECK_VERSAO.linux.x86_64.tar.xz"
+          echo "$SHELLCHECK_SHA256  $RUNNER_TEMP/sc.tar.xz" | sha256sum -c -
+          python3 -c 'import sys, tarfile; tarfile.open(sys.argv[1]).extract(sys.argv[2], sys.argv[3], filter="data")' \
+            "$RUNNER_TEMP/sc.tar.xz" "shellcheck-v$SHELLCHECK_VERSAO/shellcheck" "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/shellcheck-v$SHELLCHECK_VERSAO/shellcheck" "$bin/shellcheck"
+          curl -fsSL -o "$bin/jq" "https://github.com/jqlang/jq/releases/download/jq-$JQ_VERSAO/jq-linux-amd64"
+          echo "$JQ_SHA256  $bin/jq" | sha256sum -c -
+          chmod 0755 "$bin/jq"
+          echo "$bin" >> "$GITHUB_PATH"
+          "$bin/shellcheck" --version
+          "$bin/jq" --version
 
       # A lista é derivada do disco, não hardcoded: hook ou teste novo entra
       # na CI sem ninguém lembrar de editar este arquivo.
@@ -95,7 +116,7 @@ jobs:
   suite:
     # O nome do check é `testes`: é o portão do integrador (tropeks/vulcan integrador/trilhas.py). Não renomeie.
     name: testes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     permissions:
       contents: read
     steps:
@@ -105,15 +126,28 @@ jobs:
 
       # jq é contrato duro dos hooks (API_SPEC §1); flock vem do util-linux e é o
       # que impede perda de linha no log sob contenção (decision-log #7).
-      # Instalados explicitamente: a imagem do runner pode mudar, o contrato não.
-      - name: Instalar jq e flock
+      # jq e sqlite3 (os testes do `baseline` e do `conform` montam o ponte.db de fixture com ele) vêm
+      # para o job em versão exata e com sha256 conferido, sem apt nem sudo: a imagem do runner pode mudar,
+      # o contrato não. O flock é do util-linux da imagem base e só se confere.
+      - name: Instalar jq e sqlite3, conferir flock
+        env:
+          SQLITE_VERSAO: "3500400"
+          SQLITE_ANO: "2025"
+          SQLITE_SHA256: 2c61fe3f6bfcf4ab0cad6c4edf1fa1cae93bbb816b744bef52a4bdde5bf7bf38
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends jq util-linux
-          command -v jq    >/dev/null || { echo "jq ausente";    exit 1; }
+          bin="$RUNNER_TEMP/ferramentas"; mkdir -p "$bin"
+          curl -fsSL -o "$bin/jq" "https://github.com/jqlang/jq/releases/download/jq-$JQ_VERSAO/jq-linux-amd64"
+          echo "$JQ_SHA256  $bin/jq" | sha256sum -c -
+          chmod 0755 "$bin/jq"
+          curl -fsSL -o "$RUNNER_TEMP/sqlite.zip" "https://www.sqlite.org/$SQLITE_ANO/sqlite-tools-linux-x64-$SQLITE_VERSAO.zip"
+          echo "$SQLITE_SHA256  $RUNNER_TEMP/sqlite.zip" | sha256sum -c -
+          python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("sqlite3", sys.argv[2])' "$RUNNER_TEMP/sqlite.zip" "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/sqlite3" "$bin/sqlite3"
+          echo "$bin" >> "$GITHUB_PATH"
           command -v flock >/dev/null || { echo "flock ausente"; exit 1; }
-          jq --version
+          "$bin/jq" --version
+          "$bin/sqlite3" --version
           flock --version
 
       - name: Instalar Bun
@@ -170,7 +204,7 @@ jobs:
     name: aprovar (mover a tag stable)
     needs: [shellcheck, suite]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     permissions:
       contents: write
     steps:
@@ -200,22 +234,47 @@ jobs:
   # `suite` acima; os três abaixo têm o nome fixo. `diff-cover` não entra (trilhas.yml):
   # o Maestro é bash e a CLI em TS roda por fora da suíte, sem cobertura por linha.
   segredos:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: read   # a action lista os commits do PR para varrer só o diff
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+      # O binário do gitleaks, fixado e com sha256 conferido (a gitleaks-action baixava sem conferir, pedia o token e
+      # o upload do SARIF dela quebra na lab, vulcan#128). Mesmo desenho do personas#15.
+      - name: gitleaks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSAO: 8.28.0
+          GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSAO/gitleaks_${GITLEAKS_VERSAO}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks-bin" && tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
+          echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
+      # Só o diff. No PR o checkout é o merge de teste e HEAD^1 é a base; no push, before..sha, e sem before utilizável
+      # (zerado, ausente, ou fora do clone) o histórico alcançável do sha, nunca só o último commit. Em tag v* não há
+      # before: varre o alcançável. --diff-merges=first-parent: sem ela o git log -p omite o patch de commit de merge,
+      # e um segredo posto só na resolução de um merge passaria.
+      - name: segredos no diff
+        env:
+          EVENTO: ${{ github.event_name }}
+          ANTES: ${{ github.event.before }}
+          DEPOIS: ${{ github.sha }}
+        run: |
+          if [ "$EVENTO" = "pull_request" ]; then
+            faixa="HEAD^1..HEAD"
+          elif [ -z "$ANTES" ] || [ "$ANTES" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$ANTES" 2>/dev/null; then
+            faixa="$DEPOIS"
+          else
+            faixa="$ANTES..$DEPOIS"
+          fi
+          gitleaks git --log-opts="--diff-merges=first-parent $faixa" --redact --exit-code 1 --no-banner .
 
   auditoria:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -233,7 +292,7 @@ jobs:
           echo "sem lockfile nem requirements: nada a auditar"
 
   zizmor:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.VULCAN_RUNS_ON || '["self-hosted","Linux","lab"]') }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -241,8 +300,22 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      # A lab não tem pipx nem python3-venv: o uv (binário fixado, sha256 conferido) traz o Python numa versão
+      # exata e roda o zizmor pelo uvx. Python e cache no temp do job: nada fica no runner entre jobs.
+      - name: uv
+        env:
+          UV_VERSAO: 0.9.5
+          UV_SHA256: 2cf10babba653310606f8b49876cfb679928669e7ddaa1fb41fb00ce73e64f66
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/uv.tgz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSAO/uv-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$UV_SHA256  $RUNNER_TEMP/uv.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/uv-bin" && tar -xzf "$RUNNER_TEMP/uv.tgz" -C "$RUNNER_TEMP/uv-bin" --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
+          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
+          echo "UV_PYTHON_INSTALL_DIR=$RUNNER_TEMP/uv-python" >> "$GITHUB_ENV"
+          echo "UV_CACHE_DIR=$RUNNER_TEMP/uv-cache" >> "$GITHUB_ENV"
       - name: zizmor nos workflows
         env:
           GH_TOKEN: ${{ github.token }}   # libera as auditorias online (action com CVE, commit impostor)
+          UV_PYTHON: "3.12.12"
         run: |
-          pipx run --spec 'zizmor==1.32.0' zizmor --format plain .github/workflows
+          uvx --from 'zizmor==1.32.0' zizmor --format plain .github/workflows
