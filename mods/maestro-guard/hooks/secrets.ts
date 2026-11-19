@@ -10,12 +10,20 @@ const CERT_EXT = /\.(pem|pfx|p12)($|[^a-z0-9])/i
 const CERT_BRACE = /\.\{[^}]*\b(pem|pfx|p12)\b/i
 const ECPF = /e-?cpf/i
 
+// anexos do Telegram: ~/.ponte/media/<algo>, sem `..`. So `media` exato, com ao menos um
+// componente depois; o resto de ~/.ponte continua segredo. Os demais testes (.env, .pem) seguem valendo.
+function isPonteMedia(parts: string[]): boolean {
+  if (parts.includes('..')) return false
+  return parts.every((p, i) => p !== '.ponte' || (parts[i + 1] === 'media' && i + 2 < parts.length))
+}
+
 // texto de caminho (ou de glob) que nomeia um segredo
 export function isSecretPath(p: string): boolean {
   const parts = p.split('/').filter(Boolean)
   const base = parts[parts.length - 1] ?? ''
   if (ENV_FILE.test(base) && !TEMPLATE.test(base)) return true
-  if (parts.includes('.ssh') || parts.includes('.ponte')) return true
+  if (parts.includes('.ssh')) return true
+  if (parts.includes('.ponte') && !isPonteMedia(parts)) return true
   const i = parts.indexOf('.claude')
   if (i >= 0 && (parts[i + 1] ?? '').startsWith('.credentials')) return true
   if (CERT_EXT.test(base) || CERT_BRACE.test(base)) return true
