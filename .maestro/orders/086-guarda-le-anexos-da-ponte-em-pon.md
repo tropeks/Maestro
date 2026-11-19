@@ -56,3 +56,7 @@ Reverter o commit da ordem: volta a negar `~/.ponte` inteiro.
 - Direção vigente na criação: INTENT v6 (`.maestro/INTENT.md`) — o plano cita a seção da direção que autoriza esta ordem.
 - Estourou Ask-First ou orçamento? PARE e reporte ao humano — não improvise.
 - O aceite é do diretor: `maestro order --accept 086` (você não fecha a própria ordem).
+accepted_at: 2026-11-19T20:34:00-03:00
+accepted_session: desconhecido
+accepted_tree: e46b89402a514a7129548d8b0dccc8acf10f232f
+accepted_intent: 6
