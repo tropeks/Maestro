@@ -27,7 +27,7 @@ Os anexos do Telegram são insumo de trabalho do Diretor, não segredo. Abrir s�
 ## Decisões
 1. Em `isSecretPath`, um caminho com `.ponte` deixa de ser segredo só quando a parte seguinte a `.ponte` é exatamente `media`, há pelo menos um componente depois dela e nenhum componente é `..`. Os testes de `.env`, chave, `.credentials` e certificado continuam valendo dentro de `media`: um `.env` ou `.pem` enviado pelo Telegram segue negado.
 2. Glob que alcança `~/.ponte` fora de `media` (`~/.ponte/*`, `~/.ponte/**`, `~/.ponte/{media,token}`) continua negado.
-3. Corpus novo: `allow` para Read de `~/.ponte/media/2026-11/x.pdf` e `cat ~/.ponte/media/2026-11/x.pdf`. `deny` para `~/.ponte/media/../token`, `~/.ponte/media` sem arquivo, `~/.ponte/mediax/a`, `~/.ponte/*`, `~/.ponte/media/2026-11/.env` e `~/.ponte/media/a/chave.pem`. Os `deny` de hoje ficam como estão.
+3. Corpus novo: `pass` (o mod não emite `allow`) para Read de `~/.ponte/media/2026-11/x.pdf` e `cat ~/.ponte/media/2026-11/x.pdf`. `deny` para `~/.ponte/media/../token`, `~/.ponte/media` sem arquivo, `~/.ponte/mediax/a`, `~/.ponte/*`, `~/.ponte/media/2026-11/.env` e `~/.ponte/media/a/chave.pem`. Os `deny` de hoje ficam como estão.
 
 ## Rollback
 Reverter o commit da ordem: volta a negar `~/.ponte` inteiro.
@@ -39,8 +39,9 @@ Reverter o commit da ordem: volta a negar `~/.ponte` inteiro.
 - [ ] O diff só toca `mods/maestro-guard/` e esta ordem.
 
 ## Turno
-- fatia: as decisões 1 a 3
-- fim: `bash tests/run-all.sh` sai 0 no tip do branch, com o recibo `order-86` gravado
+- ESTADO: turno 1 deixou `secrets.ts` e `corpus.ts` mudados e sem commit. No host, `claude plugin test mods/maestro-guard` deu 32 pass e 1 fail: o mod nunca emite `allow`, e os dois casos `~/.ponte/media/2026-11/x.pdf` (Read e `cat`) estão com `allow`. Erro do texto da ordem, não do código.
+- fatia (turno 2): mover esses dois casos para a lista que passa, com `want` `pass`, como `rm -rf node_modules`; `claude plugin test mods/maestro-guard` verde; commit no branch da ordem
+- fim: `claude plugin test mods/maestro-guard` sai 0 no tip, com o diff commitado (a suíte completa e o recibo `order-86` são do Diretor, no host)
 - teto: 3
 - fora: abrir qualquer outro caminho de `~/.ponte/`; mexer em `.ssh` ou nos outros testes de segredo; `bin/`, `hooks/` e `agents/`; push (é do Diretor); escrita fora do worktree
 - relatório: pela Ponte (`director_report`), formato fixo da v54: de pé com evidência · aberto · decisão pedida · próximo turno sugerido
