@@ -144,6 +144,16 @@ export const DENY: Case[] = [
   { tool: 'Grep', input: { pattern: 'BEGIN', glob: '*.pem' }, want: 'deny' },
   { tool: 'Grep', input: { pattern: 'TOKEN', path: '~/.ponte' }, want: 'deny' },
   { tool: 'Grep', input: { pattern: 'x', glob: '.env*' }, want: 'deny' },
+  // ~/.ponte/media (anexos do Telegram, ordem 086): aberto; o resto de ~/.ponte fechado
+  F('Read', 'file_path', `${HOME}/.ponte/media/../token`, 'deny'),
+  F('Read', 'file_path', `${HOME}/.ponte/media`, 'deny'),
+  F('Read', 'file_path', `${HOME}/.ponte/mediax/a`, 'deny'),
+  F('Read', 'file_path', `${HOME}/.ponte/media/2026-11/.env`, 'deny'),
+  F('Read', 'file_path', `${HOME}/.ponte/media/a/chave.pem`, 'deny'),
+  { tool: 'Glob', input: { pattern: '~/.ponte/*' }, want: 'deny' },
+  { tool: 'Glob', input: { pattern: '~/.ponte/**' }, want: 'deny' },
+  { tool: 'Glob', input: { pattern: '~/.ponte/{media,token}' }, want: 'deny' },
+  B('cat ~/.ponte/media/../token', 'deny'),
   { tool: 'Glob', input: { pattern: '**/.env*' }, want: 'deny' },
   { tool: 'Glob', input: { pattern: '*', path: `${HOME}/.ssh` }, want: 'deny' },
   { tool: 'Glob', input: { pattern: '~/.ssh/*' }, want: 'deny' },
@@ -173,6 +183,9 @@ export const DENY: Case[] = [
 
 export const PASS: Case[] = [
   // rotina do hook bash
+  // anexos do Telegram (ordem 086): o mod nao emite allow, so deixa passar
+  F('Read', 'file_path', `${HOME}/.ponte/media/2026-11/x.pdf`, 'pass'),
+  B('cat ~/.ponte/media/2026-11/x.pdf', 'pass', 'pass'),
   B('rm -rf node_modules', 'pass', 'pass'),
   B('rm -rf node_modules && npm install', 'pass', 'pass'),
   B('rm -rf dist .next coverage', 'pass', 'pass'),
