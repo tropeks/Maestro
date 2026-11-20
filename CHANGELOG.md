@@ -4,6 +4,15 @@ All notable changes to Maestro. Format follows [Keep a Changelog](https://keepac
 versioning follows [SemVer](https://semver.org). Entries before v1.1.0 were reconstructed
 from the decision log and tag messages when this file was introduced.
 
+## [1.26.0] — 2026-11-19
+
+### Changed
+- **O guarda lê os anexos da Ponte** (ordem 086, #67/#68). O `maestro-guard` (`mods/maestro-guard/hooks/secrets.ts`) passa a
+  tratar `~/.ponte/media` como leitura permitida; corpus de teste ampliado (`mods/maestro-guard/tests/corpus.ts`).
+
+### Added
+- **Portões do integrador no CI** (#64): testes, segredos, auditoria e zizmor, mais `trilhas.yml`.
+
 ## [Unreleased]
 
 ### Changed (E28, CONTRATO v2 da diretoria)
